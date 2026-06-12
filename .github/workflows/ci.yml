@@ -45,7 +45,7 @@ jobs:
   validate:
     needs: changes
     if: github.event_name != 'pull_request' || (needs.changes.outputs.validate == 'true' && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, remote-ci, backend, mbp]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Install validation dependencies
@@ -62,7 +62,7 @@ jobs:
   docker-build:
     needs: changes
     if: github.event_name != 'pull_request' || (needs.changes.outputs.docker == 'true' && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, remote-ci, backend, mbp]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -124,18 +124,29 @@ jobs:
 
   ci:
     name: ci
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.validate == 'true'
-    runs-on: [self-hosted, macOS, ARM64, remote-ci, backend, mbp]
+    needs:
+      - changes
+      - validate
+      - docker-build
+    if: always()
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Install validation dependencies
+      - name: Check required CI jobs
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install pyyaml
-      - name: Validate release files and unit tests
-        run: |
-          .venv/bin/python scripts/validate_release.py
-          .venv/bin/python -m unittest discover -s tests
+          set -euo pipefail
+
+          validate="${{ needs.validate.result }}"
+          docker_build="${{ needs.docker-build.result }}"
+
+          echo "validate: $validate"
+          echo "docker-build: $docker_build"
+
+          case "$validate" in
+            success|skipped) ;;
+            *) exit 1 ;;
+          esac
+
+          case "$docker_build" in
+            success|skipped) ;;
+            *) exit 1 ;;
+          esac
