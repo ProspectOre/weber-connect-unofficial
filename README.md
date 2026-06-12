@@ -16,12 +16,16 @@ Assistant through MQTT discovery.
 
 [![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FProspectOre%2Fweber-connect-home-assistant-addon)
 
-1. Click the button above, or in Home Assistant open **Settings > Add-ons >
-   Add-on Store**, choose **Repositories** from the overflow menu, and add:
+1. Click the button above, or in Home Assistant open **Settings > Apps**,
+   choose **Install app**, then choose **Repositories** from the overflow menu
+   and add:
 
    ```text
    https://github.com/ProspectOre/weber-connect-home-assistant-addon
    ```
+
+   On older Home Assistant versions, the same area may be labeled
+   **Settings > Add-ons > Add-on Store** instead of **Apps**.
 
 2. Install **Weber Connect BLE Bridge** and start it.
 3. Click **Open Web UI** and tap **Find My Hub**.
