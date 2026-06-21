@@ -18,4 +18,3 @@ mqtt_credentials.json
 *pairing_keys*.json
 pair_latest.json
 scan_latest.json
-.gstack/
