@@ -86,10 +86,11 @@ class MqttSession:
         else:
             try:
                 import paho.mqtt.client as mqtt
+                from paho.mqtt.enums import CallbackAPIVersion
             except ImportError as exc:
                 raise RuntimeError("paho-mqtt is not installed") from exc
             client = mqtt.Client(
-                mqtt.CallbackAPIVersion.VERSION2,
+                CallbackAPIVersion.VERSION2,
                 client_id=self.client_id,
             )
         if self.config.username:

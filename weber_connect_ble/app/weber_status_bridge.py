@@ -372,12 +372,13 @@ def build_mqtt_publish_plan(
 def mqtt_publish(args: argparse.Namespace, state: dict[str, Any], summary: dict[str, Any]) -> None:
     try:
         import paho.mqtt.client as mqtt
+        from paho.mqtt.enums import CallbackAPIVersion
     except ImportError as exc:
         raise RuntimeError("paho-mqtt is not installed; run pip install -r requirements.txt") from exc
 
     device_name = summary.get("hub", {}).get("display_name") or "Weber Connect Hub"
     object_slug = slugify(device_name) or device_id_from(summary, state.get("ble_address") or "")
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"{object_slug}_bridge")
+    client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=f"{object_slug}_bridge")
     if args.mqtt_username:
         client.username_pw_set(args.mqtt_username, args.mqtt_password)
     connect_rc = client.connect(args.mqtt_host, args.mqtt_port, keepalive=30)
