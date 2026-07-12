@@ -15,7 +15,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-
 APPLIANCE_SERVICE_UUID = "01014a75-6e65-81de-a4b2-940b4c6f6b69"
 STATUS_UUID = "31014a75-6e65-81de-a4b2-940b4c6f6b69"
 NOTIFICATION_UUID = "31024a75-6e65-81de-a4b2-940b4c6f6b69"

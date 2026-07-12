@@ -10,7 +10,7 @@ Assistant through MQTT discovery.
 
 | Add-on | Purpose | Status |
 | --- | --- | --- |
-| Weber Connect BLE Bridge | Publishes Weber Connect probe temperature, state, and battery sensors over MQTT | Experimental public release |
+| Weber Connect BLE Bridge | Publishes Weber Connect probe temperature, state, and battery sensors over MQTT | Stable 1.0 release |
 
 ## Install
 
@@ -57,3 +57,6 @@ runtime JSON output are intentionally excluded from this repository.
 
 See [weber_connect_ble/DOCS.md](weber_connect_ble/DOCS.md) for setup,
 configuration, troubleshooting, and release notes.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for runtime boundaries, lifecycle
+invariants, persistence guarantees, and verification gates.

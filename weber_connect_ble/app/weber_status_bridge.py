@@ -31,13 +31,13 @@ from saber_frames import (
     bytes_to_hex,
     decode_hex_frame,
 )
-
+from weber_persistence import write_json_atomic as write_private_json_atomic
 
 DEFAULT_PAIRING_SUMMARY = Path("weber_probe/weber_android_pairing_summary.json")
 DEFAULT_JSON_OUT = Path("weber_probe/weber_status_latest.json")
 DEFAULT_TOPIC_ROOT = "weber_connect"
 STATE_TOPIC_SUFFIX = "state"
-VERSION = "0.1.0"
+VERSION = "1.0.0"
 HEX_16_BYTES_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 LOGGER = logging.getLogger("weber_connect_bridge")
 
@@ -146,10 +146,7 @@ def default_address(summary: dict[str, Any]) -> str:
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    tmp_path.replace(path)
+    write_private_json_atomic(path, payload)
 
 
 def parse_status_event(event: dict[str, Any]) -> dict[str, Any] | None:
@@ -270,6 +267,9 @@ def build_mqtt_publish_plan(
         serial=slugify(serial),
     )
     state_topic = f"{topic_prefix}/{STATE_TOPIC_SUFFIX}"
+    availability_topic = (
+        f"{topic_prefix}/availability" if getattr(args, "availability", False) else None
+    )
     expire_after = max(60, int(args.poll_seconds * 4))
     publish_plan: list[dict[str, Any]] = []
 
@@ -296,6 +296,7 @@ def build_mqtt_publish_plan(
                         "name": f"Probe {number} Temperature",
                         "unique_id": f"{serial}_probe_{number}_temperature",
                         "state_topic": state_topic,
+                        **({"availability_topic": availability_topic} if availability_topic else {}),
                         "value_template": f"{{{{ value_json.probe_{number}_temperature_f }}}}",
                         "unit_of_measurement": "\u00b0F",
                         "device_class": "temperature",
@@ -312,6 +313,7 @@ def build_mqtt_publish_plan(
                         "name": f"Probe {number} State",
                         "unique_id": f"{serial}_probe_{number}_state",
                         "state_topic": state_topic,
+                        **({"availability_topic": availability_topic} if availability_topic else {}),
                         "value_template": f"{{{{ value_json.probe_{number}_state }}}}",
                         "device": device,
                         "origin": origin,
@@ -331,6 +333,7 @@ def build_mqtt_publish_plan(
                             "name": f"Probe {number} Battery",
                             "unique_id": f"{serial}_probe_{number}_battery",
                             "state_topic": state_topic,
+                            **({"availability_topic": availability_topic} if availability_topic else {}),
                             "value_template": f"{{{{ value_json.probe_{number}_battery }}}}",
                             "unit_of_measurement": "%",
                             "device_class": "battery",
@@ -381,23 +384,26 @@ def mqtt_publish(args: argparse.Namespace, state: dict[str, Any], summary: dict[
     if connect_rc != mqtt.MQTT_ERR_SUCCESS:
         raise RuntimeError(f"MQTT connect failed: {mqtt.error_string(connect_rc)}")
     client.loop_start()
-    publish_results = []
-
-    for publish in build_mqtt_publish_plan(args, state, summary):
-        publish_results.append(
-            client.publish(
-                publish["topic"],
-                publish["payload"],
-                qos=publish["qos"],
-                retain=publish["retain"],
+    try:
+        publish_results = []
+        for publish in build_mqtt_publish_plan(args, state, summary):
+            publish_results.append(
+                client.publish(
+                    publish["topic"],
+                    publish["payload"],
+                    qos=publish["qos"],
+                    retain=publish["retain"],
+                )
             )
-        )
-    for result in publish_results:
-        result.wait_for_publish()
-        if result.rc != mqtt.MQTT_ERR_SUCCESS:
-            raise RuntimeError(f"MQTT publish failed: {mqtt.error_string(result.rc)}")
-    client.loop_stop()
-    client.disconnect()
+        for result in publish_results:
+            result.wait_for_publish(timeout=10.0)
+            if not result.is_published():
+                raise TimeoutError("MQTT publish acknowledgement timed out")
+            if result.rc != mqtt.MQTT_ERR_SUCCESS:
+                raise RuntimeError(f"MQTT publish failed: {mqtt.error_string(result.rc)}")
+    finally:
+        client.loop_stop()
+        client.disconnect()
 
 
 async def read_status_once(
@@ -415,6 +421,7 @@ async def read_status_once(
 
     events: list[dict[str, Any]] = []
     statuses: list[dict[str, Any]] = []
+    status_received = asyncio.Event()
 
     def handler(source: str):
         def on_notify(sender: Any, data: bytearray) -> None:
@@ -423,6 +430,7 @@ async def read_status_once(
             parsed = parse_status_event(event)
             if parsed is not None:
                 statuses.append(parsed)
+                status_received.set()
                 probe_summary = ", ".join(
                     f"{probe.get('label')}: {probe.get('probe_temp_f')} F {probe.get('state')}"
                     for probe in parsed.get("probes", [])
@@ -461,7 +469,10 @@ async def read_status_once(
         except Exception as exc:
             LOGGER.warning("Could not read session characteristic: %r", exc)
 
-        await asyncio.sleep(listen_seconds)
+        try:
+            await asyncio.wait_for(status_received.wait(), timeout=listen_seconds)
+        except asyncio.TimeoutError:
+            pass
 
         for uuid in subscribed:
             try:
@@ -613,6 +624,13 @@ async def run_bridge_until_stopped(args: argparse.Namespace) -> int:
     finally:
         for sig in registered:
             loop.remove_signal_handler(sig)
+        try:
+            summary = load_bridge_summary(args, allow_unpaired=True)
+            address = args.address or normalize_optional(summary.get("hub", {}).get("ble_address"))
+            if address:
+                await asyncio.to_thread(release_ble_connection, address)
+        except Exception:
+            LOGGER.warning("Could not release BLE connection during shutdown", exc_info=True)
 
 
 def main() -> int:

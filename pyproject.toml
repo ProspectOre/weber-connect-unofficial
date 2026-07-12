@@ -1,0 +1,43 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "ASYNC", "RUF"]
+ignore = ["ASYNC109", "ASYNC110"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["B017"]
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+  "weber_connect_ble/app/weber_runtime.py",
+  "weber_connect_ble/app/weber_persistence.py",
+  "weber_connect_ble/app/weber_mqtt.py",
+  "weber_connect_ble/app/weber_http.py",
+  "weber_connect_ble/app/weber_panel.py",
+]
+strict = true
+ignore_missing_imports = true
+warn_unreachable = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["saber_frames", "weber_ble_pair", "weber_ble_scan", "weber_status_bridge"]
+ignore_errors = true
+
+[tool.coverage.run]
+branch = true
+source = ["weber_connect_ble/app"]
+omit = ["*/static/*"]
+
+[tool.coverage.report]
+fail_under = 55
+show_missing = true
+skip_covered = true
+exclude_also = [
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]

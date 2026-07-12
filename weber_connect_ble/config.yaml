@@ -1,6 +1,6 @@
 name: Weber Connect BLE Bridge
 slug: weber_connect_ble
-version: 0.1.0
+version: 1.0.0
 stage: stable
 image: ghcr.io/prospectore/{arch}-addon-weber_connect_ble
 description: Local BLE bridge for Weber Connect probe telemetry in Home Assistant.

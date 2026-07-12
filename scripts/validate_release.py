@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
-import py_compile
 import json
+import py_compile
 import re
 import subprocess
 import sys
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / "weber_connect_ble"
@@ -66,6 +65,7 @@ def check_required_files() -> None:
     required = [
         "repository.yaml",
         "README.md",
+        "ARCHITECTURE.md",
         "LICENSE",
         "SECURITY.md",
         "CONTRIBUTING.md",
@@ -83,8 +83,15 @@ def check_required_files() -> None:
         "weber_connect_ble/app/weber_ble_scan.py",
         "weber_connect_ble/app/weber_status_bridge.py",
         "weber_connect_ble/app/weber_panel.py",
+        "weber_connect_ble/app/weber_http.py",
+        "weber_connect_ble/app/weber_mqtt.py",
+        "weber_connect_ble/app/weber_persistence.py",
+        "weber_connect_ble/app/weber_runtime.py",
         "weber_connect_ble/app/static/index.html",
+        "weber_connect_ble/app/requirements.in",
         "weber_connect_ble/app/requirements.txt",
+        "requirements-dev.txt",
+        "pyproject.toml",
         "tests/test_bridge_contracts.py",
     ]
     for relative in required:
@@ -245,9 +252,42 @@ def check_ci_coverage() -> None:
         "--build-arg BUILD_VERSION",
         "platform: linux/amd64",
         "platform: linux/arm64",
+        "ruff check",
+        "mypy",
+        "coverage report",
+        "pip-audit",
     ):
         if expected not in workflow:
             fail(f"CI workflow missing expected coverage: {expected}")
+
+
+def check_dependency_locks() -> None:
+    requirements_in = (ADDON / "app/requirements.in").read_text(encoding="utf-8")
+    requirements_lock = (ADDON / "app/requirements.txt").read_text(encoding="utf-8")
+    direct_requirements = [
+        line.strip()
+        for line in requirements_in.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    for requirement in direct_requirements:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+==[A-Za-z0-9_.+-]+", requirement):
+            fail(f"runtime dependency must be exactly pinned: {requirement}")
+        if requirement.lower() not in requirements_lock.lower():
+            fail(f"runtime dependency lock is missing {requirement}")
+    if "--hash=sha256:" not in requirements_lock:
+        fail("runtime dependency lock must include package hashes")
+
+    development = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
+    for line in development.splitlines():
+        requirement = line.strip()
+        if not requirement or requirement.startswith("#"):
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+==[A-Za-z0-9_.+-]+", requirement):
+            fail(f"development dependency must be exactly pinned: {requirement}")
+
+    dockerfile = (ADDON / "Dockerfile").read_text(encoding="utf-8")
+    if "--require-hashes -r /tmp/requirements.txt" not in dockerfile:
+        fail("Dockerfile must enforce hashes from the runtime dependency lock")
 
 
 def should_scan(path: Path) -> bool:
@@ -291,6 +331,7 @@ def main() -> int:
     check_shell()
     check_secret_handling()
     check_ci_coverage()
+    check_dependency_locks()
     check_no_private_material()
     print("Release validation passed.")
     return 0

@@ -1,43 +1,42 @@
 #!/usr/bin/env python3
-"""Weber Connect ingress panel: connectivity status, magic pairing, phone handoff.
-
-Runs the BLE telemetry bridge in the background and serves a small web UI over
-Home Assistant ingress. All hub management (scan, pair, handoff, forget) happens
-here with one tap; the add-on configuration stays minimal.
-"""
+"""Weber Connect ingress panel and supervised BLE-to-MQTT runtime."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
+import random
 import signal
 import threading
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from weber_ble_pair import (
-    build_pairing_summary,
-    load_or_create_pairing_keys,
-    pair_once,
-)
-from weber_ble_pair import write_json_atomic as write_json_private
+from weber_ble_pair import build_pairing_summary, load_or_create_pairing_keys, pair_once
 from weber_ble_scan import scan as ble_scan
+from weber_http import create_panel_server
+from weber_mqtt import MqttConfig, MqttSession
+from weber_persistence import read_json, write_json_atomic
+from weber_runtime import (
+    BridgeSettings,
+    ConnectionState,
+    RuntimeState,
+    TaskSupervisor,
+    parse_whole_number,
+    retry_delay,
+)
 from weber_status_bridge import (
     VERSION,
     build_state,
     load_pairing_summary,
-    mqtt_publish,
     read_status_once,
     release_ble_connection,
-    write_json_atomic,
 )
-
 
 LOGGER = logging.getLogger("weber_connect_panel")
 
@@ -48,68 +47,120 @@ BLE_TIMEOUT = 20.0
 PAIR_LISTEN_SECONDS = 90.0
 SCAN_SECONDS = 20.0
 MAX_PROBES = 4
-
-DEFAULT_SETTINGS = {
-    "address": None,
-    "poll_seconds": 30,
-    "handoff_minutes": 15,
-}
+DEFAULT_ICON_FILE = Path(__file__).resolve().parents[1] / "icon.png"
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def clamp(value: int, low: int, high: int) -> int:
-    return max(low, min(high, value))
+@dataclass(frozen=True, slots=True)
+class ControllerDependencies:
+    scan: Callable[..., Awaitable[dict[str, Any]]] = ble_scan
+    pair: Callable[..., Awaitable[dict[str, Any]]] = pair_once
+    read_status: Callable[..., Awaitable[dict[str, Any]]] = read_status_once
+    release: Callable[[str], bool] = release_ble_connection
+    key_loader: Callable[..., dict[str, Any]] = load_or_create_pairing_keys
+    summary_builder: Callable[..., dict[str, Any]] = build_pairing_summary
+    mqtt_factory: Callable[..., MqttSession] = MqttSession
+    wall_time: Callable[[], float] = time.time
+    monotonic: Callable[[], float] = time.monotonic
+    jitter: Callable[[float, float], float] = random.uniform
 
 
 class HubController:
-    """Owns hub state and serializes every BLE operation."""
+    """Explicit runtime state machine with injected infrastructure boundaries."""
 
     def __init__(
         self,
         data_dir: Path,
         mqtt: dict[str, Any] | None,
+        *,
+        dependencies: ControllerDependencies | None = None,
     ) -> None:
         self.data_dir = data_dir
         self.settings_file = data_dir / "settings.json"
         self.summary_file = data_dir / "pairing_summary.json"
         self.key_file = data_dir / "pairing_keys.json"
         self.status_file = data_dir / "latest_status.json"
+        self.handoff_file = data_dir / "handoff.json"
 
-        self.mqtt = mqtt
-        self.settings = dict(DEFAULT_SETTINGS)
+        self.mqtt_config = MqttConfig.from_mapping(mqtt) if mqtt and mqtt.get("host") else None
+        self.settings = BridgeSettings()
         self.summary: dict[str, Any] | None = None
-
-        self.scanning = False
-        self.pairing = False
-        self.candidates: list[dict[str, Any]] = []
-        self.setup_error: str | None = None
-
-        self.handoff_active = False
-        self.handoff_until: float | None = None
-        self._handoff_token = 0
-
-        self.last_read_at: str | None = None
-        self.last_read_ok = False
-        self.last_error: str | None = None
-        self.last_state: dict[str, Any] = {}
-        self.mqtt_published_at: str | None = None
-        self.mqtt_error: str | None = None
+        self.runtime = RuntimeState()
+        self.dependencies = dependencies or ControllerDependencies()
 
         self._ble_lock = asyncio.Lock()
+        self._cycle_lock = asyncio.Lock()
         self._wake = asyncio.Event()
+        self._supervisor = TaskSupervisor()
+        self._mqtt_session: MqttSession | None = None
+        self._auto_resume_task: asyncio.Task[Any] | None = None
+        self._started = False
+        self._closing = False
+        self._fatal_error: BaseException | None = None
+        self._fatal_event = asyncio.Event()
 
         self._load()
 
-    # -- persistence ---------------------------------------------------------
+    # -- lifecycle ----------------------------------------------------------
+
+    async def start(self) -> None:
+        if self._started:
+            return
+        if self._closing:
+            raise RuntimeError("controller is closing")
+        self._started = True
+        if self.runtime.handoff_active and self.runtime.handoff_until is not None:
+            self.runtime.handoff_token += 1
+            self._auto_resume_task = self._supervisor.spawn(
+                "weber-auto-resume",
+                self._auto_resume(self.runtime.handoff_token, self.runtime.handoff_until),
+                on_error=self._operation_error,
+            )
+        self._supervisor.spawn(
+            "weber-bridge-loop",
+            self._bridge_loop(),
+            on_error=self._record_fatal_error,
+        )
+
+    async def stop(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        self._wake.set()
+        await self._supervisor.close()
+        await self._close_mqtt()
+        address = self.address
+        if address:
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(self.dependencies.release, address),
+                    timeout=20.0,
+                )
+            except Exception:
+                LOGGER.warning("Could not release BLE connection during shutdown", exc_info=True)
+
+    def _record_fatal_error(self, error: BaseException) -> None:
+        self._fatal_error = error
+        self._fatal_event.set()
+        LOGGER.critical(
+            "Bridge runtime stopped unexpectedly",
+            exc_info=(type(error), error, error.__traceback__),
+        )
+
+    async def wait_for_fatal_error(self) -> BaseException:
+        await self._fatal_event.wait()
+        assert self._fatal_error is not None
+        return self._fatal_error
+
+    # -- persistence --------------------------------------------------------
 
     def _load(self) -> None:
         if self.settings_file.exists():
             try:
-                stored = json.loads(self.settings_file.read_text(encoding="utf-8"))
-                self.settings.update({k: stored[k] for k in DEFAULT_SETTINGS if k in stored})
+                self.settings = BridgeSettings.from_mapping(read_json(self.settings_file))
             except (OSError, ValueError) as exc:
                 LOGGER.warning("Could not read settings: %r", exc)
         if self.summary_file.exists():
@@ -117,18 +168,47 @@ class HubController:
                 self.summary = load_pairing_summary(self.summary_file)
             except (OSError, ValueError) as exc:
                 LOGGER.warning("Could not read pairing summary: %r", exc)
+        if self.handoff_file.exists():
+            try:
+                handoff = read_json(self.handoff_file)
+                active = handoff.get("active") is True
+                until = handoff.get("until")
+                if active and until is None:
+                    self.runtime.handoff_active = True
+                    self.runtime.handoff_until = None
+                elif (
+                    active
+                    and isinstance(until, (int, float))
+                    and until > self.dependencies.wall_time()
+                ):
+                    self.runtime.handoff_active = True
+                    self.runtime.handoff_until = float(until)
+            except (OSError, ValueError) as exc:
+                LOGGER.warning("Could not read handoff state: %r", exc)
+            if not self.runtime.handoff_active:
+                self.handoff_file.unlink(missing_ok=True)
 
     def _save_settings(self) -> None:
-        write_json_atomic(self.settings_file, self.settings)
+        write_json_atomic(self.settings_file, self.settings.as_dict())
 
-    # -- derived state -------------------------------------------------------
+    def _save_handoff(self) -> None:
+        write_json_atomic(
+            self.handoff_file,
+            {"active": self.runtime.handoff_active, "until": self.runtime.handoff_until},
+        )
+
+    def _clear_handoff(self) -> None:
+        self.handoff_file.unlink(missing_ok=True)
+
+    # -- derived state ------------------------------------------------------
 
     @property
     def address(self) -> str | None:
-        if self.settings.get("address"):
-            return self.settings["address"]
+        if self.settings.address:
+            return self.settings.address
         if self.summary:
-            return (self.summary.get("hub") or {}).get("ble_address")
+            address = (self.summary.get("hub") or {}).get("ble_address")
+            return address if isinstance(address, str) and address else None
         return None
 
     @property
@@ -136,129 +216,179 @@ class HubController:
         return self.summary is not None and bool(self.address)
 
     def _can_bridge(self) -> bool:
-        return self.paired and not self.handoff_active and not self.scanning and not self.pairing
+        return (
+            not self._closing
+            and self.paired
+            and not self.runtime.handoff_active
+            and not self.runtime.scanning
+            and not self.runtime.pairing
+        )
+
+    def connection_state(self) -> ConnectionState:
+        if self.runtime.pairing:
+            return ConnectionState.PAIRING
+        if self.runtime.scanning:
+            return ConnectionState.SCANNING
+        if not self.paired:
+            return ConnectionState.SETUP
+        if self.runtime.handoff_active:
+            return ConnectionState.HANDOFF
+        if not self.runtime.last_read_at:
+            return ConnectionState.CONNECTING
+        return ConnectionState.ONLINE if self.runtime.last_read_ok else ConnectionState.OFFLINE
 
     def state(self) -> str:
-        if self.pairing:
-            return "pairing"
-        if self.scanning:
-            return "scanning"
-        if not self.paired:
-            return "setup"
-        if self.handoff_active:
-            return "handoff"
-        if not self.last_read_at:
-            return "connecting"
-        return "online" if self.last_read_ok else "offline"
+        return self.connection_state().value
 
     async def snapshot(self) -> dict[str, Any]:
         remaining = None
-        if self.handoff_active and self.handoff_until is not None:
-            remaining = max(0, int(self.handoff_until - time.time()))
+        if self.runtime.handoff_active and self.runtime.handoff_until is not None:
+            remaining = max(
+                0,
+                int(self.runtime.handoff_until - self.dependencies.wall_time()),
+            )
         return {
             "version": VERSION,
             "state": self.state(),
             "paired": self.paired,
             "address": self.address,
             "hub": (self.summary or {}).get("hub"),
-            "probes": self.last_state.get("probes", []),
-            "probe_count": self.last_state.get("probe_count", 0),
-            "last_read_at": self.last_read_at,
-            "last_error": self.last_error,
-            "setup_error": self.setup_error,
-            "scanning": self.scanning,
-            "pairing": self.pairing,
-            "candidates": self.candidates,
+            "probes": self.runtime.last_good_state.get("probes", []),
+            "probe_count": self.runtime.last_good_state.get("probe_count", 0),
+            "max_probes": MAX_PROBES,
+            "readings_stale": bool(self.runtime.last_good_state) and not self.runtime.last_read_ok,
+            "last_read_at": self.runtime.last_read_at,
+            "last_error": self.runtime.last_error,
+            "setup_error": self.runtime.setup_error,
+            "scanning": self.runtime.scanning,
+            "pairing": self.runtime.pairing,
+            "candidates": list(self.runtime.candidates),
+            "retry": {
+                "consecutive_failures": self.runtime.consecutive_failures,
+                "next_retry_seconds": self.runtime.next_retry_seconds,
+            },
             "handoff": {
-                "active": self.handoff_active,
+                "active": self.runtime.handoff_active,
                 "remaining_seconds": remaining,
-                "auto_resume": self.handoff_until is not None,
+                "auto_resume": self.runtime.handoff_until is not None,
             },
             "mqtt": {
-                "configured": bool(self.mqtt and self.mqtt.get("host")),
-                "published_at": self.mqtt_published_at,
-                "error": self.mqtt_error,
+                "configured": self.mqtt_config is not None,
+                "published_at": self.runtime.mqtt_published_at,
+                "error": self.runtime.mqtt_error,
             },
             "settings": {
-                "poll_seconds": self.settings["poll_seconds"],
-                "handoff_minutes": self.settings["handoff_minutes"],
+                "poll_seconds": self.settings.poll_seconds,
+                "handoff_minutes": self.settings.handoff_minutes,
             },
         }
 
-    # -- actions -------------------------------------------------------------
+    # -- actions ------------------------------------------------------------
+
+    def _operation_error(self, error: BaseException) -> None:
+        self.runtime.setup_error = str(error)
+        self._wake.set()
 
     async def start_scan(self) -> dict[str, Any]:
-        if self.scanning or self.pairing:
+        if self._closing:
+            return {"ok": False, "error": "The bridge is shutting down."}
+        if self.runtime.scanning or self.runtime.pairing:
             return {"ok": False, "error": "Another hub operation is already running."}
-        asyncio.get_running_loop().create_task(self._scan_task())
+        self.runtime.scanning = True
+        self.runtime.setup_error = None
+        self.runtime.candidates = []
+        self._wake.set()
+        self._supervisor.spawn(
+            "weber-scan",
+            self._scan_task(),
+            on_error=self._operation_error,
+        )
         return {"ok": True}
 
     async def _scan_task(self) -> None:
-        self.scanning = True
-        self.setup_error = None
-        self.candidates = []
         try:
             async with self._ble_lock:
                 if self.address:
-                    await asyncio.to_thread(release_ble_connection, self.address)
-                result = await ble_scan(SCAN_SECONDS, include_all=False, stop_on_weber=False)
-            self.candidates = [
+                    await asyncio.to_thread(self.dependencies.release, self.address)
+                result = await self.dependencies.scan(
+                    SCAN_SECONDS,
+                    include_all=False,
+                    stop_on_weber=False,
+                )
+            self.runtime.candidates = [
                 {
                     "address": row.get("address"),
                     "name": row.get("local_name") or row.get("name") or "Weber Hub",
                     "rssi": row.get("rssi"),
                 }
                 for row in result.get("weber_candidates", [])
+                if isinstance(row.get("address"), str) and row.get("address")
             ]
-            if not self.candidates:
-                self.setup_error = (
+            if not self.runtime.candidates:
+                self.runtime.setup_error = (
                     "No hub found. Make sure the hub is powered on, awake, and close "
                     "to your Home Assistant Bluetooth adapter, then try again."
                 )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             LOGGER.error("Scan failed: %r", exc)
-            self.setup_error = f"Bluetooth scan failed: {exc}"
+            self.runtime.setup_error = f"Bluetooth scan failed: {exc}"
         finally:
-            self.scanning = False
+            self.runtime.scanning = False
             self._wake.set()
 
-    async def pair(self, address: str | None) -> dict[str, Any]:
-        if self.scanning or self.pairing:
+    async def pair(self, address: object) -> dict[str, Any]:
+        if self._closing:
+            return {"ok": False, "error": "The bridge is shutting down."}
+        if address is not None and not isinstance(address, str):
+            return {"ok": False, "error": "address must be a string or null."}
+        if self.runtime.scanning or self.runtime.pairing:
             return {"ok": False, "error": "Another hub operation is already running."}
-        asyncio.get_running_loop().create_task(self._pair_task(address))
+        self.runtime.pairing = True
+        self.runtime.setup_error = None
+        self._wake.set()
+        self._supervisor.spawn(
+            "weber-pair",
+            self._pair_task(address.strip() if address else None),
+            on_error=self._operation_error,
+        )
         return {"ok": True}
 
     def _log_pair_events(self, result: dict[str, Any]) -> None:
-        """Log whatever the hub sent during a failed pairing attempt."""
         events = result.get("events") or []
         if not events:
-            LOGGER.warning("Hub sent no notifications at all during pairing")
+            LOGGER.warning("Hub sent no notifications during pairing")
             return
         for event in events:
             decoded = event.get("decoded") or {}
             envelope = decoded.get("envelope") or {}
             candidate = envelope.get("body_plain_candidate") or {}
             LOGGER.warning(
-                "Pairing event source=%s type=%s hex=%s",
+                "Pairing event source=%s type=%s length=%s",
                 event.get("source"),
                 candidate.get("type_name") or "UNDECODED",
-                event.get("hex"),
+                event.get("length"),
             )
 
     async def _pair_task(self, address: str | None) -> None:
-        self.pairing = True
-        self.setup_error = None
         try:
             async with self._ble_lock:
                 if not address:
-                    result = await ble_scan(SCAN_SECONDS, include_all=False, stop_on_weber=True)
+                    result = await self.dependencies.scan(
+                        SCAN_SECONDS,
+                        include_all=False,
+                        stop_on_weber=True,
+                    )
                     candidates = result.get("weber_candidates", [])
                     if not candidates:
                         raise RuntimeError(
                             "No hub found nearby. Wake the hub and keep it close, then try again."
                         )
-                    address = candidates[0]["address"]
-                keys = load_or_create_pairing_keys(
+                    address = candidates[0].get("address")
+                if not isinstance(address, str) or not address:
+                    raise RuntimeError("The selected hub has no usable Bluetooth address.")
+                keys = self.dependencies.key_loader(
                     path=self.key_file,
                     display_name="Home Assistant",
                     companion_id=None,
@@ -272,7 +402,7 @@ class HubController:
                     write_without_response=False,
                     listen_seconds=PAIR_LISTEN_SECONDS,
                 )
-                result = await pair_once(args, keys)
+                result = await self.dependencies.pair(args, keys)
                 response = result.get("pairing_response")
                 if not response:
                     self._log_pair_events(result)
@@ -282,7 +412,7 @@ class HubController:
                     )
                 if response.get("status") != "CONFIRMED":
                     raise RuntimeError(f"The hub declined pairing ({response.get('status')}).")
-                summary = build_pairing_summary(
+                summary = self.dependencies.summary_builder(
                     address=address,
                     keys=keys,
                     pairing_response=response,
@@ -292,93 +422,166 @@ class HubController:
                     hub_software_revision=None,
                     hub_wifi_mac=None,
                 )
-                write_json_private(self.summary_file, summary, mode=0o600)
+                write_json_atomic(self.summary_file, summary)
                 self.summary = summary
-                self.settings["address"] = address
+                self.settings = self.settings.with_address(address)
                 self._save_settings()
-                self.last_read_at = None
-                self.last_read_ok = False
-                self.last_error = None
+                self.runtime.last_read_at = None
+                self.runtime.last_read_ok = False
+                self.runtime.last_error = None
+                self.runtime.consecutive_failures = 0
+                await self._close_mqtt()
                 LOGGER.info("Paired with hub at %s", address)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             LOGGER.error("Pairing failed: %r", exc)
-            self.setup_error = str(exc)
+            self.runtime.setup_error = str(exc)
         finally:
-            self.pairing = False
+            self.runtime.pairing = False
             self._wake.set()
 
     async def handoff(self, minutes: int | None) -> dict[str, Any]:
         if not self.paired:
             return {"ok": False, "error": "No hub is paired yet."}
-        if minutes is None:
-            minutes = self.settings["handoff_minutes"]
-        minutes = clamp(int(minutes), 0, 240)
-        self.handoff_active = True
-        self._handoff_token += 1
-        token = self._handoff_token
+        try:
+            parsed_minutes = (
+                self.settings.handoff_minutes
+                if minutes is None
+                else parse_whole_number(minutes, "minutes")
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        parsed_minutes = max(0, min(240, parsed_minutes))
+
+        self._cancel_auto_resume()
+        self.runtime.handoff_active = True
+        self.runtime.handoff_until = None
+        self.runtime.handoff_token += 1
+        token = self.runtime.handoff_token
         self._wake.set()
-        async with self._ble_lock:
-            await asyncio.to_thread(release_ble_connection, self.address)
-        if minutes > 0:
-            self.handoff_until = time.time() + minutes * 60
-            asyncio.get_running_loop().create_task(self._auto_resume(token, self.handoff_until))
-            LOGGER.info("Hub handed off to the phone app; auto-resume in %s minutes", minutes)
+        try:
+            async with self._ble_lock:
+                address = self.address
+                if address:
+                    await asyncio.to_thread(self.dependencies.release, address)
+        except Exception as exc:
+            self.runtime.handoff_active = False
+            self._clear_handoff()
+            return {"ok": False, "error": f"Could not release the hub: {exc}"}
+
+        if parsed_minutes > 0:
+            self.runtime.handoff_until = self.dependencies.wall_time() + parsed_minutes * 60
+            self._save_handoff()
+            self._auto_resume_task = self._supervisor.spawn(
+                "weber-auto-resume",
+                self._auto_resume(token, self.runtime.handoff_until),
+                on_error=self._operation_error,
+            )
+            LOGGER.info("Hub handed off to the phone app; auto-resume in %s minutes", parsed_minutes)
         else:
-            self.handoff_until = None
+            self._save_handoff()
             LOGGER.info("Hub handed off to the phone app until manually resumed")
         return {"ok": True}
 
     async def _auto_resume(self, token: int, until: float) -> None:
-        await asyncio.sleep(max(0.0, until - time.time()))
-        if self.handoff_active and self._handoff_token == token:
-            LOGGER.info("Handoff window ended; reconnecting to hub")
-            self.handoff_active = False
-            self.handoff_until = None
-            self._wake.set()
+        try:
+            await asyncio.sleep(max(0.0, until - self.dependencies.wall_time()))
+            if self.runtime.handoff_active and self.runtime.handoff_token == token:
+                LOGGER.info("Handoff window ended; reconnecting to hub")
+                self.runtime.handoff_active = False
+                self.runtime.handoff_until = None
+                self._clear_handoff()
+                self._wake.set()
+        finally:
+            if self._auto_resume_task is asyncio.current_task():
+                self._auto_resume_task = None
+
+    def _cancel_auto_resume(self) -> None:
+        task, self._auto_resume_task = self._auto_resume_task, None
+        if task is not None and not task.done():
+            task.cancel()
 
     async def resume(self) -> dict[str, Any]:
-        self.handoff_active = False
-        self.handoff_until = None
-        self._handoff_token += 1
+        self._cancel_auto_resume()
+        self.runtime.handoff_active = False
+        self.runtime.handoff_until = None
+        self.runtime.handoff_token += 1
+        self._clear_handoff()
         self._wake.set()
         return {"ok": True}
 
     async def forget(self) -> dict[str, Any]:
-        """Forget the hub locally. Pairing keys are kept so re-pairing is instant."""
-        self.handoff_active = False
-        self.handoff_until = None
-        self.summary = None
-        self.settings["address"] = None
-        self._save_settings()
-        self.last_state = {}
-        self.last_read_at = None
-        self.last_read_ok = False
-        self.last_error = None
-        self.candidates = []
-        try:
-            self.summary_file.unlink(missing_ok=True)
-        except OSError as exc:
-            LOGGER.warning("Could not remove pairing summary: %r", exc)
+        """Forget the hub locally while retaining the reusable companion keypair."""
+        if self.runtime.scanning or self.runtime.pairing:
+            return {"ok": False, "error": "Wait for the current hub operation to finish."}
+        async with self._cycle_lock:
+            self._cancel_auto_resume()
+            self.runtime.handoff_active = False
+            self.runtime.handoff_until = None
+            self.runtime.handoff_token += 1
+            await self._close_mqtt()
+            async with self._ble_lock:
+                address = self.address
+                if address:
+                    await asyncio.to_thread(self.dependencies.release, address)
+                self.summary = None
+                self.settings = self.settings.with_address(None)
+                self._save_settings()
+            self.runtime.last_good_state = {}
+            self.runtime.last_read_at = None
+            self.runtime.last_read_ok = False
+            self.runtime.last_error = None
+            self.runtime.consecutive_failures = 0
+            self.runtime.next_retry_seconds = None
+            self.runtime.candidates = []
+            for path in (self.summary_file, self.status_file, self.handoff_file):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError as exc:
+                    LOGGER.warning("Could not remove %s: %r", path, exc)
         self._wake.set()
         return {"ok": True}
 
     async def update_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if "poll_seconds" in payload:
-            self.settings["poll_seconds"] = clamp(int(payload["poll_seconds"]), 10, 3600)
-        if "handoff_minutes" in payload:
-            self.settings["handoff_minutes"] = clamp(int(payload["handoff_minutes"]), 0, 240)
+        try:
+            updated = self.settings.updated(payload)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        self.settings = updated
         self._save_settings()
         self._wake.set()
-        return {"ok": True, "settings": dict(self.settings)}
+        return {"ok": True, "settings": self.settings.as_dict()}
 
-    # -- bridge loop ---------------------------------------------------------
+    # -- bridge and MQTT ----------------------------------------------------
 
-    async def _read_cycle(self) -> None:
+    async def _record_read_failure(self, message: str) -> bool:
+        self.runtime.last_read_ok = False
+        self.runtime.last_error = message
+        self.runtime.last_read_at = utc_now()
+        self.runtime.consecutive_failures += 1
+        if self.summary and self.address:
+            disconnected = build_state(
+                self.summary,
+                {},
+                self.address,
+                connected=False,
+                max_probes=MAX_PROBES,
+            )
+            write_json_atomic(self.status_file, disconnected)
+            await self._publish(disconnected)
+        return False
+
+    async def _read_cycle(self) -> bool:
+        async with self._cycle_lock:
+            return await self._read_cycle_once()
+
+    async def _read_cycle_once(self) -> bool:
         async with self._ble_lock:
-            if not self._can_bridge():
-                return
+            if not self._can_bridge() or not self.summary or not self.address:
+                return False
             try:
-                result = await read_status_once(
+                result = await self.dependencies.read_status(
                     address=self.address,
                     companion_id=self.summary["companion_id"],
                     version=BRIDGE_MESSAGE_VERSION,
@@ -386,22 +589,20 @@ class HubController:
                     timeout=BLE_TIMEOUT,
                     write_without_response=False,
                 )
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:
-                self.last_read_ok = False
-                self.last_error = f"Could not reach the hub: {exc}"
-                self.last_read_at = utc_now()
                 LOGGER.warning("Read failed: %r", exc)
-                return
+                return await self._record_read_failure(f"Could not reach the hub: {exc}")
 
         latest = result.get("latest_status")
-        self.last_read_at = utc_now()
         if not latest:
-            self.last_read_ok = False
-            self.last_error = "Connected, but the hub sent no probe status."
-            return
+            return await self._record_read_failure("Connected, but the hub sent no probe status.")
 
-        self.last_read_ok = True
-        self.last_error = None
+        self.runtime.last_read_ok = True
+        self.runtime.last_error = None
+        self.runtime.last_read_at = utc_now()
+        self.runtime.consecutive_failures = 0
         state = build_state(
             self.summary,
             latest,
@@ -409,113 +610,84 @@ class HubController:
             connected=bool(result.get("connected")),
             max_probes=MAX_PROBES,
         )
-        self.last_state = state
+        self.runtime.last_good_state = state
         write_json_atomic(self.status_file, state)
         await self._publish(state)
+        return True
 
     async def _publish(self, state: dict[str, Any]) -> None:
-        if not (self.mqtt and self.mqtt.get("host")):
+        if self.mqtt_config is None or self.summary is None:
             return
-        args = SimpleNamespace(
-            topic_prefix="weber_connect",
-            discovery_prefix="homeassistant",
-            discovery=True,
-            retain=True,
-            poll_seconds=self.settings["poll_seconds"],
-            max_probes=MAX_PROBES,
-            mqtt_host=self.mqtt.get("host"),
-            mqtt_port=int(self.mqtt.get("port") or 1883),
-            mqtt_username=self.mqtt.get("username") or None,
-            mqtt_password=self.mqtt.get("password") or None,
-        )
         try:
-            await asyncio.to_thread(mqtt_publish, args, state, self.summary)
-            self.mqtt_published_at = utc_now()
-            self.mqtt_error = None
+            if self._mqtt_session is None:
+                self._mqtt_session = self.dependencies.mqtt_factory(
+                    self.mqtt_config,
+                    self.summary,
+                    max_probes=MAX_PROBES,
+                )
+            await self._mqtt_session.publish(state, self.settings.poll_seconds)
+            self.runtime.mqtt_published_at = utc_now()
+            self.runtime.mqtt_error = None
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
-            self.mqtt_error = str(exc)
+            self.runtime.mqtt_error = str(exc)
             LOGGER.error("MQTT publish failed: %r", exc)
 
-    async def run(self) -> None:
-        while True:
-            self._wake.clear()
-            if self._can_bridge():
-                await self._read_cycle()
-                try:
-                    await asyncio.wait_for(self._wake.wait(), timeout=self.settings["poll_seconds"])
-                except asyncio.TimeoutError:
-                    pass
-            else:
-                await self._wake.wait()
-
-
-class PanelRequestHandler(BaseHTTPRequestHandler):
-    controller: HubController | None = None
-    loop: asyncio.AbstractEventLoop | None = None
-    index_file: Path | None = None
-
-    def log_message(self, format: str, *args: Any) -> None:
-        LOGGER.debug("http: " + format, *args)
-
-    def _call(self, coro: Any) -> Any:
-        return asyncio.run_coroutine_threadsafe(coro, self.loop).result(timeout=60)
-
-    def _send_json(self, payload: dict[str, Any], status: int = 200) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _route(self) -> str:
-        return self.path.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
-
-    def do_GET(self) -> None:  # noqa: N802 (http.server API)
-        if self._route() == "status":
-            self._send_json(self._call(self.controller.snapshot()))
-            return
-        if self.index_file and self.index_file.exists():
-            body = self.index_file.read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        self._send_json({"error": "panel UI is missing"}, status=404)
-
-    def do_POST(self) -> None:  # noqa: N802 (http.server API)
-        length = int(self.headers.get("Content-Length") or 0)
-        payload: dict[str, Any] = {}
-        if length:
-            try:
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            except ValueError:
-                self._send_json({"ok": False, "error": "invalid JSON body"}, status=400)
-                return
-        controller = self.controller
-        actions = {
-            "scan": lambda: controller.start_scan(),
-            "pair": lambda: controller.pair(payload.get("address")),
-            "handoff": lambda: controller.handoff(payload.get("minutes")),
-            "resume": lambda: controller.resume(),
-            "forget": lambda: controller.forget(),
-            "settings": lambda: controller.update_settings(payload),
-        }
-        action = actions.get(self._route())
-        if action is None:
-            self._send_json({"ok": False, "error": "unknown action"}, status=404)
+    async def _close_mqtt(self) -> None:
+        session, self._mqtt_session = self._mqtt_session, None
+        if session is None:
             return
         try:
-            result = self._call(action())
-        except Exception as exc:
-            LOGGER.error("Action %s failed: %r", self._route(), exc)
-            self._send_json({"ok": False, "error": str(exc)}, status=500)
-            return
-        self._send_json(result, status=200 if result.get("ok") else 400)
+            await asyncio.wait_for(session.close(), timeout=20.0)
+        except Exception:
+            LOGGER.warning("Could not close MQTT session cleanly", exc_info=True)
+
+    async def _wait_for_wake(self, timeout: float | None = None) -> bool:
+        self._wake.clear()
+        try:
+            if timeout is None:
+                await self._wake.wait()
+            else:
+                await asyncio.wait_for(self._wake.wait(), timeout=max(0.0, timeout))
+        except asyncio.TimeoutError:
+            return False
+        return True
+
+    async def _bridge_loop(self) -> None:
+        next_due = self.dependencies.monotonic()
+        while not self._closing:
+            if not self._can_bridge():
+                self.runtime.next_retry_seconds = None
+                await self._wait_for_wake()
+                next_due = self.dependencies.monotonic()
+                continue
+
+            now = self.dependencies.monotonic()
+            if next_due > now:
+                self.runtime.next_retry_seconds = max(0, int(next_due - now))
+                if await self._wait_for_wake(next_due - now):
+                    next_due = self.dependencies.monotonic()
+                    continue
+            if not self._can_bridge():
+                continue
+
+            started = self.dependencies.monotonic()
+            success = await self._read_cycle()
+            interval: float
+            if success:
+                interval = self.settings.poll_seconds
+            else:
+                base = retry_delay(
+                    self.settings.poll_seconds,
+                    self.runtime.consecutive_failures,
+                )
+                interval = base + self.dependencies.jitter(0.0, min(5.0, base * 0.1))
+            next_due = started + interval
+            self.runtime.next_retry_seconds = max(
+                0,
+                int(next_due - self.dependencies.monotonic()),
+            )
 
 
 def load_mqtt(args: argparse.Namespace) -> dict[str, Any] | None:
@@ -524,7 +696,7 @@ def load_mqtt(args: argparse.Namespace) -> dict[str, Any] | None:
     mqtt: dict[str, Any] = {"host": args.mqtt_host, "port": args.mqtt_port}
     if args.mqtt_credentials_file and args.mqtt_credentials_file.exists():
         try:
-            credentials = json.loads(args.mqtt_credentials_file.read_text(encoding="utf-8"))
+            credentials = read_json(args.mqtt_credentials_file)
             mqtt["username"] = credentials.get("username")
             mqtt["password"] = credentials.get("password")
         except (OSError, ValueError) as exc:
@@ -533,48 +705,64 @@ def load_mqtt(args: argparse.Namespace) -> dict[str, Any] | None:
 
 
 async def serve(args: argparse.Namespace) -> int:
-    args.data_dir.mkdir(parents=True, exist_ok=True)
-    controller = HubController(
-        data_dir=args.data_dir,
-        mqtt=load_mqtt(args),
-    )
-
+    args.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    controller = HubController(data_dir=args.data_dir, mqtt=load_mqtt(args))
     loop = asyncio.get_running_loop()
-    task = asyncio.current_task()
-    stop_requested = False
+    stop_event = asyncio.Event()
 
     def request_stop(signum: int) -> None:
-        nonlocal stop_requested
-        stop_requested = True
-        LOGGER.info(
-            "Received %s; disconnecting from hub and shutting down",
-            signal.Signals(signum).name,
-        )
-        task.cancel()
+        LOGGER.info("Received %s; beginning graceful shutdown", signal.Signals(signum).name)
+        stop_event.set()
 
+    registered: list[signal.Signals] = []
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
             loop.add_signal_handler(sig, request_stop, sig)
         except (NotImplementedError, RuntimeError):
-            pass
+            continue
+        registered.append(sig)
 
-    handler = type(
-        "BoundPanelHandler",
-        (PanelRequestHandler,),
-        {"controller": controller, "loop": loop, "index_file": args.static_dir / "index.html"},
+    httpd = create_panel_server(
+        controller=controller,
+        loop=loop,
+        port=args.port,
+        index_file=args.static_dir / "index.html",
+        icon_file=DEFAULT_ICON_FILE,
     )
-    httpd = ThreadingHTTPServer(("0.0.0.0", args.port), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    server_thread = threading.Thread(
+        target=httpd.serve_forever,
+        name="weber-panel-http",
+        daemon=True,
+    )
+    server_thread.start()
     LOGGER.info("Weber Connect panel listening on port %s", args.port)
 
+    await controller.start()
+    stop_waiter = asyncio.create_task(stop_event.wait(), name="weber-stop-signal")
+    fatal_waiter = asyncio.create_task(
+        controller.wait_for_fatal_error(),
+        name="weber-fatal-runtime",
+    )
     try:
-        await controller.run()
-    except asyncio.CancelledError:
-        if not stop_requested:
-            raise
+        done, _ = await asyncio.wait(
+            {stop_waiter, fatal_waiter},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if fatal_waiter in done:
+            error = fatal_waiter.result()
+            LOGGER.critical("Stopping after fatal runtime error: %r", error)
+            return 1
+        return 0
     finally:
-        httpd.shutdown()
-    return 0
+        for waiter in (stop_waiter, fatal_waiter):
+            waiter.cancel()
+        await asyncio.gather(stop_waiter, fatal_waiter, return_exceptions=True)
+        await controller.stop()
+        await asyncio.to_thread(httpd.shutdown)
+        httpd.server_close()
+        server_thread.join(timeout=5)
+        for sig in registered:
+            loop.remove_signal_handler(sig)
 
 
 def main() -> int:
@@ -585,7 +773,11 @@ def main() -> int:
     parser.add_argument("--mqtt-host", default=None)
     parser.add_argument("--mqtt-port", type=int, default=1883)
     parser.add_argument("--mqtt-credentials-file", type=Path, default=None)
-    parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
+    parser.add_argument(
+        "--log-level",
+        default="info",
+        choices=["debug", "info", "warning", "error"],
+    )
     args = parser.parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper()),

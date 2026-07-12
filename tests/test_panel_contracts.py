@@ -13,7 +13,6 @@ sys.path.insert(0, str(APP))
 
 import weber_panel as panel  # noqa: E402
 
-
 COMPANION_ID = "00112233445566778899aabbccddeeff"
 ADDRESS = "AA:BB:CC:DD:EE:FF"
 
@@ -57,19 +56,33 @@ class PanelContractTests(unittest.TestCase):
         asyncio.run(controller.update_settings({"poll_seconds": 60, "handoff_minutes": 5}))
 
         reloaded = make_controller(self.data_dir)
-        self.assertEqual(reloaded.settings["poll_seconds"], 60)
-        self.assertEqual(reloaded.settings["handoff_minutes"], 5)
+        self.assertEqual(reloaded.settings.poll_seconds, 60)
+        self.assertEqual(reloaded.settings.handoff_minutes, 5)
 
     def test_settings_are_clamped(self) -> None:
         controller = make_controller(self.data_dir)
         asyncio.run(controller.update_settings({"poll_seconds": 1, "handoff_minutes": 9999}))
-        self.assertEqual(controller.settings["poll_seconds"], 10)
-        self.assertEqual(controller.settings["handoff_minutes"], 240)
+        self.assertEqual(controller.settings.poll_seconds, 10)
+        self.assertEqual(controller.settings.handoff_minutes, 240)
+
+    def test_invalid_settings_are_rejected_without_partial_update(self) -> None:
+        controller = make_controller(self.data_dir)
+        result = asyncio.run(
+            controller.update_settings({"poll_seconds": 60, "handoff_minutes": "later"})
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(controller.settings.poll_seconds, 30)
+        self.assertEqual(controller.settings.handoff_minutes, 15)
+
+    def test_snapshot_exposes_stable_probe_capacity(self) -> None:
+        controller = make_controller(self.data_dir)
+        self.assertEqual(snapshot(controller)["max_probes"], panel.MAX_PROBES)
 
     def test_handoff_releases_and_resume_reconnects(self) -> None:
         controller = make_controller(self.data_dir)
         controller.summary = make_summary(COMPANION_ID, ADDRESS)
-        controller.settings["address"] = ADDRESS
+        controller.settings = controller.settings.with_address(ADDRESS)
 
         async def run() -> None:
             result = await controller.handoff(0)
@@ -88,7 +101,7 @@ class PanelContractTests(unittest.TestCase):
         keys_file.write_text(json.dumps({"companion_id": COMPANION_ID}), encoding="utf-8")
         controller = make_controller(self.data_dir)
         controller.summary = make_summary(COMPANION_ID, ADDRESS)
-        controller.settings["address"] = ADDRESS
+        controller.settings = controller.settings.with_address(ADDRESS)
 
         asyncio.run(controller.forget())
         self.assertEqual(snapshot(controller)["state"], "setup")
@@ -99,6 +112,16 @@ class PanelContractTests(unittest.TestCase):
         controller = make_controller(self.data_dir)
         result = asyncio.run(controller.handoff(5))
         self.assertFalse(result["ok"])
+
+    def test_handoff_rejects_invalid_duration(self) -> None:
+        controller = make_controller(self.data_dir)
+        controller.summary = make_summary(COMPANION_ID, ADDRESS)
+        controller.settings = controller.settings.with_address(ADDRESS)
+
+        result = asyncio.run(controller.handoff("later"))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(snapshot(controller)["state"], "connecting")
 
 
 if __name__ == "__main__":

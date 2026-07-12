@@ -39,6 +39,10 @@ The web panel always shows the current connection state and what to do next:
 | Free for the Weber app | The hub is released for your phone; a countdown shows when the bridge reconnects. |
 | Hub unreachable | The hub is off, asleep, or out of range. The bridge retries automatically. |
 
+When a live read fails, the panel labels retained values as **Last known
+reading**. MQTT receives an explicit disconnected state with empty probe
+values, so stale telemetry is never presented as current automation data.
+
 From the panel you can also:
 
 - **Use with Phone** — releases the hub so the Weber app can find and use it.
@@ -58,6 +62,10 @@ Bluetooth connection, and waits. Open the Weber app on your phone; it will
 find the hub normally. When the handoff window ends (15 minutes by default,
 adjustable in Settings), the bridge reconnects on its own — nothing to
 remember, nothing to reset.
+
+The handoff deadline is stored durably. Restarting the add-on does not take
+the hub back from the phone early; an indefinite handoff remains paused until
+you select **Reconnect Now**.
 
 Stopping the add-on also releases the hub cleanly.
 

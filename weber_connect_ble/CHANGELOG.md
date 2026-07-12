@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0 — 2026-07-12
+
+- Rebuilt the panel runtime around explicit typed state, injected BLE/MQTT
+  boundaries, supervised background tasks, and deterministic graceful shutdown.
+- Added persistent MQTT connections with availability/LWT state and bounded
+  connect/publish waits.
+- Added durable phone handoff across restarts, atomic private persistence,
+  completion-driven BLE reads, disconnected-state publishing, and bounded
+  exponential retry backoff.
+- Added hardened ingress HTTP limits and headers plus integration, lifecycle,
+  persistence, MQTT, malformed-frame, lint, typing, coverage, and dependency
+  audit gates.
+
 ## 0.1.0
 
 First public release.

@@ -22,7 +22,7 @@ RUN apk add --no-cache \
     && apk add --no-cache --virtual .build-deps \
         build-base \
         python3-dev \
-    && pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt \
+    && pip3 install --no-cache-dir --break-system-packages --require-hashes -r /tmp/requirements.txt \
     && apk del .build-deps
 
 COPY app /app

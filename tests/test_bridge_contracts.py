@@ -1,19 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import random
 import sys
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "weber_connect_ble" / "app"
 sys.path.insert(0, str(APP))
 
-import weber_status_bridge as bridge  # noqa: E402
 import weber_ble_pair as pair  # noqa: E402
+import weber_status_bridge as bridge  # noqa: E402
 from saber_frames import build_command_frame, bytes_to_hex, decode_hex_frame  # noqa: E402
 
 
@@ -151,6 +153,27 @@ class BridgeContractTests(unittest.TestCase):
         self.assertEqual(temp_payload["device"]["identifiers"], ["TESTSERIAL"])
         self.assertEqual(temp_payload["device"]["manufacturer"], "Weber")
         self.assertEqual(temp_payload["origin"]["sw"], bridge.VERSION)
+        self.assertNotIn("availability_topic", temp_payload)
+
+    def test_persistent_runtime_discovery_includes_availability(self):
+        state = bridge.build_state(
+            self.summary(),
+            self.status(),
+            address="AA:BB:CC:DD:EE:FF",
+            connected=True,
+            max_probes=2,
+        )
+        plan = bridge.build_mqtt_publish_plan(
+            self.args(availability=True),
+            state,
+            self.summary(),
+        )
+
+        temperature = json.loads(plan[0]["payload"])
+        self.assertEqual(
+            temperature["availability_topic"],
+            "weber_connect/weber_connect_testserial/availability",
+        )
 
     def test_mqtt_plan_without_discovery_publishes_only_state(self):
         state = bridge.build_state(
@@ -241,6 +264,59 @@ class BridgeContractTests(unittest.TestCase):
             mock.patch.object(bridge.subprocess, "run", return_value=completed),
         ):
             self.assertFalse(bridge.release_ble_connection("AA:BB:CC:DD:EE:FF"))
+
+    def test_status_read_returns_as_soon_as_valid_status_arrives(self):
+        status = self.status()
+
+        class FakeBleakClient:
+            def __init__(self, _address, timeout):
+                self.timeout = timeout
+                self.is_connected = True
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                self.is_connected = False
+
+            async def start_notify(self, uuid, callback):
+                if uuid == bridge.STATUS_UUID:
+                    callback(uuid, b"\x00")
+
+            async def stop_notify(self, _uuid):
+                return None
+
+            async def write_gatt_char(self, *_args, **_kwargs):
+                return None
+
+            async def read_gatt_char(self, _uuid):
+                return b""
+
+        started = time.monotonic()
+        with (
+            mock.patch.dict(sys.modules, {"bleak": SimpleNamespace(BleakClient=FakeBleakClient)}),
+            mock.patch.object(bridge, "parse_status_event", return_value=status),
+        ):
+            result = asyncio.run(
+                bridge.read_status_once(
+                    address="AA:BB:CC:DD:EE:FF",
+                    companion_id="00112233445566778899aabbccddeeff",
+                    version=10,
+                    listen_seconds=5,
+                    timeout=20,
+                    write_without_response=False,
+                )
+            )
+
+        self.assertLess(time.monotonic() - started, 1)
+        self.assertEqual(result["latest_status"], status)
+
+    def test_frame_decoder_tolerates_arbitrary_bytes(self):
+        generator = random.Random(20260711)
+        for length in range(257):
+            payload = bytes(generator.randrange(256) for _ in range(length))
+            decoded = decode_hex_frame(bytes_to_hex(payload))
+            self.assertIsInstance(decoded, dict)
 
     def test_pairing_frame_contract(self):
         companion_id = "00112233445566778899aabbccddeeff"

@@ -27,7 +27,7 @@ from saber_frames import (
     bytes_to_hex,
     decode_hex_frame,
 )
-
+from weber_persistence import write_json_atomic as write_private_json_atomic
 
 DEFAULT_KEY_FILE = Path("weber_pairing_keys.json")
 DEFAULT_RESULT_OUT = Path("weber_pair_latest.json")
@@ -111,12 +111,7 @@ def load_or_create_pairing_keys(
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any], mode: int | None = None) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    if mode is not None:
-        tmp_path.chmod(mode)
-    tmp_path.replace(path)
+    write_private_json_atomic(path, payload, mode=mode or 0o600)
 
 
 def make_event(sender: Any, data: bytes | bytearray, source: str) -> dict[str, Any]:
@@ -219,11 +214,12 @@ async def pair_once(args: argparse.Namespace, keys: dict[str, Any]) -> dict[str,
         envelope = decoded.get("envelope") or {}
         candidate = envelope.get("body_plain_candidate") or {}
         LOGGER.info(
-            "Hub reply source=%s type=%s hex=%s",
+            "Hub reply source=%s type=%s length=%s",
             event.get("source"),
             candidate.get("type_name") or "UNDECODED",
-            event.get("hex"),
+            event.get("length"),
         )
+        LOGGER.debug("Hub reply frame: %s", event.get("hex"))
         parsed = candidate.get("parsed_payload") or {}
         if parsed.get("kind") == "error" and parsed.get("error_type") == "UNSUPPORTED_MESSAGE_VERSION":
             hub_version = candidate.get("message_version")

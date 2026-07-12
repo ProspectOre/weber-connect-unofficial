@@ -53,11 +53,20 @@ jobs:
           python3 -m venv .venv
           . .venv/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install pyyaml
+          python -m pip install --require-hashes -r weber_connect_ble/app/requirements.txt
+          python -m pip install -r requirements-dev.txt
+      - name: Lint and type-check
+        run: |
+          .venv/bin/ruff check .
+          .venv/bin/mypy
       - name: Validate release files
         run: .venv/bin/python scripts/validate_release.py
-      - name: Run unit tests
-        run: .venv/bin/python -m unittest discover -s tests
+      - name: Run tests with coverage
+        run: |
+          .venv/bin/coverage run -m unittest discover -s tests
+          .venv/bin/coverage report
+      - name: Audit runtime dependencies
+        run: .venv/bin/pip-audit --requirement weber_connect_ble/app/requirements.txt --disable-pip
 
   docker-build:
     needs: changes

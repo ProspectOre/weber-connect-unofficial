@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import platform
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from weber_persistence import write_json_atomic as write_private_json_atomic
 
 WEBER_COMPANY_IDS = {
     0x0DF2: "Weber",
@@ -138,10 +138,7 @@ async def scan(timeout: float, include_all: bool, stop_on_weber: bool) -> dict[s
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    tmp_path.replace(path)
+    write_private_json_atomic(path, payload)
 
 
 async def async_main(args: argparse.Namespace) -> int:
