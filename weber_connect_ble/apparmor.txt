@@ -1,0 +1,60 @@
+#include <tunables/global>
+
+# AppArmor profile for the Weber Connect BLE Bridge add-on.
+# The profile name must match the add-on slug so Supervisor loads it.
+profile weber_connect_ble flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/python>
+  #include <abstractions/dbus-strict>
+
+  # Receive the graceful-shutdown signals Supervisor sends on stop.
+  signal (receive) set=(kill,term,int,hup,cont),
+
+  # S6-Overlay init system from the Home Assistant base image.
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /usr/local/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # bashio + the add-on options provided by Supervisor.
+  /usr/lib/bashio/** r,
+  /data/options.json r,
+
+  # Python runtime and the add-on application code (read/execute only).
+  /usr/bin/python3* ix,
+  /usr/lib/python3*/** r,
+  /usr/local/lib/python3*/** r,
+  /app/ r,
+  /app/** r,
+
+  # Persistent add-on state (pairing summary, settings, status snapshots).
+  /data/ rw,
+  /data/** rwk,
+  /tmp/ rw,
+  /tmp/** rwk,
+
+  # System D-Bus for the BlueZ BLE backend (Bleak + bluetoothctl).
+  dbus send bus=system path=/org/bluez/**
+       interface=org.bluez.*,
+  dbus send bus=system path=/org/bluez/**
+       interface=org.freedesktop.DBus.*,
+  dbus receive bus=system path=/org/bluez/**,
+  dbus (send,receive) bus=system path=/
+       interface=org.freedesktop.DBus.ObjectManager,
+  dbus send bus=system path=/org/freedesktop/DBus
+       interface=org.freedesktop.DBus,
+  /usr/bin/bluetoothctl ix,
+
+  # The ingress HTTP panel listens on the internal port (8099); no extra
+  # network mediation beyond the base abstraction is required.
+  network inet stream,
+  network inet6 stream,
+}

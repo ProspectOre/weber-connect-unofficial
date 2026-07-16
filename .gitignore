@@ -1,0 +1,20 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Runtime output and private pairing material must never be published.
+weber_probe/
+secure/
+captures/
+*.raw.json
+latest_status.json
+mqtt_credentials.json
+*pairing_summary*.json
+*pairing_keys*.json
+pair_latest.json
+scan_latest.json

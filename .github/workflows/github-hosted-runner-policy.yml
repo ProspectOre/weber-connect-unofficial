@@ -1,0 +1,160 @@
+name: GitHub Hosted Runner Policy
+
+on:
+  workflow_dispatch:
+    inputs:
+      threshold_percent:
+        description: "Disable GitHub-hosted runners at or above this included-minute usage percent"
+        required: false
+        default: "85"
+        type: string
+      allow_hosted_macos:
+        description: "Allow hosted macOS while usage is below threshold"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  update-runner-policy:
+    name: Update hosted runner policy
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 10
+    steps:
+      - name: Update repository runner variables
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.RUNNER_POLICY_TOKEN || secrets.BILLING_USAGE_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          THRESHOLD_PERCENT: ${{ inputs.threshold_percent || vars.ACTIONS_HOSTED_USAGE_THRESHOLD || '85' }}
+          ALLOW_HOSTED_MACOS: ${{ inputs.allow_hosted_macos || vars.ALLOW_HOSTED_MACOS || 'false' }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          api_base = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+          token = os.environ["TOKEN"]
+          repo = os.environ["REPO"]
+          owner = os.environ["OWNER"]
+          threshold = float(os.environ.get("THRESHOLD_PERCENT") or "85")
+          allow_hosted_macos = (os.environ.get("ALLOW_HOSTED_MACOS") or "false").lower() == "true"
+
+          def request(method, path, payload=None, allow_error=False):
+              data = None
+              headers = {
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              }
+              if payload is not None:
+                  data = json.dumps(payload).encode("utf-8")
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(api_base + path, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      body = response.read().decode("utf-8")
+                      return response.status, json.loads(body) if body else {}
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", "replace")
+                  if allow_error:
+                      return exc.code, {"message": body}
+                  raise RuntimeError(f"{method} {path} failed with {exc.code}: {body}") from exc
+
+          def get_actions_billing():
+              for path in (f"/orgs/{owner}/settings/billing/actions", f"/users/{owner}/settings/billing/actions"):
+                  status, payload = request("GET", path, allow_error=True)
+                  if status == 200:
+                      return payload, path
+              return None, None
+
+          def set_var(name, value):
+              value = str(value)
+              patch_status, _ = request(
+                  "PATCH",
+                  f"/repos/{repo}/actions/variables/{urllib.parse.quote(name)}",
+                  {"name": name, "value": value},
+                  allow_error=True,
+              )
+              if patch_status == 204:
+                  return True
+              if patch_status == 403:
+                  print(
+                      f"::warning::Could not update repository variable {name}; "
+                      "configure RUNNER_POLICY_TOKEN or BILLING_USAGE_TOKEN with Actions variables write access."
+                  )
+                  return False
+              if patch_status == 404:
+                  create_status, payload = request(
+                      "POST",
+                      f"/repos/{repo}/actions/variables",
+                      {"name": name, "value": value},
+                      allow_error=True,
+                  )
+                  if create_status in (201, 204):
+                      return True
+                  if create_status == 403:
+                      print(
+                          f"::warning::Could not create repository variable {name}; "
+                          "configure RUNNER_POLICY_TOKEN or BILLING_USAGE_TOKEN with Actions variables write access."
+                      )
+                      return False
+                  raise RuntimeError(f"Could not create variable {name}: {create_status} {payload}")
+              raise RuntimeError(f"Could not update variable {name}: HTTP {patch_status}")
+
+          billing, source = get_actions_billing()
+          status = "ok"
+          included = 0.0
+          used = 0.0
+          paid = 0.0
+          percent = 100.0
+
+          if billing:
+              included = float(billing.get("included_minutes") or 0)
+              used = float(billing.get("total_minutes_used") or 0)
+              paid = float(billing.get("total_paid_minutes_used") or 0)
+              percent = (used / included * 100.0) if included > 0 else 100.0
+              hosted_ok = included > 0 and percent < threshold and paid <= 0
+          else:
+              status = "billing_unavailable"
+              hosted_ok = False
+
+          hosted = "true" if hosted_ok else "false"
+          hosted_linux = hosted
+          hosted_macos = "true" if (hosted_ok and allow_hosted_macos) else "false"
+          updated_at = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+          summary = f"status={status}; used={used:.0f}; included={included:.0f}; percent={percent:.1f}; threshold={threshold:.1f}; paid={paid:.0f}; source={source or 'none'}"
+
+          for key, value in {
+              "USE_HOSTED_RUNNERS": hosted,
+              "USE_HOSTED_LINUX": hosted_linux,
+              "USE_HOSTED_MACOS": hosted_macos,
+              "ACTIONS_HOSTED_USAGE_THRESHOLD": f"{threshold:.0f}",
+              "ACTIONS_HOSTED_USAGE_PERCENT": f"{percent:.1f}",
+              "ACTIONS_HOSTED_POLICY_STATUS": status,
+              "ACTIONS_HOSTED_POLICY_UPDATED_AT": updated_at,
+              "ACTIONS_HOSTED_USAGE_SUMMARY": summary[:255],
+          }.items():
+              if not set_var(key, value):
+                  print("Repository runner policy variables were not updated.")
+                  break
+              print(f"{key}={value}")
+
+          print(summary)
+          if status != "ok":
+              print("Billing usage could not be read; hosted runners were disabled conservatively.", file=sys.stderr)
+          PY

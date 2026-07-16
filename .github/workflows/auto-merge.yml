@@ -1,0 +1,73 @@
+name: Enable PR Auto-Merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: "Pull request number or URL"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: enable-auto-merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    steps:
+      - name: Enable squash auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_URL: ${{ github.event.pull_request.html_url }}
+          INPUT_PR: ${{ inputs.pull_request }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "${INPUT_PR:-}" ]]; then
+            case "$INPUT_PR" in
+              http*) pr_ref="$INPUT_PR" ;;
+              *) pr_ref="https://github.com/$REPO/pull/$INPUT_PR" ;;
+            esac
+          else
+            pr_ref="$EVENT_PR_URL"
+          fi
+
+          if [[ -z "${pr_ref:-}" ]]; then
+            echo "No pull request was provided."
+            exit 1
+          fi
+
+          is_draft="$(gh pr view "$pr_ref" --json isDraft --jq '.isDraft')"
+          if [[ "$is_draft" == "true" ]]; then
+            echo "Draft pull request; leaving auto-merge disabled."
+            exit 0
+          fi
+
+          base_ref="$(gh pr view "$pr_ref" --json baseRefName --jq '.baseRefName')"
+          protected="$(gh api "repos/$REPO/branches/$base_ref" --jq '.protected')"
+          if [[ "$protected" != "true" ]]; then
+            echo "Base branch $base_ref is not protected; refusing to enable auto-merge before CI gates."
+            exit 0
+          fi
+
+          required_count="$(gh api "repos/$REPO/branches/$base_ref/protection" --jq '(.required_status_checks.contexts // []) | length' 2>/dev/null || echo 0)"
+          if [[ "$required_count" == "0" ]]; then
+            echo "Base branch $base_ref has no required status checks; refusing to enable auto-merge before CI gates."
+            exit 0
+          fi
+
+          auto_merge_enabled="$(gh pr view "$pr_ref" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [[ "$auto_merge_enabled" == "true" ]]; then
+            echo "Auto-merge is already enabled."
+            exit 0
+          fi
+
+          gh pr merge "$pr_ref" --auto --squash --delete-branch

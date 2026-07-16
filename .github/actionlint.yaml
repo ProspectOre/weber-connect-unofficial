@@ -1,0 +1,13 @@
+self-hosted-runner:
+  labels:
+    - macOS
+    - ARM64
+    - remote-ci
+    - backend
+    - ios
+    - android
+    - xcode
+    - mbp
+    - mini-fallback
+
+config-variables: null

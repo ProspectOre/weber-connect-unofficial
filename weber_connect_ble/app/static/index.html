@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7f8">
+<title>Weber Connect</title>
+<style>
+  :root {
+    --page: #f6f7f8;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --text: #17191c;
+    --muted: #646a73;
+    --quiet: #9298a1;
+    --line: #e3e6e9;
+    --line-strong: #d6dade;
+    --accent: #f4512c;
+    --accent-pressed: #dc3e1c;
+    --accent-soft: #fff0ec;
+    --green: #16883c;
+    --green-soft: #eaf7ee;
+    --amber: #b86100;
+    --amber-soft: #fff5df;
+    --red: #c62f2f;
+    --red-soft: #fff0f0;
+    --shadow: 0 18px 60px rgba(20, 24, 28, 0.08), 0 2px 8px rgba(20, 24, 28, 0.04);
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 12px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #111315;
+      --surface: #1a1d20;
+      --surface-raised: #202428;
+      --text: #f4f5f6;
+      --muted: #aeb4bc;
+      --quiet: #7d858f;
+      --line: #30353a;
+      --line-strong: #40464d;
+      --accent: #ff6845;
+      --accent-pressed: #ff795d;
+      --accent-soft: #391f1a;
+      --green: #4bc66d;
+      --green-soft: #183323;
+      --amber: #f5aa45;
+      --amber-soft: #352816;
+      --red: #ff6b6b;
+      --red-soft: #3b2022;
+      --shadow: 0 22px 70px rgba(0, 0, 0, 0.34), 0 2px 10px rgba(0, 0, 0, 0.22);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { min-height: 100%; background: var(--page); }
+  body {
+    min-height: 100%;
+    margin: 0;
+    background: var(--page);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button { font: inherit; }
+  button, [role="button"] { -webkit-tap-highlight-color: transparent; }
+  button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 34%, transparent); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+
+  .app {
+    width: min(100%, 1040px);
+    margin: 0 auto;
+    padding: max(22px, env(safe-area-inset-top)) clamp(18px, 4vw, 46px) max(28px, env(safe-area-inset-bottom));
+  }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 56px;
+    margin-bottom: clamp(22px, 4vw, 38px);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .brand-mark {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 auto;
+    border-radius: 13px;
+    overflow: hidden;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .brand-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  h1 { margin: 0; font-size: clamp(24px, 4vw, 32px); line-height: 1.05; letter-spacing: -0.035em; font-weight: 760; }
+
+  .icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 650;
+    transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+  }
+  .icon-button:hover { color: var(--text); background: var(--surface); border-color: var(--line); }
+  .icon-button svg { width: 21px; height: 21px; }
+
+  .shell {
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  .connection {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: clamp(18px, 3vw, 28px);
+    min-height: 190px;
+    padding: clamp(28px, 5vw, 48px);
+    border-bottom: 1px solid var(--line);
+  }
+  .connection.centered { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .state-orbit {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 82px;
+    height: 82px;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    color: var(--quiet);
+    background: var(--surface-raised);
+  }
+  .state-orbit::after { content: ""; width: 22px; height: 22px; border-radius: 50%; background: currentColor; }
+  .state-orbit.online { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--line)); box-shadow: 0 0 0 8px var(--green-soft); }
+  .state-orbit.handoff { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 55%, var(--line)); box-shadow: 0 0 0 8px var(--amber-soft); }
+  .state-orbit.offline { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--line)); box-shadow: 0 0 0 8px var(--red-soft); }
+  .state-orbit.busy { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 0 0 8px var(--accent-soft); }
+  .state-orbit.busy::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 2px solid transparent;
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 900ms linear infinite;
+  }
+  .state-orbit.busy::after { width: 18px; height: 18px; animation: pulse 1.4s ease-in-out infinite; }
+  .connection-copy { min-width: 0; }
+  .connection-title { margin: 0; font-size: clamp(28px, 5vw, 44px); line-height: 1.05; letter-spacing: -0.04em; font-weight: 760; }
+  .connection-title.online { color: var(--green); }
+  .connection-title.handoff { color: var(--amber); }
+  .connection-title.offline { color: var(--red); }
+  .connection-name { margin: 9px 0 0; color: var(--text); font-size: clamp(17px, 2.5vw, 21px); font-weight: 650; letter-spacing: -0.015em; }
+  .connection-meta { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
+  .connection-detail { max-width: 560px; margin: 13px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 48px;
+    padding: 0 20px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    transition: transform 100ms ease, background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+  }
+  .button:hover { background: var(--accent-pressed); border-color: var(--accent-pressed); }
+  .button:active { transform: scale(0.985); }
+  .button:disabled { opacity: 0.5; cursor: wait; transform: none; }
+  .button.secondary { background: transparent; color: var(--accent); }
+  .button.secondary:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .button.neutral { background: var(--surface-raised); border-color: var(--line-strong); color: var(--text); }
+  .button.neutral:hover { background: var(--page); border-color: var(--quiet); }
+  .button.danger { background: transparent; border-color: transparent; color: var(--red); }
+  .button.danger:hover { background: var(--red-soft); border-color: transparent; }
+  .button svg { width: 20px; height: 20px; }
+
+  .notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    margin: 18px 18px 0;
+    padding: 13px 15px;
+    border: 1px solid color-mix(in srgb, var(--red) 25%, var(--line));
+    border-radius: var(--radius-sm);
+    background: var(--red-soft);
+    color: var(--red);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .notice svg { width: 19px; height: 19px; flex: 0 0 auto; margin-top: 1px; }
+
+  .probe-region { padding: 0 clamp(24px, 5vw, 46px); }
+  .probe-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .probe-row {
+    display: grid;
+    grid-template-columns: minmax(112px, 1fr) auto minmax(92px, 0.8fr);
+    align-items: center;
+    gap: clamp(12px, 2.5vw, 24px);
+    min-height: 142px;
+    padding: 25px clamp(0px, 2.8vw, 30px);
+    border-bottom: 1px solid var(--line);
+  }
+  .probe-row:nth-child(odd) { border-right: 1px solid var(--line); padding-left: 0; }
+  .probe-row:nth-child(even) { padding-right: 0; }
+  .probe-row:nth-last-child(-n + 2) { border-bottom: 0; }
+  .probe-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }
+  .probe-icon { width: 29px; height: 42px; flex: 0 0 auto; color: var(--text); }
+  .probe-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
+  .probe-state { margin-top: 3px; color: var(--muted); font-size: 14px; }
+  .probe-temp { min-width: 94px; text-align: right; font-variant-numeric: tabular-nums; }
+  .probe-f { font-size: clamp(31px, 4.2vw, 42px); line-height: 1; letter-spacing: -0.04em; font-weight: 730; white-space: nowrap; }
+  .probe-c { margin-top: 6px; color: var(--muted); font-size: 16px; white-space: nowrap; }
+  .probe-battery { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .probe-battery svg { width: 20px; height: 20px; }
+  .probe-row.empty .probe-icon, .probe-row.empty .probe-temp { color: var(--quiet); }
+  .probe-row.empty .probe-f { font-weight: 560; }
+  .probe-region.stale .probe-temp { color: var(--muted); }
+
+  .bridge-health {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 86px;
+    padding: 20px clamp(24px, 5vw, 46px);
+    border-top: 1px solid var(--line);
+  }
+  .health-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%; color: var(--muted); background: var(--page); }
+  .health-icon.good { color: #fff; background: var(--green); }
+  .health-icon.warn { color: var(--amber); background: var(--amber-soft); }
+  .health-icon.bad { color: var(--red); background: var(--red-soft); }
+  .health-icon svg { width: 19px; height: 19px; }
+  .health-title { font-size: 15px; font-weight: 700; }
+  .health-sub { margin-top: 1px; color: var(--muted); font-size: 13px; }
+
+  .setup-panel { max-width: 560px; width: 100%; }
+  .setup-icon { display: grid; place-items: center; width: 68px; height: 68px; margin: 0 auto 20px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); }
+  .setup-icon svg { width: 34px; height: 34px; }
+  .setup-title { margin: 0; font-size: clamp(25px, 4vw, 34px); line-height: 1.1; letter-spacing: -0.035em; }
+  .setup-copy { margin: 12px auto 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
+  .setup-panel .button { margin-top: 24px; }
+  .candidate-list { width: 100%; margin-top: 22px; border-top: 1px solid var(--line); text-align: left; }
+  .candidate {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 72px;
+    padding: 12px 4px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .candidate:hover { color: var(--accent); }
+  .candidate-name { font-size: 15px; font-weight: 700; }
+  .candidate-address { margin-top: 2px; color: var(--quiet); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; letter-spacing: 0.02em; }
+  .candidate-signal { color: var(--muted); font-size: 13px; }
+  .candidate svg { width: 19px; height: 19px; }
+
+  .page-footer { display: flex; justify-content: space-between; gap: 18px; padding: 18px 4px 0; color: var(--quiet); font-size: 12px; }
+
+  .backdrop {
+    position: fixed;
+    z-index: 20;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-top: 24px;
+    background: rgba(10, 12, 14, 0.46);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+  .backdrop.open { opacity: 1; }
+  .sheet {
+    width: min(100%, 600px);
+    max-height: min(88vh, 720px);
+    overflow: auto;
+    padding: 12px 24px max(26px, env(safe-area-inset-bottom));
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    background: var(--surface);
+    box-shadow: 0 -18px 70px rgba(0, 0, 0, 0.2);
+    transform: translateY(18px);
+    transition: transform 220ms cubic-bezier(.2, .8, .2, 1);
+  }
+  .backdrop.open .sheet { transform: translateY(0); }
+  .sheet-handle { width: 38px; height: 5px; margin: 0 auto 17px; border-radius: 999px; background: var(--line-strong); }
+  .sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 25px; }
+  .sheet-title { margin: 0; font-size: 23px; line-height: 1.15; letter-spacing: -0.025em; }
+  .sheet-close { padding: 0; border: 0; background: transparent; color: var(--muted); }
+  .sheet-close svg { width: 22px; height: 22px; }
+  .field { margin-bottom: 25px; }
+  .field-label { margin-bottom: 10px; font-size: 14px; font-weight: 700; }
+  .segmented { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px; border-radius: 13px; background: var(--page); }
+  .segmented button {
+    min-height: 40px;
+    padding: 5px 7px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .segmented button[aria-pressed="true"] { border-color: var(--line); background: var(--surface-raised); color: var(--text); box-shadow: 0 2px 6px rgba(20, 24, 28, 0.08); }
+  .sheet-divider { height: 1px; margin: 26px 0 10px; background: var(--line); }
+  .danger-zone { padding-top: 8px; }
+  .danger-confirm { margin-top: 10px; padding: 16px; border-radius: var(--radius-sm); background: var(--red-soft); }
+  .danger-confirm p { margin: 0 0 13px; color: var(--red); font-size: 13px; line-height: 1.5; }
+  .danger-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .danger-actions .button { min-height: 42px; padding: 0 14px; font-size: 13px; }
+  .handoff-copy { margin: -5px 0 24px; color: var(--muted); line-height: 1.6; }
+  .handoff-summary { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 25px; padding: 16px; border-radius: var(--radius-sm); background: var(--amber-soft); color: var(--amber); }
+  .handoff-summary svg { width: 22px; height: 22px; flex: 0 0 auto; margin-top: 1px; }
+  .handoff-summary strong { display: block; color: var(--text); font-size: 14px; }
+  .handoff-summary span { display: block; margin-top: 3px; font-size: 13px; }
+  .sheet-actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; }
+
+  .skeleton { overflow: hidden; position: relative; background: var(--surface); }
+  .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--line) 45%, transparent), transparent); animation: shimmer 1.4s infinite; }
+  .skeleton-line { height: 16px; border-radius: 8px; background: var(--line); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 50% { opacity: 0.35; transform: scale(0.82); } }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+
+  @media (max-width: 720px) {
+    .app { padding-left: 14px; padding-right: 14px; }
+    .app-header { margin-bottom: 16px; }
+    .brand { gap: 11px; }
+    .brand-mark { width: 40px; height: 40px; border-radius: 11px; }
+    .icon-button .settings-label { display: none; }
+    .shell { border-radius: 20px; }
+    .connection { grid-template-columns: auto 1fr; min-height: 0; padding: 28px 22px; }
+    .connection-action { grid-column: 1 / -1; width: 100%; margin-top: 4px; }
+    .state-orbit { width: 64px; height: 64px; }
+    .state-orbit::after { width: 18px; height: 18px; }
+    .connection.centered { display: block; padding: 35px 22px; }
+    .probe-region { padding: 0 22px; }
+    .probe-list { grid-template-columns: 1fr; }
+    .probe-row { grid-template-columns: minmax(105px, 1fr) auto minmax(74px, 0.65fr); min-height: 112px; padding: 20px 0; border-right: 0 !important; border-bottom: 1px solid var(--line) !important; }
+    .probe-row:last-child { border-bottom: 0 !important; }
+    .probe-battery { font-size: 12px; }
+    .bridge-health { padding-left: 22px; padding-right: 22px; }
+    .page-footer { display: block; padding-left: 4px; }
+    .page-footer span:last-child { display: block; margin-top: 3px; }
+  }
+
+  @media (max-width: 420px) {
+    .probe-row { grid-template-columns: minmax(100px, 1fr) auto; }
+    .probe-battery { grid-column: 2; justify-content: flex-end; margin-top: -14px; }
+    .probe-row.empty .probe-battery { display: none; }
+    .segmented { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sheet { padding-left: 18px; padding-right: 18px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><img src="icon.png" alt=""></div>
+      <h1>Weber Connect</h1>
+    </div>
+    <button class="icon-button" id="settings-button" type="button" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-dialog" hidden>
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.6 3.4 10 2h4l.4 1.4a2 2 0 0 0 2.6 1.2l1.3-.6 2 3.5-1.1.8a2 2 0 0 0 0 3.3l1.1.8-2 3.5-1.3-.5a2 2 0 0 0-2.6 1.2L14 18h-4l-.4-1.4A2 2 0 0 0 7 15.4l-1.3.5-2-3.5 1.1-.8a2 2 0 0 0 0-3.3l-1.1-.8 2-3.5 1.3.6a2 2 0 0 0 2.6-1.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="1.7"/></svg>
+      <span class="settings-label">Settings</span>
+    </button>
+  </header>
+
+  <main id="main" aria-live="polite" aria-busy="true">
+    <section class="shell skeleton" aria-label="Loading Weber Connect status">
+      <div class="connection"><div class="state-orbit"></div><div><div class="skeleton-line" style="width:180px;height:28px"></div><div class="skeleton-line" style="width:230px;margin-top:13px"></div></div></div>
+      <div class="probe-region"><div class="probe-list"><div class="probe-row"></div><div class="probe-row"></div><div class="probe-row"></div><div class="probe-row"></div></div></div>
+    </section>
+  </main>
+  <footer class="page-footer" id="page-footer"></footer>
+</div>
+
+<div class="backdrop" id="settings-backdrop" hidden>
+  <section class="sheet" id="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-header">
+      <h2 class="sheet-title" id="settings-title">Settings</h2>
+      <button class="icon-button sheet-close" type="button" data-close="settings" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="field">
+      <div class="field-label" id="poll-label">Update every</div>
+      <div class="segmented" id="poll-options" role="group" aria-labelledby="poll-label"></div>
+    </div>
+    <div class="field">
+      <div class="field-label" id="handoff-label">Phone handoff duration</div>
+      <div class="segmented" id="handoff-options" role="group" aria-labelledby="handoff-label"></div>
+    </div>
+    <div class="sheet-divider"></div>
+    <div class="danger-zone">
+      <button class="button danger" id="forget-button" type="button">Forget This Hub</button>
+      <div class="danger-confirm" id="forget-confirm" hidden>
+        <p>This removes the paired hub from the bridge. Home Assistant entities may become unavailable until you pair again.</p>
+        <div class="danger-actions">
+          <button class="button neutral" id="cancel-forget" type="button">Cancel</button>
+          <button class="button" id="confirm-forget" type="button">Forget Hub</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="backdrop" id="handoff-backdrop" hidden>
+  <section class="sheet" id="handoff-dialog" role="dialog" aria-modal="true" aria-labelledby="handoff-title" tabindex="-1">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-header">
+      <h2 class="sheet-title" id="handoff-title">Use with Phone</h2>
+      <button class="icon-button sheet-close" type="button" data-close="handoff" aria-label="Close phone handoff">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <p class="handoff-copy">The bridge will release its Bluetooth connection so the Weber app can find your hub.</p>
+    <div class="handoff-summary">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 17h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m14 7 4 4-4 4m4-4h-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><strong id="handoff-duration">Reconnects automatically</strong><span>Open the Weber app after the hub is released.</span></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="button neutral" type="button" data-close="handoff">Cancel</button>
+      <button class="button" id="confirm-handoff" type="button">Release Hub</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const POLL_CHOICES = [[15, "15 sec"], [30, "30 sec"], [60, "1 min"], [120, "2 min"]];
+  const HANDOFF_CHOICES = [[5, "5 min"], [15, "15 min"], [30, "30 min"], [0, "Until I return"]];
+  const main = document.getElementById("main");
+  const pageFooter = document.getElementById("page-footer");
+  const settingsButton = document.getElementById("settings-button");
+  const settingsBackdrop = document.getElementById("settings-backdrop");
+  const handoffBackdrop = document.getElementById("handoff-backdrop");
+
+  let status = null;
+  let countdownEnd = null;
+  let activeAction = null;
+  let actionError = null;
+  let refreshRequest = null;
+  let lastFocused = null;
+
+  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+
+  const icon = (name) => ({
+    phone: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 17h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m14 7 4 4-4 4m4-4h-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    probe: `<svg class="probe-icon" viewBox="0 0 30 44" fill="none" aria-hidden="true"><path d="m5 38 13.2-24.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="m4.1 40.2.9-4.7 2.7 1.5-3.6 3.2Z" fill="currentColor"/><path d="m16.4 14.5 3.2-6a2.4 2.4 0 0 1 4.2 2.3l-3.2 6-4.2-2.3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M22.7 8.1c2.7-2.2 5.2-.3 4.2 2.3-.7 1.8-3.5 2.2-3.9 5.4-.3 2.7 2.5 3.7 3.6 5.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    battery: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="7" width="16" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M21 10v4M6 10h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    check: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6.5 12.5 3.3 3.3L17.5 8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    alert: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5m0 3.5v.1M10.3 3.9 2.4 18a2 2 0 0 0 1.8 3h15.6a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    bluetooth: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    chevron: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+  })[name];
+
+  async function api(path, body) {
+    const options = body === undefined ? {} : {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(body),
+    };
+    const response = await fetch(`api/${path}`, options);
+    let payload;
+    try { payload = await response.json(); }
+    catch (_) { throw new Error(`The bridge returned an unreadable response (${response.status}).`); }
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `The bridge request failed (${response.status}).`);
+    }
+    return payload;
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return "Not updated yet";
+    const seconds = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (!Number.isFinite(seconds) || seconds < 10) return "Updated just now";
+    if (seconds < 60) return `Updated ${Math.floor(seconds)} sec ago`;
+    if (seconds < 3600) return `Updated ${Math.floor(seconds / 60)} min ago`;
+    return `Updated ${new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
+
+  function formatCountdown(seconds) {
+    const safe = Math.max(0, Math.floor(seconds));
+    return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
+  }
+
+  function friendlyState(value) {
+    if (!value) return "Ready";
+    const normalized = String(value).replaceAll("_", " ").toLowerCase();
+    if (normalized === "probed") return "Inserted";
+    return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  function noticeMarkup(message) {
+    return message ? `<div class="notice" role="alert">${icon("alert")}<span>${esc(message)}</span></div>` : "";
+  }
+
+  function actionButton(label, action, variant = "secondary", iconName = null) {
+    const waiting = activeAction === action;
+    return `<button class="button ${variant} connection-action" type="button" data-action="${action}" ${activeAction ? "disabled" : ""}>${iconName ? icon(iconName) : ""}<span>${waiting ? "Working…" : label}</span></button>`;
+  }
+
+  function renderConnection(st) {
+    const hubName = esc(st.hub?.display_name || "Weber Connect Hub");
+    const setupError = st.setup_error || actionError;
+
+    if (st.state === "setup") {
+      if (st.scanning) return renderSetupBusy("Looking for your hub…", "Wake the hub and keep it near Home Assistant.", setupError);
+      if (st.candidates?.length) {
+        return `<div class="connection centered"><div class="setup-panel">
+          <div class="setup-icon">${icon("bluetooth")}</div>
+          <h2 class="setup-title">Choose your hub</h2>
+          <p class="setup-copy">Select the nearby Weber Connect hub you want Home Assistant to monitor.</p>
+          <div class="candidate-list">${st.candidates.map((candidate) => `<button class="candidate" type="button" data-address="${esc(candidate.address)}" ${activeAction ? "disabled" : ""}>
+            <span><span class="candidate-name">${esc(candidate.name || "Weber Connect Hub")}</span><span class="candidate-address">${esc(candidate.address)}</span></span>
+            <span class="candidate-signal">${esc(signalLabel(candidate.rssi))}</span>${icon("chevron")}
+          </button>`).join("")}</div>
+          ${noticeMarkup(setupError)}
+          <button class="button neutral" type="button" data-action="scan" ${activeAction ? "disabled" : ""}>${activeAction === "scan" ? "Scanning…" : "Scan Again"}</button>
+        </div></div>`;
+      }
+      return `<div class="connection centered"><div class="setup-panel">
+        <div class="setup-icon">${icon("bluetooth")}</div>
+        <h2 class="setup-title">Connect your hub</h2>
+        <p class="setup-copy">Power on your Weber Connect hub and keep it near Home Assistant. When the hub beeps, press its button to confirm pairing.</p>
+        ${noticeMarkup(setupError)}
+        <button class="button" type="button" data-action="pair" ${activeAction ? "disabled" : ""}>${activeAction === "pair" ? "Finding Hub…" : "Find My Hub"}</button>
+      </div></div>`;
+    }
+
+    if (st.state === "scanning") return renderSetupBusy("Scanning…", "Looking for nearby Weber Connect hubs.", setupError);
+    if (st.state === "pairing") return renderSetupBusy("Pairing…", "When the hub beeps, press the button on the hub to confirm.", setupError);
+    if (st.state === "handoff") {
+      const sub = countdownEnd
+        ? `Reconnects in <span class="countdown" id="countdown">${formatCountdown((countdownEnd - Date.now()) / 1000)}</span>`
+        : "Paused until you reconnect";
+      return `<div class="connection">
+        <div class="state-orbit handoff" aria-hidden="true"></div>
+        <div class="connection-copy"><h2 class="connection-title handoff">Free for your phone</h2><p class="connection-name">${hubName}</p><p class="connection-meta">${sub}</p><p class="connection-detail">Open the Weber app now. The bridge is not using the hub’s Bluetooth connection.</p></div>
+        ${actionButton("Reconnect Now", "resume", "secondary")}
+      </div>`;
+    }
+    if (st.state === "online") {
+      return `<div class="connection">
+        <div class="state-orbit online" aria-hidden="true"></div>
+        <div class="connection-copy"><h2 class="connection-title online">Connected</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p></div>
+        ${actionButton("Use with Phone", "open-handoff", "secondary", "phone")}
+      </div>`;
+    }
+    if (st.state === "connecting") {
+      return `<div class="connection"><div class="state-orbit busy" aria-hidden="true"></div><div class="connection-copy"><h2 class="connection-title">Connecting…</h2><p class="connection-name">${hubName}</p><p class="connection-meta">Waiting for the first probe reading</p></div></div>`;
+    }
+    return `<div class="connection">
+      <div class="state-orbit offline" aria-hidden="true"></div>
+      <div class="connection-copy"><h2 class="connection-title offline">Hub unreachable</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${esc(st.last_error || "The bridge will retry automatically. Make sure the hub is powered on and in range.")}</p></div>
+      ${actionButton("Use with Phone", "open-handoff", "secondary", "phone")}
+    </div>`;
+  }
+
+  function renderSetupBusy(title, copy, error) {
+    return `<div class="connection centered"><div class="setup-panel"><div class="state-orbit busy" style="margin:0 auto 22px" aria-hidden="true"></div><h2 class="setup-title">${title}</h2><p class="setup-copy">${copy}</p>${noticeMarkup(error)}</div></div>`;
+  }
+
+  function signalLabel(rssi) {
+    if (rssi == null) return "";
+    if (rssi >= -60) return "Strong signal";
+    if (rssi >= -75) return "Good signal";
+    return "Weak signal";
+  }
+
+  function renderProbes(st) {
+    if (!st.paired || ["setup", "scanning", "pairing"].includes(st.state)) return "";
+    const stale = st.readings_stale === true;
+    const byNumber = new Map((st.probes || []).filter((probe) => probe.probe_number).map((probe) => [Number(probe.probe_number), probe]));
+    const rows = Array.from({ length: Number(st.max_probes) || 4 }, (_, index) => {
+      const number = index + 1;
+      const probe = byNumber.get(number);
+      const hasReading = probe && (probe.probe_temp_f != null || probe.probe_temp_c != null);
+      const label = probe?.label || `Probe ${number}`;
+      if (!probe) {
+        return `<article class="probe-row empty" aria-label="Probe ${number}, no probe inserted">
+          <div class="probe-identity">${icon("probe")}<div><div class="probe-label">Probe ${number}</div><div class="probe-state">No probe</div></div></div>
+          <div class="probe-temp"><div class="probe-f">—</div><div class="probe-c">—</div></div><div class="probe-battery"></div>
+        </article>`;
+      }
+      return `<article class="probe-row${hasReading ? "" : " empty"}" aria-label="${esc(label)}, ${hasReading ? `${Math.round(probe.probe_temp_f)} degrees Fahrenheit` : "temperature unavailable"}">
+        <div class="probe-identity">${icon("probe")}<div><div class="probe-label">${esc(label)}</div><div class="probe-state">${stale ? "Last known reading" : esc(friendlyState(probe.state))}</div></div></div>
+        <div class="probe-temp"><div class="probe-f">${probe.probe_temp_f != null ? `${Math.round(probe.probe_temp_f)}°F` : "—"}</div><div class="probe-c">${probe.probe_temp_c != null ? `${Math.round(probe.probe_temp_c)}°C` : "—"}</div></div>
+        <div class="probe-battery">${probe.battery_level != null ? `${icon("battery")}<span>${esc(probe.battery_level)}%</span>` : ""}</div>
+      </article>`;
+    }).join("");
+    return `<section class="probe-region${stale ? " stale" : ""}" aria-label="${stale ? "Last known probe readings" : "Probe readings"}"><div class="probe-list">${rows}</div></section>`;
+  }
+
+  function renderHealth(st) {
+    if (!st.paired) return "";
+    const mqtt = st.mqtt || {};
+    if (!mqtt.configured) return `<section class="bridge-health"><div class="health-icon warn">${icon("alert")}</div><div><div class="health-title">MQTT broker not configured</div><div class="health-sub">Probe readings cannot appear as Home Assistant entities.</div></div></section>`;
+    if (mqtt.error) return `<section class="bridge-health"><div class="health-icon bad">${icon("alert")}</div><div><div class="health-title">Home Assistant publishing issue</div><div class="health-sub">${esc(mqtt.error)}</div></div></section>`;
+    return `<section class="bridge-health"><div class="health-icon good">${icon("check")}</div><div><div class="health-title">Publishing to Home Assistant</div><div class="health-sub">${mqtt.published_at ? esc(timeAgo(mqtt.published_at)) : "MQTT connection ready"}</div></div></section>`;
+  }
+
+  function render() {
+    if (!status) return;
+    settingsButton.hidden = !status.paired;
+    const globalError = actionError && status.paired ? noticeMarkup(actionError) : "";
+    main.innerHTML = `<section class="shell">${globalError}${renderConnection(status)}${renderProbes(status)}${renderHealth(status)}</section>`;
+    main.setAttribute("aria-busy", activeAction ? "true" : "false");
+    pageFooter.innerHTML = `<span>Weber Connect Bridge ${esc(status.version || "")}</span><span>Unofficial integration · Local only</span>`;
+    bindMainActions();
+    renderSettings();
+  }
+
+  function bindMainActions() {
+    main.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.action;
+        if (action === "open-handoff") openDialog("handoff");
+        else if (action === "scan") act("scan");
+        else if (action === "pair") act("pair", {});
+        else if (action === "resume") act("resume");
+      });
+    });
+    main.querySelectorAll("[data-address]").forEach((button) => {
+      button.addEventListener("click", () => act("pair", { address: button.dataset.address }));
+    });
+  }
+
+  async function act(path, body = {}) {
+    if (activeAction) return;
+    activeAction = path;
+    actionError = null;
+    render();
+    try {
+      await api(path, body);
+      if (path === "forget") closeDialog("settings");
+      if (path === "handoff") closeDialog("handoff");
+      await refresh(true);
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : "The request failed.";
+    } finally {
+      activeAction = null;
+      render();
+    }
+  }
+
+  async function refresh(force = false) {
+    if (document.hidden && !force) return;
+    if (refreshRequest) return refreshRequest;
+    refreshRequest = (async () => {
+      try {
+        const next = await api("status");
+        status = next;
+        const handoff = status.handoff || {};
+        countdownEnd = handoff.active && handoff.remaining_seconds != null ? Date.now() + handoff.remaining_seconds * 1000 : null;
+        if (!activeAction) actionError = null;
+        render();
+      } catch (error) {
+        actionError = error instanceof Error ? error.message : "Could not reach the bridge.";
+        if (status) render();
+        else {
+          main.innerHTML = `<section class="shell"><div class="connection centered"><div class="setup-panel"><div class="setup-icon">${icon("alert")}</div><h2 class="setup-title">Bridge unavailable</h2><p class="setup-copy">${esc(actionError)}</p><button class="button" type="button" id="retry-status">Try Again</button></div></div></section>`;
+          document.getElementById("retry-status").addEventListener("click", () => refresh(true));
+        }
+      } finally {
+        main.setAttribute("aria-busy", "false");
+        refreshRequest = null;
+      }
+    })();
+    return refreshRequest;
+  }
+
+  function renderSettings() {
+    if (!status) return;
+    const settings = status.settings || {};
+    renderSegment("poll-options", POLL_CHOICES, settings.poll_seconds, (value) => act("settings", { poll_seconds: value }));
+    renderSegment("handoff-options", HANDOFF_CHOICES, settings.handoff_minutes, (value) => act("settings", { handoff_minutes: value }));
+    const minutes = settings.handoff_minutes;
+    document.getElementById("handoff-duration").textContent = minutes
+      ? `Reconnects automatically after ${minutes} minute${minutes === 1 ? "" : "s"}`
+      : "Stays released until you reconnect";
+  }
+
+  function renderSegment(id, choices, value, onSelect) {
+    const element = document.getElementById(id);
+    element.innerHTML = choices.map(([choice, label]) => `<button type="button" data-value="${choice}" aria-pressed="${choice === value}" ${activeAction ? "disabled" : ""}>${label}</button>`).join("");
+    element.querySelectorAll("button").forEach((button) => button.addEventListener("click", () => onSelect(Number(button.dataset.value))));
+  }
+
+  function openDialog(name) {
+    const backdrop = name === "settings" ? settingsBackdrop : handoffBackdrop;
+    lastFocused = document.activeElement;
+    backdrop.hidden = false;
+    document.body.style.overflow = "hidden";
+    requestAnimationFrame(() => {
+      backdrop.classList.add("open");
+      backdrop.querySelector("[role='dialog']").focus();
+    });
+  }
+
+  function closeDialog(name) {
+    const backdrop = name === "settings" ? settingsBackdrop : handoffBackdrop;
+    backdrop.classList.remove("open");
+    window.setTimeout(() => { backdrop.hidden = true; }, 190);
+    document.body.style.overflow = "";
+    if (lastFocused instanceof HTMLElement) lastFocused.focus();
+    if (name === "settings") document.getElementById("forget-confirm").hidden = true;
+  }
+
+  function trapDialog(event, backdrop) {
+    if (event.key === "Escape") {
+      closeDialog(backdrop === settingsBackdrop ? "settings" : "handoff");
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...backdrop.querySelectorAll("button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex='-1'])")];
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+
+  settingsButton.addEventListener("click", () => openDialog("settings"));
+  document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.close)));
+  [settingsBackdrop, handoffBackdrop].forEach((backdrop) => {
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeDialog(backdrop === settingsBackdrop ? "settings" : "handoff"); });
+    backdrop.addEventListener("keydown", (event) => trapDialog(event, backdrop));
+  });
+  document.getElementById("forget-button").addEventListener("click", () => { document.getElementById("forget-confirm").hidden = false; document.getElementById("confirm-forget").focus(); });
+  document.getElementById("cancel-forget").addEventListener("click", () => { document.getElementById("forget-confirm").hidden = true; document.getElementById("forget-button").focus(); });
+  document.getElementById("confirm-forget").addEventListener("click", () => act("forget"));
+  document.getElementById("confirm-handoff").addEventListener("click", () => act("handoff", {}));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(true); });
+
+  window.setInterval(() => {
+    const countdown = document.getElementById("countdown");
+    if (countdown && countdownEnd) {
+      const left = (countdownEnd - Date.now()) / 1000;
+      countdown.textContent = formatCountdown(left);
+      if (left <= 0) refresh(true);
+    }
+    if (status?.last_read_at) document.querySelectorAll("[data-last-read]").forEach((element) => { element.textContent = timeAgo(status.last_read_at); });
+  }, 1000);
+
+  refresh(true);
+  window.setInterval(() => refresh(), 5000);
+})();
+</script>
+</body>
+</html>

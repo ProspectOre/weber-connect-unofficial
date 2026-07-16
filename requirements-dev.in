@@ -1,0 +1,8 @@
+# Development / CI dependencies. Regenerate requirements-dev.txt with:
+#   uv pip compile --python-version 3.12 --universal --generate-hashes \
+#     requirements-dev.in -o requirements-dev.txt
+coverage==7.15.0
+mypy==2.2.0
+pip-audit==2.10.1
+PyYAML==6.0.3
+ruff==0.15.21
