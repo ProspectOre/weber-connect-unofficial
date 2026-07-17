@@ -80,6 +80,9 @@ class PanelUiContractTests(unittest.TestCase):
 
     def test_critical_end_to_end_flows_are_visible_and_inline(self) -> None:
         expected = (
+            "Unofficial · Home Assistant",
+            "Weber Connect for Home Assistant",
+            "Unofficial · Read-only",
             "Set Up My Hub",
             "Connect once. Cook anywhere.",
             "Local only",

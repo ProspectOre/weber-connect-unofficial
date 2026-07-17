@@ -148,6 +148,9 @@ def check_yaml() -> None:
         if not addon.get(key):
             fail(f"config.yaml missing {key}")
 
+    expected_name = "Weber Connect for Home Assistant (Unofficial)"
+    if repository["name"] != expected_name or addon["name"] != expected_name:
+        fail("repository and add-on names must visibly identify the project as unofficial")
     if addon["slug"] != "weber_connect_ble":
         fail("config.yaml slug must be weber_connect_ble")
     if "host_dbus" not in addon:
