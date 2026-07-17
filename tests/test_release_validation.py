@@ -8,6 +8,7 @@ exercised with a made-up token whose hash is injected at runtime.
 from __future__ import annotations
 
 import hashlib
+import io
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -89,13 +90,19 @@ class TreeScanTests(unittest.TestCase):
         # Built dynamically so this rogue MAC is not a literal token that the
         # gate would (correctly) flag inside this very test file.
         rogue = ":".join(["12", "34", "56", "78", "9a", "bc"])
-        with self.assertRaises(SystemExit):
-            self._scan(f"Rogue device {rogue} appeared.")
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit):
+                self._scan(f"Rogue device {rogue} appeared.")
+        self.assertIn("non-documentation MAC address found", stderr.getvalue())
+        self.assertNotIn(rogue, stderr.getvalue())
 
     def test_public_ipv4_is_flagged(self) -> None:
         public = ".".join(["8", "8", "8", "8"])
-        with self.assertRaises(SystemExit):
-            self._scan(f"Beacon phoned home to {public} today.")
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit):
+                self._scan(f"Beacon phoned home to {public} today.")
+        self.assertIn("non-documentation IPv4 address found", stderr.getvalue())
+        self.assertNotIn(public, stderr.getvalue())
 
     def test_known_identifier_hash_is_flagged(self) -> None:
         synthetic_mac = ":".join(["de", "ad", "be", "ef", "00", "11"])
@@ -109,8 +116,12 @@ class TreeScanTests(unittest.TestCase):
             mock.patch.object(v, "FORBIDDEN_IDENTIFIER_HASHES", injected),
             mock.patch.object(v, "ALLOWED_MAC_ADDRESSES", allowed),
         ):
-            with self.assertRaises(SystemExit):
-                self._scan(f"Contains {synthetic_mac} somewhere.")
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                with self.assertRaises(SystemExit):
+                    self._scan(f"Contains {synthetic_mac} somewhere.")
+        self.assertIn("forbidden private identifier found", stderr.getvalue())
+        self.assertNotIn(synthetic_mac, stderr.getvalue())
+        self.assertNotIn("synthetic private address", stderr.getvalue())
 
     def test_private_runtime_directory_is_rejected(self) -> None:
         with TemporaryDirectory() as tmp:

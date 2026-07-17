@@ -394,18 +394,18 @@ def check_no_private_material() -> None:
         for token in (*_iter_mac_addresses(text), *(m.group(0).lower() for m in UUID_RE.finditer(text))):
             digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
             if digest in FORBIDDEN_IDENTIFIER_HASHES:
-                fail(f"{FORBIDDEN_IDENTIFIER_HASHES[digest]} found in {relative}")
+                fail(f"forbidden private identifier found in {relative}")
 
         # 2. General privacy gate: any MAC-shaped token outside the
         #    documentation/synthetic allowlist is treated as a real address.
         for mac in _iter_mac_addresses(text):
             if mac not in ALLOWED_MAC_ADDRESSES:
-                fail(f"non-documentation MAC address {mac} found in {relative}")
+                fail(f"non-documentation MAC address found in {relative}")
 
         # 3. General privacy gate: any IPv4 outside documentation ranges.
         for address in _iter_ipv4_addresses(text):
             if not any(address in network for network in ALLOWED_IP_NETWORKS):
-                fail(f"non-documentation IPv4 address {address} found in {relative}")
+                fail(f"non-documentation IPv4 address found in {relative}")
 
 
 def main() -> int:
