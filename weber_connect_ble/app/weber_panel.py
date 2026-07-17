@@ -19,6 +19,14 @@ from typing import Any
 
 from weber_ble_pair import build_pairing_summary, load_or_create_pairing_keys, pair_once
 from weber_ble_scan import scan as ble_scan
+from weber_cloud import (
+    CloudConfig,
+    CloudPollResult,
+    WeberCloudAuthError,
+    WeberCloudClient,
+    WeberCloudError,
+    resolve_associated_appliance_id,
+)
 from weber_http import create_panel_server
 from weber_mqtt import MqttConfig, MqttSession
 from weber_persistence import read_json, write_json_atomic
@@ -47,7 +55,7 @@ BLE_TIMEOUT = 20.0
 PAIR_LISTEN_SECONDS = 90.0
 SCAN_SECONDS = 20.0
 MAX_PROBES = 4
-DEFAULT_ICON_FILE = Path(__file__).resolve().parents[1] / "icon.png"
+DEFAULT_ICON_FILE = Path(__file__).resolve().parent / "static" / "icon.png"
 
 
 def utc_now() -> str:
@@ -63,6 +71,7 @@ class ControllerDependencies:
     key_loader: Callable[..., dict[str, Any]] = load_or_create_pairing_keys
     summary_builder: Callable[..., dict[str, Any]] = build_pairing_summary
     mqtt_factory: Callable[..., MqttSession] = MqttSession
+    cloud_factory: Callable[..., WeberCloudClient] = WeberCloudClient
     wall_time: Callable[[], float] = time.time
     monotonic: Callable[[], float] = time.monotonic
     jitter: Callable[[float, float], float] = random.uniform
@@ -84,10 +93,13 @@ class HubController:
         self.key_file = data_dir / "pairing_keys.json"
         self.status_file = data_dir / "latest_status.json"
         self.handoff_file = data_dir / "handoff.json"
+        self.cloud_file = data_dir / "cloud_credentials.json"
+        self.pending_cloud_key_file = data_dir / "pairing_keys.cloud_pending.json"
 
         self.mqtt_config = MqttConfig.from_mapping(mqtt) if mqtt and mqtt.get("host") else None
         self.settings = BridgeSettings()
         self.summary: dict[str, Any] | None = None
+        self.cloud_config: CloudConfig | None = None
         self.runtime = RuntimeState()
         self.dependencies = dependencies or ControllerDependencies()
 
@@ -96,6 +108,7 @@ class HubController:
         self._wake = asyncio.Event()
         self._supervisor = TaskSupervisor()
         self._mqtt_session: MqttSession | None = None
+        self._cloud_client: WeberCloudClient | None = None
         self._auto_resume_task: asyncio.Task[Any] | None = None
         self._started = False
         self._closing = False
@@ -168,6 +181,27 @@ class HubController:
                 self.summary = load_pairing_summary(self.summary_file)
             except (OSError, ValueError) as exc:
                 LOGGER.warning("Could not read pairing summary: %r", exc)
+        if self.cloud_file.exists():
+            try:
+                self.cloud_config = CloudConfig.from_mapping(read_json(self.cloud_file))
+                if (
+                    self.cloud_config.identity_source == "bridge"
+                    and self.cloud_config.temperature_unit == "fahrenheit"
+                ):
+                    # Bridge-generated identities created before 1.2.0 used
+                    # the wrong default. Walker snapshots encode probe
+                    # temperatures as tenths of a degree Celsius.
+                    self.cloud_config = self.cloud_config.with_temperature_unit(
+                        "deci_celsius"
+                    )
+                    self._save_cloud()
+                self.runtime.cloud_state = (
+                    "ready" if self.cloud_config.enabled else "disabled"
+                )
+            except (OSError, ValueError) as exc:
+                self.runtime.cloud_state = "error"
+                self.runtime.cloud_error = f"Could not read cloud settings: {exc}"
+                LOGGER.warning("Could not read cloud settings: %r", exc)
         if self.handoff_file.exists():
             try:
                 handoff = read_json(self.handoff_file)
@@ -197,6 +231,12 @@ class HubController:
             {"active": self.runtime.handoff_active, "until": self.runtime.handoff_until},
         )
 
+    def _save_cloud(self) -> None:
+        if self.cloud_config is None:
+            self.cloud_file.unlink(missing_ok=True)
+            return
+        write_json_atomic(self.cloud_file, self.cloud_config.as_dict())
+
     def _clear_handoff(self) -> None:
         self.handoff_file.unlink(missing_ok=True)
 
@@ -223,6 +263,25 @@ class HubController:
             and not self.runtime.scanning
             and not self.runtime.pairing
         )
+
+    def _can_cloud(self) -> bool:
+        return (
+            not self._closing
+            and self.paired
+            and self.cloud_config is not None
+            and self.cloud_config.enabled
+            and not self.runtime.scanning
+            and not self.runtime.pairing
+            and bool(self._appliance_id())
+        )
+
+    def _can_read(self) -> bool:
+        return self._can_bridge() or self._can_cloud()
+
+    def _appliance_id(self) -> str | None:
+        hub = (self.summary or {}).get("hub") or {}
+        value = hub.get("appliance_id")
+        return value if isinstance(value, str) and value else None
 
     def connection_state(self) -> ConnectionState:
         if self.runtime.pairing:
@@ -272,6 +331,7 @@ class HubController:
             "max_probes": MAX_PROBES,
             "readings_stale": bool(self.runtime.last_good_state) and not self.runtime.last_read_ok,
             "last_read_at": self.runtime.last_read_at,
+            "source": self.runtime.last_source,
             "last_error": self.runtime.last_error,
             "setup_error": self.runtime.setup_error,
             "scanning": self.runtime.scanning,
@@ -291,9 +351,32 @@ class HubController:
                 "published_at": self.runtime.mqtt_published_at,
                 "error": self.runtime.mqtt_error,
             },
+            "cloud": {
+                **(
+                    self.cloud_config.public_dict()
+                    if self.cloud_config is not None
+                    else {"configured": False, "enabled": False}
+                ),
+                "state": self.runtime.cloud_state,
+                "last_poll_at": self.runtime.cloud_last_poll_at,
+                "error": self.runtime.cloud_error,
+                "session_id": self.runtime.cloud_session_id,
+                "last_snapshot_id": self.runtime.cloud_after_id,
+                "new_snapshots": self.runtime.cloud_snapshot_count,
+                "appliance_id_available": self._appliance_id() is not None,
+                "pairing_verification_code_available": bool(
+                    ((self.summary or {}).get("pairing_response") or {}).get(
+                        "verification_code"
+                    )
+                ),
+            },
             "settings": {
                 "poll_seconds": self.settings.poll_seconds,
                 "handoff_minutes": self.settings.handoff_minutes,
+                "probe_names": {
+                    str(number): name
+                    for number, name in self.settings.probe_names.items()
+                },
             },
         }
 
@@ -352,22 +435,58 @@ class HubController:
             self.runtime.scanning = False
             self._wake.set()
 
-    async def pair(self, address: object) -> dict[str, Any]:
+    async def pair(
+        self,
+        address: object,
+        *,
+        phone_coexistence: object = False,
+    ) -> dict[str, Any]:
         if self._closing:
             return {"ok": False, "error": "The bridge is shutting down."}
         if address is not None and not isinstance(address, str):
             return {"ok": False, "error": "address must be a string or null."}
+        if not isinstance(phone_coexistence, bool):
+            return {"ok": False, "error": "phone_coexistence must be a boolean."}
         if self.runtime.scanning or self.runtime.pairing:
             return {"ok": False, "error": "Another hub operation is already running."}
+
+        prepared_keys = None
+        pending_key_file = None
+        pending_cloud_config = None
+        pending_cloud_client = None
+        if phone_coexistence:
+            try:
+                (
+                    prepared_keys,
+                    pending_key_file,
+                    pending_cloud_config,
+                    pending_cloud_client,
+                ) = await self._prepare_cloud_companion()
+            except Exception as exc:
+                await asyncio.to_thread(
+                    self.pending_cloud_key_file.unlink,
+                    missing_ok=True,
+                )
+                self.runtime.cloud_state = "unconfigured"
+                self.runtime.cloud_error = None
+                return {"ok": False, "error": f"Could not prepare phone coexistence: {exc}"}
+            self.runtime.cloud_state = "pairing"
+            self.runtime.cloud_error = None
         self.runtime.pairing = True
         self.runtime.setup_error = None
         self._wake.set()
         self._supervisor.spawn(
             "weber-pair",
-            self._pair_task(address.strip() if address else None),
+            self._pair_task(
+                address.strip() if address else None,
+                prepared_keys=prepared_keys,
+                pending_key_file=pending_key_file,
+                pending_cloud_config=pending_cloud_config,
+                pending_cloud_client=pending_cloud_client,
+            ),
             on_error=self._operation_error,
         )
-        return {"ok": True}
+        return {"ok": True, "phone_coexistence": phone_coexistence}
 
     def _log_pair_events(self, result: dict[str, Any]) -> None:
         events = result.get("events") or []
@@ -385,8 +504,23 @@ class HubController:
                 event.get("length"),
             )
 
-    async def _pair_task(self, address: str | None) -> None:
+    async def _pair_task(
+        self,
+        address: str | None,
+        *,
+        prepared_keys: dict[str, Any] | None = None,
+        pending_key_file: Path | None = None,
+        pending_cloud_config: CloudConfig | None = None,
+        pending_cloud_client: WeberCloudClient | None = None,
+    ) -> None:
+        pairing_confirmed = False
         try:
+            if pending_cloud_client is not None:
+                # The Weber companion is a registered cloud device before its
+                # id is presented to the hub during the BLE key exchange. The
+                # hub can therefore publish the new association while the
+                # pairing session is still active.
+                await asyncio.to_thread(pending_cloud_client.authenticate)
             async with self._ble_lock:
                 if not address:
                     result = await self.dependencies.scan(
@@ -402,7 +536,7 @@ class HubController:
                     address = candidates[0].get("address")
                 if not isinstance(address, str) or not address:
                     raise RuntimeError("The selected hub has no usable Bluetooth address.")
-                keys = self.dependencies.key_loader(
+                keys = prepared_keys or self.dependencies.key_loader(
                     path=self.key_file,
                     display_name="Home Assistant",
                     companion_id=None,
@@ -426,6 +560,7 @@ class HubController:
                     )
                 if response.get("status") != "CONFIRMED":
                     raise RuntimeError(f"The hub declined pairing ({response.get('status')}).")
+                pairing_confirmed = True
                 summary = self.dependencies.summary_builder(
                     address=address,
                     keys=keys,
@@ -436,6 +571,8 @@ class HubController:
                     hub_software_revision=None,
                     hub_wifi_mac=None,
                 )
+                if pending_key_file is not None:
+                    await asyncio.to_thread(pending_key_file.replace, self.key_file)
                 write_json_atomic(self.summary_file, summary)
                 self.summary = summary
                 self.settings = self.settings.with_address(address)
@@ -446,12 +583,30 @@ class HubController:
                 self.runtime.consecutive_failures = 0
                 await self._close_mqtt()
                 LOGGER.info("Paired with hub at %s", address)
+                if pending_cloud_config is not None and pending_cloud_client is not None:
+                    self.cloud_config = pending_cloud_config
+                    self._cloud_client = pending_cloud_client
+                    self._save_cloud()
+                    try:
+                        await self._wait_for_cloud_association(pending_cloud_client)
+                    except (WeberCloudError, RuntimeError, ValueError) as exc:
+                        self.runtime.cloud_state = "error"
+                        self.runtime.cloud_error = str(exc)
+                        LOGGER.warning(
+                            "BLE pairing succeeded, but cloud association could not be verified: %r",
+                            exc,
+                        )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             LOGGER.error("Pairing failed: %r", exc)
             self.runtime.setup_error = str(exc)
         finally:
+            if pending_key_file is not None:
+                await asyncio.to_thread(pending_key_file.unlink, missing_ok=True)
+            if pending_cloud_config is not None and not pairing_confirmed:
+                self.runtime.cloud_state = "unconfigured"
+                self.runtime.cloud_error = None
             self.runtime.pairing = False
             self._wake.set()
 
@@ -472,6 +627,7 @@ class HubController:
         self.runtime.handoff_active = True
         self.runtime.handoff_until = None
         self.runtime.handoff_token += 1
+        self.runtime.last_read_ok = False
         token = self.runtime.handoff_token
         self._wake.set()
         try:
@@ -549,7 +705,16 @@ class HubController:
             self.runtime.consecutive_failures = 0
             self.runtime.next_retry_seconds = None
             self.runtime.candidates = []
-            for path in (self.summary_file, self.status_file, self.handoff_file):
+            self.cloud_config = None
+            self._cloud_client = None
+            self.runtime.cloud_state = "unconfigured"
+            self.runtime.cloud_error = None
+            for path in (
+                self.summary_file,
+                self.status_file,
+                self.handoff_file,
+                self.cloud_file,
+            ):
                 try:
                     path.unlink(missing_ok=True)
                 except OSError as exc:
@@ -558,14 +723,279 @@ class HubController:
         return {"ok": True}
 
     async def update_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        previous_probe_names = self.settings.probe_names
         try:
             updated = self.settings.updated(payload)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         self.settings = updated
         self._save_settings()
+        if (
+            updated.probe_names != previous_probe_names
+            and self.runtime.last_good_state
+            and self.summary is not None
+            and self.address is not None
+        ):
+            current = self.runtime.last_good_state
+            refreshed = build_state(
+                self.summary,
+                current.get("status") or {},
+                self.address,
+                connected=bool(current.get("connected")),
+                max_probes=MAX_PROBES,
+                source=self.runtime.last_source or str(current.get("source") or "ble"),
+                probe_names=updated.probe_names,
+            )
+            self.runtime.last_good_state = refreshed
+            try:
+                write_json_atomic(self.status_file, refreshed)
+            except OSError as exc:
+                LOGGER.warning("Could not persist renamed probe snapshot: %r", exc)
+            await self._publish(refreshed)
         self._wake.set()
         return {"ok": True, "settings": self.settings.as_dict()}
+
+    def _new_cloud_client(self) -> WeberCloudClient:
+        if self.cloud_config is None:
+            raise RuntimeError("Cloud fallback is not configured.")
+        self._cloud_client = self.dependencies.cloud_factory(self.cloud_config)
+        return self._cloud_client
+
+    async def _verify_cloud_appliance_access(
+        self,
+        client: WeberCloudClient,
+        appliances: list[dict[str, Any]] | None = None,
+    ) -> str:
+        expected_appliance_id = self._appliance_id()
+        if appliances is None:
+            appliances = await asyncio.to_thread(client.associated_appliances)
+        appliance_id = resolve_associated_appliance_id(
+            appliances,
+            expected_appliance_id,
+        )
+        if appliance_id is None:
+            raise WeberCloudAuthError(
+                "Cloud identity is not authorized for this hub. Pair the bridge "
+                "with the hub and confirm the request on its display."
+            )
+        try:
+            # A successful sessions request proves more than companion login:
+            # it proves this identity may read this specific hub. An empty
+            # session list is still a valid result when no cook is active.
+            await asyncio.to_thread(client.latest_session_id, appliance_id)
+        except WeberCloudAuthError as exc:
+            if "HTTP 403" in str(exc):
+                raise WeberCloudAuthError(
+                    "Cloud identity is not authorized for this hub. Enter the "
+                    "Wi-Fi provisioning verification code or use already-associated "
+                    "companion credentials."
+                ) from exc
+            raise
+        if self.cloud_config is not None and self.cloud_config.appliance_id != appliance_id:
+            self.cloud_config = self.cloud_config.with_appliance_id(appliance_id)
+            self._save_cloud()
+            if self._cloud_client is not None:
+                self._cloud_client.config = self.cloud_config
+        return appliance_id
+
+    async def _test_cloud(
+        self, *, verify_appliance: bool = True
+    ) -> list[dict[str, Any]]:
+        client = self._cloud_client or self._new_cloud_client()
+        await asyncio.to_thread(client.authenticate)
+        appliances = await asyncio.to_thread(client.associated_appliances)
+        if verify_appliance:
+            await self._verify_cloud_appliance_access(client, appliances)
+            self.runtime.cloud_state = "ready"
+            self.runtime.cloud_error = None
+        return appliances
+
+    async def _wait_for_cloud_association(
+        self,
+        client: WeberCloudClient,
+        *,
+        timeout: float = 300.0,
+    ) -> str:
+        deadline = asyncio.get_running_loop().time() + timeout
+        last_error: Exception | None = None
+        while True:
+            try:
+                appliances = await asyncio.to_thread(client.associated_appliances)
+                appliance_id = await self._verify_cloud_appliance_access(
+                    client,
+                    appliances,
+                )
+                self.runtime.cloud_state = "ready"
+                self.runtime.cloud_error = None
+                return appliance_id
+            except (WeberCloudError, RuntimeError, ValueError) as exc:
+                last_error = exc
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                assert last_error is not None
+                raise last_error
+            await asyncio.sleep(min(2.0, remaining))
+
+    async def _prepare_cloud_companion(
+        self,
+    ) -> tuple[dict[str, Any], Path, CloudConfig, WeberCloudClient]:
+        await asyncio.to_thread(self.pending_cloud_key_file.unlink, missing_ok=True)
+        keys = self.dependencies.key_loader(
+            path=self.pending_cloud_key_file,
+            display_name="Home Assistant",
+            companion_id=None,
+            companion_public_key=None,
+            reset_key=True,
+        )
+        cloud_config = CloudConfig.generate(str(keys["companion_id"]))
+        cloud_client = self.dependencies.cloud_factory(cloud_config)
+        return keys, self.pending_cloud_key_file, cloud_config, cloud_client
+
+    async def _start_cloud_pairing(self) -> None:
+        if not self.paired or self.summary is None or not self.address:
+            raise ValueError("Pair a hub locally before enabling cloud access.")
+        if self.cloud_config is not None:
+            raise ValueError("Remove the existing cloud credentials before pairing a new identity.")
+        if self.runtime.scanning or self.runtime.pairing:
+            raise ValueError("Another hub operation is already running.")
+
+        keys, pending_key_file, cloud_config, cloud_client = (
+            await self._prepare_cloud_companion()
+        )
+
+        self.runtime.cloud_state = "pairing"
+        self.runtime.cloud_error = None
+        self.runtime.pairing = True
+        self.runtime.setup_error = None
+        self._wake.set()
+        self._supervisor.spawn(
+            "weber-cloud-pair",
+            self._pair_task(
+                self.address,
+                prepared_keys=keys,
+                pending_key_file=pending_key_file,
+                pending_cloud_config=cloud_config,
+                pending_cloud_client=cloud_client,
+            ),
+            on_error=self._operation_error,
+        )
+
+    async def update_cloud(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Apply an explicit experimental-cloud action from the ingress panel."""
+
+        action = payload.get("action")
+        if not isinstance(action, str):
+            return {"ok": False, "error": "Cloud action is required."}
+        association_attempted = False
+        pairing_started = False
+        try:
+            if action == "pair":
+                await self._start_cloud_pairing()
+                appliances = []
+                pairing_started = True
+            elif action == "create":
+                if not self.paired or self.summary is None:
+                    raise ValueError("Pair a hub before creating a bridge cloud identity.")
+                self.cloud_config = CloudConfig.generate(self.summary["companion_id"])
+                self._save_cloud()
+                self._new_cloud_client()
+                appliances = await self._test_cloud(verify_appliance=False)
+                verification_code = ((self.summary.get("pairing_response") or {}).get(
+                    "verification_code"
+                ))
+                if not appliances and verification_code:
+                    association_attempted = True
+                    assert self._cloud_client is not None
+                    await asyncio.to_thread(
+                        self._cloud_client.associate,
+                        str(verification_code),
+                    )
+                    appliances = await asyncio.to_thread(
+                        self._cloud_client.associated_appliances
+                    )
+                assert self._cloud_client is not None
+                await self._verify_cloud_appliance_access(self._cloud_client)
+                self.runtime.cloud_state = "ready"
+                self.runtime.cloud_error = None
+            elif action == "save":
+                self.cloud_config = CloudConfig.from_mapping(
+                    {
+                        "device_id": payload.get("device_id"),
+                        "device_password": payload.get("device_password"),
+                        "temperature_unit": payload.get("temperature_unit"),
+                        "identity_source": "manual",
+                        "enabled": True,
+                    }
+                )
+                self._save_cloud()
+                self._new_cloud_client()
+                appliances = await self._test_cloud()
+            elif action == "test":
+                appliances = await self._test_cloud()
+            elif action == "associate":
+                client = self._cloud_client or self._new_cloud_client()
+                code = payload.get("verification_code")
+                if not code and self.summary:
+                    code = ((self.summary.get("pairing_response") or {}).get(
+                        "verification_code"
+                    ))
+                if not isinstance(code, (str, int)) or not str(code).strip():
+                    raise ValueError("Enter the verification code produced during setup.")
+                await asyncio.to_thread(client.associate, str(code))
+                appliances = await asyncio.to_thread(client.associated_appliances)
+                await self._verify_cloud_appliance_access(client)
+                self.runtime.cloud_state = "ready"
+                self.runtime.cloud_error = None
+            elif action in {"enable", "disable"}:
+                if self.cloud_config is None:
+                    raise ValueError("Cloud fallback is not configured.")
+                self.cloud_config = self.cloud_config.with_enabled(action == "enable")
+                self._save_cloud()
+                self.runtime.cloud_state = "ready" if action == "enable" else "disabled"
+                self.runtime.cloud_error = None
+                appliances = []
+            elif action == "remove":
+                self.cloud_config = None
+                self._cloud_client = None
+                self._save_cloud()
+                self.runtime.cloud_state = "unconfigured"
+                self.runtime.cloud_error = None
+                self.runtime.cloud_session_id = None
+                self.runtime.cloud_after_id = 0
+                self.runtime.cloud_snapshot_count = 0
+                appliances = []
+            else:
+                return {"ok": False, "error": "Unknown cloud action."}
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.runtime.cloud_state = "error"
+            self.runtime.cloud_error = str(exc)
+            LOGGER.warning("Cloud action %s failed: %r", action, exc)
+            return {"ok": False, "error": str(exc)}
+
+        if (
+            action in {"disable", "remove"}
+            and self.runtime.last_source == "cloud"
+            and self.runtime.last_read_ok
+        ):
+            await self._record_read_failure(
+                "Cloud fallback was disabled."
+                if action == "disable"
+                else "Cloud fallback credentials were removed."
+            )
+        self._wake.set()
+        return {
+            "ok": True,
+            "cloud": (
+                self.cloud_config.public_dict()
+                if self.cloud_config is not None
+                else {"configured": False, "enabled": False}
+            ),
+            "associated_appliances": len(appliances),
+            "association_attempted": association_attempted,
+            "pairing_started": pairing_started,
+        }
 
     # -- bridge and MQTT ----------------------------------------------------
 
@@ -581,6 +1011,8 @@ class HubController:
                 self.address,
                 connected=False,
                 max_probes=MAX_PROBES,
+                source=self.runtime.last_source or "ble",
+                probe_names=self.settings.probe_names,
             )
             try:
                 write_json_atomic(self.status_file, disconnected)
@@ -594,29 +1026,83 @@ class HubController:
             return await self._read_cycle_once()
 
     async def _read_cycle_once(self) -> bool:
-        async with self._ble_lock:
-            if not self._can_bridge() or not self.summary or not self.address:
-                return False
+        failure: str | None = None
+        if self._can_bridge() and self.summary and self.address:
+            async with self._ble_lock:
+                if self._can_bridge():
+                    try:
+                        result = await self.dependencies.read_status(
+                            address=self.address,
+                            companion_id=self.summary["companion_id"],
+                            version=BRIDGE_MESSAGE_VERSION,
+                            listen_seconds=LISTEN_SECONDS,
+                            timeout=BLE_TIMEOUT,
+                            write_without_response=False,
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        LOGGER.warning("BLE read failed: %r", exc)
+                        failure = f"Could not reach the hub over Bluetooth: {exc}"
+                    else:
+                        latest = result.get("latest_status")
+                        if latest:
+                            return await self._accept_status(
+                                latest,
+                                source="ble",
+                                connected=bool(result.get("connected")),
+                            )
+                        failure = "Connected over Bluetooth, but the hub sent no probe status."
+
+        if self._can_cloud():
             try:
-                result = await self.dependencies.read_status(
-                    address=self.address,
-                    companion_id=self.summary["companion_id"],
-                    version=BRIDGE_MESSAGE_VERSION,
-                    listen_seconds=LISTEN_SECONDS,
-                    timeout=BLE_TIMEOUT,
-                    write_without_response=False,
-                )
+                return await self._read_cloud_once()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                LOGGER.warning("Read failed: %r", exc)
-                return await self._record_read_failure(f"Could not reach the hub: {exc}")
+                if self.runtime.cloud_state == "idle":
+                    self.runtime.cloud_error = None
+                else:
+                    self.runtime.cloud_state = "error"
+                    self.runtime.cloud_error = str(exc)
+                LOGGER.warning("Cloud fallback failed: %r", exc)
+                cloud_failure = f"Cloud fallback failed: {exc}"
+                failure = f"{failure} {cloud_failure}" if failure else cloud_failure
 
-        latest = result.get("latest_status")
-        if not latest:
-            return await self._record_read_failure("Connected, but the hub sent no probe status.")
+        if failure:
+            return await self._record_read_failure(failure)
+        return False
 
+    async def _read_cloud_once(self) -> bool:
+        appliance_id = (
+            self.cloud_config.appliance_id if self.cloud_config is not None else None
+        ) or self._appliance_id()
+        if appliance_id is None:
+            raise RuntimeError("BLE pairing did not provide a cloud appliance ID.")
+        client = self._cloud_client or self._new_cloud_client()
+        result: CloudPollResult | None = await asyncio.to_thread(client.poll, appliance_id)
+        self.runtime.cloud_last_poll_at = utc_now()
+        if result is None:
+            self.runtime.cloud_state = "idle"
+            raise RuntimeError("No active cloud cook or no new cloud snapshot is available.")
+        self.runtime.cloud_state = "online"
+        self.runtime.cloud_error = None
+        self.runtime.cloud_session_id = result.session_id
+        self.runtime.cloud_after_id = result.after_id
+        self.runtime.cloud_snapshot_count = result.snapshot_count
+        return await self._accept_status(result.status, source="cloud")
+
+    async def _accept_status(
+        self,
+        latest: dict[str, Any],
+        *,
+        source: str,
+        connected: bool = True,
+    ) -> bool:
+        if self.summary is None or self.address is None:
+            return False
         self.runtime.last_read_ok = True
+        self.runtime.last_source = source
         self.runtime.last_error = None
         self.runtime.last_read_at = utc_now()
         self.runtime.consecutive_failures = 0
@@ -624,8 +1110,10 @@ class HubController:
             self.summary,
             latest,
             self.address,
-            connected=bool(result.get("connected")),
+            connected=connected,
             max_probes=MAX_PROBES,
+            source=source,
+            probe_names=self.settings.probe_names,
         )
         self.runtime.last_good_state = state
         try:
@@ -682,7 +1170,7 @@ class HubController:
         next_due = self.dependencies.monotonic()
         while not self._closing:
             self.runtime.loop_beat = utc_now()
-            if not self._can_bridge():
+            if not self._can_read():
                 self.runtime.next_retry_seconds = None
                 await self._wait_for_wake()
                 next_due = self.dependencies.monotonic()
@@ -694,7 +1182,7 @@ class HubController:
                 if await self._wait_for_wake(next_due - now):
                     next_due = self.dependencies.monotonic()
                     continue
-            if not self._can_bridge():
+            if not self._can_read():
                 continue
 
             started = self.dependencies.monotonic()

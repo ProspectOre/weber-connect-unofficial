@@ -10,6 +10,30 @@ from enum import StrEnum
 from typing import Any
 
 LOGGER = logging.getLogger("weber_connect_runtime")
+MAX_PROBE_NICKNAME_LENGTH = 32
+
+
+def normalize_probe_names(value: object) -> dict[int, str]:
+    """Validate optional per-slot aliases while preserving numeric slot identity."""
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("probe_names must be an object.")
+    result: dict[int, str] = {}
+    for raw_number, raw_name in value.items():
+        number = parse_whole_number(raw_number, "probe number")
+        if number < 1 or number > 4:
+            raise ValueError("probe number must be between 1 and 4.")
+        if not isinstance(raw_name, str):
+            raise ValueError(f"Probe {number} nickname must be text.")
+        name = " ".join(raw_name.strip().split())
+        if len(name) > MAX_PROBE_NICKNAME_LENGTH:
+            raise ValueError(
+                f"Probe {number} nickname must be {MAX_PROBE_NICKNAME_LENGTH} characters or fewer."
+            )
+        if name:
+            result[number] = name
+    return result
 
 
 class ConnectionState(StrEnum):
@@ -41,15 +65,16 @@ def parse_whole_number(value: object, label: str) -> int:
 @dataclass(frozen=True, slots=True)
 class BridgeSettings:
     address: str | None = None
-    poll_seconds: int = 30
+    poll_seconds: int = 10
     handoff_minutes: int = 15
+    probe_names: dict[int, str] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> BridgeSettings:
         address = payload.get("address")
         if address is not None and not isinstance(address, str):
             raise ValueError("address must be a string or null.")
-        poll_seconds = parse_whole_number(payload.get("poll_seconds", 30), "poll_seconds")
+        poll_seconds = parse_whole_number(payload.get("poll_seconds", 10), "poll_seconds")
         handoff_minutes = parse_whole_number(
             payload.get("handoff_minutes", 15), "handoff_minutes"
         )
@@ -57,15 +82,17 @@ class BridgeSettings:
             address=address.strip() if address and address.strip() else None,
             poll_seconds=max(10, min(3600, poll_seconds)),
             handoff_minutes=max(0, min(240, handoff_minutes)),
+            probe_names=normalize_probe_names(payload.get("probe_names")),
         )
 
     def updated(self, payload: Mapping[str, Any]) -> BridgeSettings:
-        allowed = {"poll_seconds", "handoff_minutes"}
+        allowed = {"poll_seconds", "handoff_minutes", "probe_names"}
         unknown = set(payload) - allowed
         if unknown:
             raise ValueError(f"Unknown setting: {sorted(unknown)[0]}.")
         poll_seconds = self.poll_seconds
         handoff_minutes = self.handoff_minutes
+        probe_names = self.probe_names
         if "poll_seconds" in payload:
             poll_seconds = max(
                 10,
@@ -76,10 +103,13 @@ class BridgeSettings:
                 0,
                 min(240, parse_whole_number(payload["handoff_minutes"], "handoff_minutes")),
             )
+        if "probe_names" in payload:
+            probe_names = normalize_probe_names(payload["probe_names"])
         return replace(
             self,
             poll_seconds=poll_seconds,
             handoff_minutes=handoff_minutes,
+            probe_names=probe_names,
         )
 
     def with_address(self, address: str | None) -> BridgeSettings:
@@ -90,6 +120,7 @@ class BridgeSettings:
             "address": self.address,
             "poll_seconds": self.poll_seconds,
             "handoff_minutes": self.handoff_minutes,
+            "probe_names": {str(number): name for number, name in self.probe_names.items()},
         }
 
 
@@ -104,10 +135,17 @@ class RuntimeState:
     handoff_token: int = 0
     last_read_at: str | None = None
     last_read_ok: bool = False
+    last_source: str | None = None
     last_error: str | None = None
     last_good_state: dict[str, Any] = field(default_factory=dict)
     mqtt_published_at: str | None = None
     mqtt_error: str | None = None
+    cloud_state: str = "unconfigured"
+    cloud_last_poll_at: str | None = None
+    cloud_error: str | None = None
+    cloud_session_id: str | None = None
+    cloud_after_id: int = 0
+    cloud_snapshot_count: int = 0
     consecutive_failures: int = 0
     next_retry_seconds: int | None = None
     loop_beat: str | None = None

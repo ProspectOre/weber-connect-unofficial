@@ -38,7 +38,7 @@ DEFAULT_PAIRING_SUMMARY = Path("weber_probe/weber_android_pairing_summary.json")
 DEFAULT_JSON_OUT = Path("weber_probe/weber_status_latest.json")
 DEFAULT_TOPIC_ROOT = "weber_connect"
 STATE_TOPIC_SUFFIX = "state"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 HEX_16_BYTES_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 LOGGER = logging.getLogger("weber_connect_bridge")
 
@@ -184,11 +184,22 @@ def build_state(
     address: str,
     connected: bool,
     max_probes: int,
+    source: str = "ble",
+    probe_names: dict[int, str] | None = None,
 ) -> dict[str, Any]:
     hub = summary.get("hub", {})
+    aliases = probe_names or {}
+    probes = []
+    for raw_probe in latest_status.get("probes", []):
+        probe = dict(raw_probe)
+        number = probe.get("probe_number")
+        if isinstance(number, int) and aliases.get(number):
+            probe["nickname"] = aliases[number]
+        probes.append(probe)
     state: dict[str, Any] = {
         "updated_at": utc_now(),
         "connected": connected,
+        "source": source,
         "ble_address": address,
         "hub": {
             "display_name": hub.get("display_name"),
@@ -199,7 +210,7 @@ def build_state(
             "ble_address": hub.get("ble_address"),
         },
         "status": latest_status,
-        "probes": latest_status.get("probes", []),
+        "probes": probes,
         "probe_count": latest_status.get("probe_count", 0),
     }
 
@@ -210,6 +221,7 @@ def build_state(
         state[f"{prefix}_state"] = "No probe"
         state[f"{prefix}_battery"] = None
         state[f"{prefix}_type"] = None
+        state[f"{prefix}_nickname"] = aliases.get(number)
 
     for probe in state["probes"]:
         number = probe.get("probe_number")
@@ -284,6 +296,8 @@ def build_mqtt_publish_plan(
         }
         for number in range(1, args.max_probes + 1):
             base_id = f"{device_id}_probe_{number}"
+            nickname = str(state.get(f"probe_{number}_nickname") or "").strip()
+            probe_name = f"{nickname} · Probe {number}" if nickname else f"Probe {number}"
             # Each probe carries its own availability topic so a single
             # wireless probe can drop out without taking the others offline.
             probe_availability = (
@@ -296,7 +310,7 @@ def build_mqtt_publish_plan(
                     "sensor",
                     f"{base_id}_temperature",
                     {
-                        "name": f"Probe {number} Temperature",
+                        "name": f"{probe_name} Temperature",
                         "unique_id": f"{serial}_probe_{number}_temperature",
                         "state_topic": state_topic,
                         **probe_availability,
@@ -313,7 +327,7 @@ def build_mqtt_publish_plan(
                     "sensor",
                     f"{base_id}_state",
                     {
-                        "name": f"Probe {number} State",
+                        "name": f"{probe_name} State",
                         "unique_id": f"{serial}_probe_{number}_state",
                         "state_topic": state_topic,
                         **probe_availability,
@@ -335,7 +349,7 @@ def build_mqtt_publish_plan(
                         "sensor",
                         f"{base_id}_battery",
                         {
-                            "name": f"Probe {number} Battery",
+                            "name": f"{probe_name} Battery",
                             "unique_id": f"{serial}_probe_{number}_battery",
                             "state_topic": state_topic,
                             **probe_availability,

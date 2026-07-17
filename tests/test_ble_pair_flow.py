@@ -106,13 +106,14 @@ class PureHelperTests(unittest.TestCase):
 
     def test_generate_companion_keypair_shapes(self) -> None:
         private_hex, public_hex = pair.generate_companion_keypair()
-        self.assertEqual(len(private_hex), 64)
+        self.assertEqual(len(private_hex), 128)
         self.assertEqual(len(public_hex), 128)
 
     def test_generate_pairing_keys_structure(self) -> None:
         keys = pair.generate_pairing_keys("Home Assistant")
         self.assertEqual(len(keys["companion_id"]), 32)
         self.assertEqual(keys["display_name"], "Home Assistant")
+        self.assertEqual(len(keys["companion_private_key"]), 128)
         self.assertEqual(len(keys["companion_public_key"]), 128)
 
     def test_make_event_decodes_frame(self) -> None:
@@ -124,6 +125,30 @@ class PureHelperTests(unittest.TestCase):
     def test_extract_pairing_response_ignores_non_pairing(self) -> None:
         event = pair.make_event("sender", greeting_frame(0xF1), "response")
         self.assertIsNone(pair.extract_pairing_response(event))
+
+    def test_extract_pairing_response_retains_positive_verification_code(self) -> None:
+        event = {
+            "source": "response",
+            "received_at": "now",
+            "decoded": {
+                "sequence": 7,
+                "envelope": {
+                    "verification_code": 123456,
+                    "body_plain_candidate": {
+                        "message_version": 10,
+                        "parsed_payload": {
+                            "kind": "pairing_response",
+                            "status": "CONFIRMED",
+                        },
+                    },
+                },
+            },
+        }
+        response = pair.extract_pairing_response(event)
+        self.assertEqual(response["verification_code"], 123456)
+
+        event["decoded"]["envelope"]["verification_code"] = 0
+        self.assertNotIn("verification_code", pair.extract_pairing_response(event))
 
 
 class LoadOrCreateKeysTests(unittest.TestCase):
@@ -163,7 +188,7 @@ class LoadOrCreateKeysTests(unittest.TestCase):
             keys = pair.load_or_create_pairing_keys(
                 path, "Home Assistant", None, None, reset_key=False
             )
-            self.assertEqual(len(keys["companion_private_key"]), 64)
+            self.assertEqual(len(keys["companion_private_key"]), 128)
             self.assertEqual(keys["display_name"], "Legacy")
 
     def test_explicit_companion_overrides(self) -> None:
@@ -191,16 +216,22 @@ class PairOnceTests(unittest.TestCase):
 
     def test_pairing_required_then_confirmed(self) -> None:
         result = self.run_pair(
-            [greeting_frame(0xF1), pairing_response_frame(0x00)]
+            [greeting_frame(0xF1), pairing_response_frame(0x00), greeting_frame(0xF2)]
         )
         self.assertEqual(result["pairing_response"]["status"], "CONFIRMED")
+        self.assertTrue(result["post_pair_handshake"])
         self.assertTrue(result["connected"])
 
     def test_handshake_success_after_version_switch(self) -> None:
         # First greeting is rejected with a different hub version, second
         # greeting is accepted (0xF2), then pairing confirms.
         result = self.run_pair(
-            [error_frame(10), greeting_frame(0xF2, version=10), pairing_response_frame(0x00)]
+            [
+                error_frame(10),
+                greeting_frame(0xF2, version=10),
+                pairing_response_frame(0x00),
+                greeting_frame(0xF2, version=10),
+            ]
         )
         self.assertEqual(result["message_version"], 10)
         self.assertEqual(result["pairing_response"]["status"], "CONFIRMED")
@@ -249,6 +280,8 @@ class PairOnceTests(unittest.TestCase):
                     raise RuntimeError("read failed")
                 if self._read_calls == 2:
                     return pairing_response_frame(0x00)
+                if self._read_calls == 3:
+                    return greeting_frame(0xF2)
                 return b""
 
         args = pair_args(listen_seconds=5.0)

@@ -22,6 +22,8 @@ INGRESS_HEADERS = {"Content-Type": "application/json", "X-Ingress-Path": "/api/h
 class FakeController:
     def __init__(self) -> None:
         self.settings = {}
+        self.cloud_payload = None
+        self.pair_args = None
 
     def heartbeat(self):
         return {"ok": True, "state": "online", "loop_beat": "2026-01-01T00:00:00+00:00"}
@@ -33,10 +35,15 @@ class FakeController:
         self.settings.update(payload)
         return {"ok": True, "settings": dict(self.settings)}
 
+    async def update_cloud(self, payload):
+        self.cloud_payload = payload
+        return {"ok": True, "cloud": {"configured": True}}
+
     async def start_scan(self):
         return {"ok": True}
 
-    async def pair(self, _address):
+    async def pair(self, address, *, phone_coexistence=False):
+        self.pair_args = (address, phone_coexistence)
         return {"ok": True}
 
     async def handoff(self, _minutes):
@@ -67,6 +74,7 @@ class HttpContractTests(unittest.TestCase):
             port=0,
             index_file=self.index,
             icon_file=self.icon,
+            trusted_proxy_ip="127.0.0.1",
         )
         self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.server_thread.start()
@@ -116,16 +124,21 @@ class HttpContractTests(unittest.TestCase):
         self.assertEqual(payload["state"], "online")
 
     def test_mutations_require_ingress_provenance(self) -> None:
+        self.server.RequestHandlerClass.trusted_proxy_ip = "192.0.2.1"
         blocked = urllib.request.Request(
             f"{self.base}/api/scan",
             data=json.dumps({}).encode(),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "X-Ingress-Path": "/api/hassio_ingress/spoofed",
+            },
             method="POST",
         )
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(blocked, timeout=2)
         self.assertEqual(error.exception.code, 403)
         error.exception.close()
+        self.server.RequestHandlerClass.trusted_proxy_ip = "127.0.0.1"
 
     def test_json_action_round_trip(self) -> None:
         request = urllib.request.Request(
@@ -138,6 +151,33 @@ class HttpContractTests(unittest.TestCase):
             payload = json.loads(response.read())
         self.assertTrue(payload["ok"])
         self.assertEqual(self.controller.settings["poll_seconds"], 60)
+
+        cloud_request = urllib.request.Request(
+            f"{self.base}/api/cloud",
+            data=json.dumps({"action": "test"}).encode(),
+            headers=dict(INGRESS_HEADERS),
+            method="POST",
+        )
+        with urllib.request.urlopen(cloud_request, timeout=2) as response:
+            cloud_payload = json.loads(response.read())
+        self.assertTrue(cloud_payload["ok"])
+        self.assertEqual(self.controller.cloud_payload, {"action": "test"})
+
+        pair_request = urllib.request.Request(
+            f"{self.base}/api/pair",
+            data=json.dumps(
+                {"address": "AA:BB:CC:DD:EE:FF", "phone_coexistence": True}
+            ).encode(),
+            headers=dict(INGRESS_HEADERS),
+            method="POST",
+        )
+        with urllib.request.urlopen(pair_request, timeout=2) as response:
+            pair_payload = json.loads(response.read())
+        self.assertTrue(pair_payload["ok"])
+        self.assertEqual(
+            self.controller.pair_args,
+            ("AA:BB:CC:DD:EE:FF", True),
+        )
 
     def test_rejects_wrong_content_type_and_oversized_body(self) -> None:
         wrong_type = urllib.request.Request(

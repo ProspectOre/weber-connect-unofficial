@@ -49,15 +49,46 @@ class PanelContractTests(unittest.TestCase):
         snap = snapshot(controller)
         self.assertEqual(snap["state"], "setup")
         self.assertFalse(snap["paired"])
-        self.assertEqual(snap["settings"]["poll_seconds"], 30)
+        self.assertEqual(snap["settings"]["poll_seconds"], 10)
 
     def test_settings_persist_across_restarts(self) -> None:
         controller = make_controller(self.data_dir)
-        asyncio.run(controller.update_settings({"poll_seconds": 60, "handoff_minutes": 5}))
+        asyncio.run(
+            controller.update_settings(
+                {
+                    "poll_seconds": 60,
+                    "handoff_minutes": 5,
+                    "probe_names": {"1": "Brisket"},
+                }
+            )
+        )
 
         reloaded = make_controller(self.data_dir)
         self.assertEqual(reloaded.settings.poll_seconds, 60)
         self.assertEqual(reloaded.settings.handoff_minutes, 5)
+        self.assertEqual(reloaded.settings.probe_names, {1: "Brisket"})
+        self.assertEqual(snapshot(reloaded)["settings"]["probe_names"], {"1": "Brisket"})
+
+    def test_probe_nickname_keeps_number_in_live_snapshot(self) -> None:
+        controller = make_controller(self.data_dir)
+        controller.summary = make_summary(COMPANION_ID, ADDRESS)
+        controller.settings = controller.settings.with_address(ADDRESS)
+        controller.runtime.last_source = "ble"
+        controller.runtime.last_good_state = {
+            "connected": True,
+            "source": "ble",
+            "status": {
+                "probe_count": 1,
+                "probes": [{"probe_number": 1, "probe_temp_f": 205}],
+            },
+        }
+
+        result = asyncio.run(controller.update_settings({"probe_names": {"1": "Brisket"}}))
+
+        self.assertTrue(result["ok"])
+        probe = snapshot(controller)["probes"][0]
+        self.assertEqual(probe["probe_number"], 1)
+        self.assertEqual(probe["nickname"], "Brisket")
 
     def test_settings_are_clamped(self) -> None:
         controller = make_controller(self.data_dir)
@@ -72,7 +103,7 @@ class PanelContractTests(unittest.TestCase):
         )
 
         self.assertFalse(result["ok"])
-        self.assertEqual(controller.settings.poll_seconds, 30)
+        self.assertEqual(controller.settings.poll_seconds, 10)
         self.assertEqual(controller.settings.handoff_minutes, 15)
 
     def test_snapshot_exposes_stable_probe_capacity(self) -> None:

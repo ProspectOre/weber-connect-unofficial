@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import tempfile
 import unittest
@@ -161,8 +162,22 @@ class MqttSessionTests(unittest.TestCase):
             max_probes=1,
             client_factory=factory,
         )
-        online = build_state(self.summary(), self._probe_status(), "AA:BB:CC:DD:EE:FF", True, 1)
-        offline = build_state(self.summary(), {}, "AA:BB:CC:DD:EE:FF", False, 1)
+        online = build_state(
+            self.summary(),
+            self._probe_status(),
+            "AA:BB:CC:DD:EE:FF",
+            True,
+            1,
+            probe_names={1: "Brisket"},
+        )
+        offline = build_state(
+            self.summary(),
+            {},
+            "AA:BB:CC:DD:EE:FF",
+            False,
+            1,
+            probe_names={1: "Brisket"},
+        )
 
         async def scenario() -> None:
             await session.publish(online, 30)
@@ -180,6 +195,13 @@ class MqttSessionTests(unittest.TestCase):
         self.assertEqual(len(discovery), len({row[0] for row in discovery}))
         battery = [row for row in discovery if row[0].endswith("_probe_1_battery/config")]
         self.assertEqual(len(battery), 1)
+        self.assertTrue(
+            all(
+                "Brisket · Probe 1" in json.loads(row[1])["name"]
+                for row in discovery
+                if "_probe_1_" in row[0]
+            )
+        )
         hub_availability = [
             row[1]
             for row in client.publications

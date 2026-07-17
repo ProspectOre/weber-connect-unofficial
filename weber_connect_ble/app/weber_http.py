@@ -14,11 +14,10 @@ LOGGER = logging.getLogger("weber_connect_http")
 MAX_REQUEST_BODY = 16 * 1024
 ACTION_TIMEOUT = 30.0
 READ_TIMEOUT = 5.0
-# Supervisor proxies every ingress request from this fixed address and stamps
-# the ingress headers it injects. Mutating actions require that provenance so a
-# neighbouring container on the Supervisor network cannot drive the hub.
+# Supervisor proxies every ingress request from this fixed address. Mutating
+# actions require that network provenance; ingress-looking headers alone are
+# attacker-controlled when sent by a neighbouring add-on container.
 SUPERVISOR_INGRESS_IP = "172.30.32.2"
-INGRESS_HEADERS = ("X-Ingress-Path", "X-Remote-User", "X-Hass-User-Id")
 
 
 class PanelHTTPServer(ThreadingHTTPServer):
@@ -34,6 +33,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
     server_version = "WeberConnectPanel/1"
     sys_version = ""
     protocol_version = "HTTP/1.1"
+    trusted_proxy_ip: str = SUPERVISOR_INGRESS_IP
 
     def setup(self) -> None:
         super().setup()
@@ -92,9 +92,10 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
         return self.path.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
 
     def _is_ingress_request(self) -> bool:
-        if any(self.headers.get(header) for header in INGRESS_HEADERS):
-            return True
-        return self.client_address and self.client_address[0] == SUPERVISOR_INGRESS_IP
+        return bool(
+            self.client_address
+            and self.client_address[0] == self.trusted_proxy_ip
+        )
 
     def do_GET(self) -> None:
         route = self._route()
@@ -215,11 +216,15 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
         actions = {
             "scan": lambda: self.controller.start_scan(),
-            "pair": lambda: self.controller.pair(payload.get("address")),
+            "pair": lambda: self.controller.pair(
+                payload.get("address"),
+                phone_coexistence=payload.get("phone_coexistence", False),
+            ),
             "handoff": lambda: self.controller.handoff(payload.get("minutes")),
             "resume": lambda: self.controller.resume(),
             "forget": lambda: self.controller.forget(),
             "settings": lambda: self.controller.update_settings(payload),
+            "cloud": lambda: self.controller.update_cloud(payload),
         }
         action = actions.get(self._route())
         if action is None:
@@ -247,6 +252,7 @@ def create_panel_server(
     port: int,
     index_file: Path,
     icon_file: Path,
+    trusted_proxy_ip: str = SUPERVISOR_INGRESS_IP,
 ) -> PanelHTTPServer:
     handler = type(
         "BoundPanelRequestHandler",
@@ -256,6 +262,7 @@ def create_panel_server(
             "loop": loop,
             "index_file": index_file,
             "icon_file": icon_file,
+            "trusted_proxy_ip": trusted_proxy_ip,
         },
     )
     return PanelHTTPServer(("0.0.0.0", port), handler)

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f6f7f8">
+<link rel="icon" href="icon.png" type="image/png">
 <title>Weber Connect</title>
 <style>
   :root {
@@ -334,6 +335,22 @@
     font-weight: 650;
   }
   .segmented button[aria-pressed="true"] { border-color: var(--line); background: var(--surface-raised); color: var(--text); box-shadow: 0 2px 6px rgba(20, 24, 28, 0.08); }
+  .field-help { margin: -3px 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .cloud-card { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--page); }
+  .cloud-status { margin-bottom: 14px; font-size: 13px; line-height: 1.5; }
+  .cloud-status strong { display: block; color: var(--text); font-size: 14px; }
+  .cloud-status span { color: var(--muted); }
+  .cloud-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cloud-actions .button { min-height: 40px; padding: 0 13px; font-size: 13px; }
+  .cloud-manual { margin-top: 14px; }
+  .cloud-manual summary { color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 650; }
+  .input-grid { display: grid; gap: 10px; margin-top: 12px; }
+  .text-input, .select-input {
+    width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line-strong);
+    border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px;
+  }
+  .text-input:focus, .select-input:focus { outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent); border-color: var(--accent); }
+  .verification-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; }
   .sheet-divider { height: 1px; margin: 26px 0 10px; background: var(--line); }
   .danger-zone { padding-top: 8px; }
   .danger-confirm { margin-top: 10px; padding: 16px; border-radius: var(--radius-sm); background: var(--red-soft); }
@@ -388,22 +405,426 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   }
+
+  /* 1.2 experience layer */
+  :root {
+    --blue: #246bfe;
+    --blue-soft: #eaf1ff;
+    --violet: #7047eb;
+    --focus: #246bfe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --blue: #73a2ff;
+      --blue-soft: #182847;
+      --violet: #a98cff;
+    }
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 33rem),
+      radial-gradient(circle at 90% 0%, color-mix(in srgb, var(--blue) 8%, transparent), transparent 28rem),
+      var(--page);
+  }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--focus) 38%, transparent);
+    outline-offset: 3px;
+  }
+  .skip-link {
+    position: fixed;
+    z-index: 100;
+    top: 10px;
+    left: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: var(--text);
+    color: var(--surface);
+    font-weight: 750;
+    transform: translateY(-150%);
+  }
+  .skip-link:focus { transform: translateY(0); }
+  .sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+  .app { width: min(100%, 1120px); padding-top: max(18px, env(safe-area-inset-top)); }
+  .app-header { min-height: 64px; margin-bottom: clamp(18px, 3vw, 30px); }
+  .brand-copy { min-width: 0; }
+  .brand-copy h1 { font-size: clamp(22px, 3vw, 29px); }
+  .brand-subtitle { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; font-weight: 620; letter-spacing: 0.01em; }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 720;
+    backdrop-filter: blur(12px);
+  }
+  .status-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--quiet); }
+  .status-pill.online::before { background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+  .status-pill.cloud::before, .status-pill.handoff::before { background: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
+  .status-pill.busy::before { background: var(--accent); animation: pulse 1.25s ease-in-out infinite; }
+  .status-pill.offline::before { background: var(--red); box-shadow: 0 0 0 4px var(--red-soft); }
+
+  .shell { border-radius: 28px; box-shadow: 0 24px 80px rgba(20, 24, 28, 0.09), 0 2px 12px rgba(20, 24, 28, 0.04); }
+  .connection {
+    position: relative;
+    isolation: isolate;
+    min-height: 220px;
+    overflow: hidden;
+    padding: clamp(30px, 5vw, 54px);
+    background:
+      radial-gradient(circle at 92% 5%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 22rem),
+      linear-gradient(145deg, var(--surface-raised), var(--surface));
+  }
+  .connection::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    width: 310px;
+    height: 310px;
+    right: -180px;
+    bottom: -230px;
+    border: 46px solid color-mix(in srgb, var(--accent) 6%, transparent);
+    border-radius: 50%;
+  }
+  .connection-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 9px; }
+  .eyebrow {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 780;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .transport-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 25px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--page);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 720;
+  }
+  .transport-chip svg { width: 13px; height: 13px; }
+  .transport-chip.cloud { background: var(--blue-soft); color: var(--blue); }
+  .connection-title { font-size: clamp(31px, 5vw, 49px); }
+  .connection-title.cloud { color: var(--blue); }
+  .connection-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 176px; }
+  .connection-actions .button { width: 100%; }
+  .connection-detail { font-size: 14px; }
+  .state-orbit.cloud { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 55%, var(--line)); box-shadow: 0 0 0 8px var(--blue-soft); }
+
+  .context-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--line); background: var(--surface); }
+  .context-item { display: flex; align-items: center; gap: 12px; min-height: 82px; padding: 18px clamp(20px, 3.5vw, 38px); border-right: 1px solid var(--line); }
+  .context-item:last-child { border-right: 0; }
+  .context-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: 11px; background: var(--page); color: var(--muted); }
+  .context-icon svg { width: 18px; height: 18px; }
+  .context-icon.good { background: var(--green-soft); color: var(--green); }
+  .context-icon.cloud { background: var(--blue-soft); color: var(--blue); }
+  .context-label { color: var(--quiet); font-size: 11px; font-weight: 740; letter-spacing: 0.05em; text-transform: uppercase; }
+  .context-value { margin-top: 2px; overflow: hidden; color: var(--text); font-size: 13px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+
+  .probe-region { padding: clamp(25px, 4vw, 42px) clamp(24px, 5vw, 46px); }
+  .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+  .section-heading h2 { margin: 0; font-size: 20px; letter-spacing: -0.025em; }
+  .section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .section-count { color: var(--muted); font-size: 12px; font-weight: 700; }
+  .probe-list { gap: 12px; }
+  .probe-row {
+    grid-template-columns: minmax(110px, 1fr) auto;
+    min-height: 154px;
+    padding: 22px !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 18px;
+    background: linear-gradient(145deg, var(--surface-raised), color-mix(in srgb, var(--page) 38%, var(--surface)));
+  }
+  .probe-row:nth-child(odd), .probe-row:nth-child(even), .probe-row:nth-last-child(-n + 2) { border: 1px solid var(--line) !important; }
+  .probe-identity { align-self: start; }
+  .probe-copy { min-width: 0; }
+  .probe-heading-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .probe-edit {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    margin: -5px 0 -5px 1px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--quiet);
+    cursor: pointer;
+  }
+  .probe-edit:hover { background: var(--page); color: var(--accent); }
+  .probe-edit svg { width: 15px; height: 15px; }
+  .probe-battery { grid-column: 1 / -1; justify-content: flex-start; min-height: 20px; }
+  .probe-temp { min-width: 105px; }
+  .probe-row:not(.empty) { border-color: color-mix(in srgb, var(--accent) 22%, var(--line)) !important; }
+  .probe-row:not(.empty) .probe-icon { color: var(--accent); }
+  .probe-row.empty { background: var(--surface); }
+
+  .cloud-invite {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    margin: 0 clamp(24px, 5vw, 46px) clamp(25px, 4vw, 42px);
+    padding: 18px;
+    border: 1px solid color-mix(in srgb, var(--blue) 26%, var(--line));
+    border-radius: 18px;
+    background: linear-gradient(125deg, var(--blue-soft), color-mix(in srgb, var(--surface) 88%, var(--blue-soft)));
+  }
+  .cloud-invite-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--surface); color: var(--blue); box-shadow: 0 8px 22px color-mix(in srgb, var(--blue) 16%, transparent); }
+  .cloud-invite-icon svg { width: 22px; height: 22px; }
+  .cloud-invite strong { display: block; font-size: 15px; }
+  .cloud-invite span { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
+
+  .bridge-health { background: color-mix(in srgb, var(--page) 45%, var(--surface)); }
+  .page-footer { padding-top: 15px; }
+  .page-footer a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+  .toast-stack { position: fixed; z-index: 60; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); display: grid; gap: 8px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+  .toast { display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); color: var(--text); box-shadow: var(--shadow); font-size: 13px; font-weight: 650; animation: toast-in 220ms cubic-bezier(.2,.8,.2,1); }
+  .toast svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--green); }
+  .toast.error svg { color: var(--red); }
+
+  .sheet { width: min(100%, 680px); max-height: min(90vh, 820px); }
+  .sheet-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+  .settings-section { margin-bottom: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-raised); }
+  .settings-section .field:last-child { margin-bottom: 0; }
+  .section-kicker { margin-bottom: 4px; color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; }
+  .cloud-card { padding: 0; border: 0; background: transparent; }
+  .cloud-benefit { display: grid; grid-template-columns: auto 1fr; gap: 11px; margin: 12px 0 16px; padding: 13px; border-radius: 13px; background: var(--blue-soft); color: var(--blue); }
+  .cloud-benefit svg { width: 21px; height: 21px; margin-top: 1px; }
+  .cloud-benefit strong { display: block; color: var(--text); font-size: 13px; }
+  .cloud-benefit span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .cloud-confirm { margin-top: 12px; padding: 14px; border: 1px solid color-mix(in srgb, var(--blue) 28%, var(--line)); border-radius: 13px; background: var(--blue-soft); }
+  .cloud-confirm p { margin: 0 0 12px; color: var(--text); font-size: 13px; line-height: 1.5; }
+  .confirm-checks { display: grid; gap: 7px; margin-bottom: 13px; color: var(--muted); font-size: 12px; }
+  .confirm-check { display: flex; align-items: center; gap: 7px; }
+  .confirm-check svg { width: 16px; height: 16px; color: var(--green); }
+  .inline-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .cloud-progress { display: grid; gap: 8px; margin-top: 14px; }
+  .progress-row { display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
+  .progress-dot { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface); font-size: 11px; font-weight: 800; }
+  .progress-row.done { color: var(--text); }
+  .progress-row.done .progress-dot { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+  .progress-row.current { color: var(--text); font-weight: 700; }
+  .progress-row.current .progress-dot { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+
+  .handoff-route { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; margin: 0 0 22px; }
+  .route-node { min-height: 104px; padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: var(--page); text-align: center; }
+  .route-node svg { width: 24px; height: 24px; color: var(--muted); }
+  .route-node strong { display: block; margin-top: 7px; font-size: 13px; }
+  .route-node span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+  .route-arrow { color: var(--quiet); }
+  .route-arrow svg { width: 20px; height: 20px; }
+  .handoff-options { margin-bottom: 22px; }
+  .handoff-options .segmented { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .nickname-sheet { width: min(100%, 470px); }
+  .nickname-preview { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  .nickname-preview strong { color: var(--text); }
+  .nickname-form .text-input { width: 100%; }
+  .nickname-help { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
+
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
+
+  @media (min-width: 721px) {
+    .backdrop { align-items: center; padding: 28px; }
+    .sheet { border: 1px solid var(--line); border-radius: 24px; padding: 22px 26px 26px; transform: translateY(12px) scale(.985); }
+    .backdrop.open .sheet { transform: translateY(0) scale(1); }
+    .sheet-handle { display: none; }
+  }
+  @media (max-width: 720px) {
+    .status-pill { display: none; }
+    .connection { grid-template-columns: auto 1fr; }
+    .connection-actions { grid-column: 1 / -1; width: 100%; min-width: 0; margin-top: 5px; }
+    .context-strip { grid-template-columns: 1fr; }
+    .context-item { min-height: 68px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .context-item:last-child { border-bottom: 0; }
+    .probe-list { grid-template-columns: 1fr; }
+    .cloud-invite { grid-template-columns: auto minmax(0, 1fr); }
+    .cloud-invite .button { grid-column: 1 / -1; width: 100%; }
+    .toast-stack { top: auto; bottom: max(16px, env(safe-area-inset-bottom)); }
+  }
+  @media (max-width: 480px) {
+    .brand-subtitle { display: none; }
+    .app-header { min-height: 52px; }
+    .connection { display: grid; padding: 26px 20px; }
+    .connection-title { font-size: 31px; }
+    .state-orbit { width: 58px; height: 58px; }
+    .probe-region { padding: 24px 18px; }
+    .probe-row { min-height: 138px; }
+    .cloud-invite { margin-left: 18px; margin-right: 18px; }
+    .handoff-route { grid-template-columns: 1fr; }
+    .route-arrow { transform: rotate(90deg); justify-self: center; }
+    .handoff-options .segmented { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  /* One-screen control center: the dashboard never needs a page scroll. */
+  body { overflow: hidden; }
+  .app {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100vh;
+    height: 100dvh;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .app-header { min-height: 46px; margin-bottom: 8px; }
+  .brand-mark { width: 40px; height: 40px; border-radius: 12px; }
+  .brand-copy h1 { font-size: 23px; }
+  main { min-height: 0; display: grid; align-content: center; }
+  .shell { max-height: 100%; border-radius: 22px; }
+  .connection { min-height: 148px; padding: 20px clamp(24px, 4vw, 38px); gap: 18px; }
+  .state-orbit { width: 62px; height: 62px; }
+  .state-orbit::after { width: 17px; height: 17px; }
+  .connection-eyebrow { margin-bottom: 5px; }
+  .connection-title { font-size: clamp(29px, 4vw, 37px); }
+  .connection-name { margin-top: 5px; font-size: 17px; }
+  .connection-meta { margin-top: 2px; }
+  .connection-detail { margin-top: 7px; line-height: 1.35; }
+  .connection-actions { min-width: 160px; }
+  .button { min-height: 42px; padding: 0 16px; font-size: 14px; }
+  .context-item { min-height: 54px; padding: 9px clamp(16px, 3vw, 28px); }
+  .context-icon { width: 30px; height: 30px; border-radius: 9px; }
+  .context-icon svg { width: 16px; height: 16px; }
+  .context-label { font-size: 9px; }
+  .context-value { font-size: 12px; }
+  .probe-region { padding: 14px clamp(20px, 4vw, 34px); }
+  .section-heading { align-items: center; margin-bottom: 9px; }
+  .section-heading h2 { font-size: 17px; }
+  .section-heading p { margin-top: 1px; font-size: 11px; }
+  .section-count { font-size: 11px; }
+  .probe-list { gap: 8px; }
+  .probe-row {
+    min-height: 88px;
+    padding: 11px 14px !important;
+    border-radius: 14px;
+    gap: 8px 12px;
+  }
+  .probe-icon { width: 22px; height: 32px; }
+  .probe-identity { gap: 9px; }
+  .probe-label { font-size: 14px; }
+  .probe-state { margin-top: 1px; font-size: 11px; }
+  .probe-temp { min-width: 78px; }
+  .probe-f { font-size: clamp(24px, 3.1vw, 31px); }
+  .probe-c { margin-top: 2px; font-size: 12px; }
+  .probe-battery { min-height: 13px; margin-top: -2px; font-size: 10px; }
+  .probe-battery svg { width: 14px; height: 14px; }
+  .cloud-invite { min-height: 52px; margin-bottom: 12px; padding: 10px 12px; border-radius: 14px; }
+  .cloud-invite-icon { width: 36px; height: 36px; border-radius: 11px; }
+  .cloud-invite strong { font-size: 13px; }
+  .cloud-invite span { margin-top: 1px; font-size: 11px; }
+  .cloud-invite .button { min-height: 36px; font-size: 12px; }
+  .bridge-health { min-height: 42px; padding: 7px clamp(20px, 4vw, 34px); }
+  .health-icon { width: 28px; height: 28px; }
+  .health-icon svg { width: 16px; height: 16px; }
+  .health-title { font-size: 12px; }
+  .health-sub { font-size: 10px; }
+  .page-footer { min-height: 18px; padding-top: 5px; font-size: 10px; }
+  .handoff-copy { margin-bottom: 14px; }
+  .handoff-route { margin-bottom: 14px; }
+  .route-node { min-height: 78px; padding: 9px; }
+  .route-node svg { width: 20px; height: 20px; }
+  .route-node strong { margin-top: 3px; }
+  .handoff-options, .handoff-summary { margin-bottom: 14px; }
+
+  @media (max-width: 720px) {
+    .app { padding-left: 10px; padding-right: 10px; }
+    .connection { grid-template-columns: auto minmax(0, 1fr) auto; padding: 17px 16px; }
+    .connection-actions { grid-column: auto; width: auto; min-width: 136px; margin-top: 0; }
+    .connection-detail { display: none; }
+    .context-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .context-item { min-height: 50px; padding: 7px 9px; border-right: 1px solid var(--line); border-bottom: 0; }
+    .context-item:last-child { border-right: 0; }
+    .context-icon { display: none; }
+    .probe-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .probe-row { border-bottom: 1px solid var(--line) !important; }
+  }
+
+  @media (max-width: 480px) {
+    .app-header { min-height: 40px; }
+    .brand-mark { width: 34px; height: 34px; }
+    .brand-copy h1 { font-size: 19px; }
+    .icon-button { min-height: 38px; min-width: 38px; }
+    .connection { grid-template-columns: auto minmax(0, 1fr); min-height: 132px; padding: 13px 14px; gap: 12px; }
+    .connection-actions { grid-column: 1 / -1; width: 100%; }
+    .connection-actions .button { min-height: 36px; }
+    .state-orbit { width: 48px; height: 48px; }
+    .connection-title { font-size: 25px; }
+    .connection-name { font-size: 14px; }
+    .transport-chip { display: none; }
+    .context-item { padding: 6px; }
+    .context-label { font-size: 7px; letter-spacing: .04em; }
+    .context-value { font-size: 10px; }
+    .probe-region { padding: 10px; }
+    .section-heading { margin-bottom: 6px; }
+    .section-heading p { display: none; }
+    .probe-row { min-height: 79px; padding: 9px !important; grid-template-columns: minmax(0, 1fr) auto; }
+    .probe-icon { display: none; }
+    .probe-f { font-size: 22px; }
+    .probe-c { font-size: 10px; }
+    .probe-battery { display: none; }
+    .bridge-health { min-height: 34px; padding: 4px 10px; }
+    .health-sub { display: none; }
+    .cloud-invite { margin: 0 10px 8px; grid-template-columns: minmax(0, 1fr) auto; }
+    .cloud-invite-icon, .cloud-invite span { display: none; }
+    .cloud-invite .button { grid-column: auto; width: auto; }
+    .page-footer { display: none; }
+    .handoff-route { grid-template-columns: 1fr auto 1fr; }
+    .route-arrow { transform: none; }
+  }
+
+  @media (max-height: 650px) {
+    .app-header { min-height: 34px; }
+    .brand-mark { width: 32px; height: 32px; }
+    .brand-subtitle, .connection-detail, .section-heading p, .health-sub, .page-footer { display: none; }
+    .connection { min-height: 116px; padding-top: 10px; padding-bottom: 10px; }
+    .context-item { min-height: 42px; }
+    .probe-region { padding-top: 8px; padding-bottom: 8px; }
+    .probe-row { min-height: 70px; }
+    .bridge-health { min-height: 32px; }
+  }
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to bridge status</a>
 <div class="app">
   <header class="app-header">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true"><img src="icon.png" alt=""></div>
-      <h1>Weber Connect</h1>
+      <div class="brand-copy"><h1>Weber Connect</h1><span class="brand-subtitle">Bridge control center</span></div>
     </div>
-    <button class="icon-button" id="settings-button" type="button" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-dialog" hidden>
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.6 3.4 10 2h4l.4 1.4a2 2 0 0 0 2.6 1.2l1.3-.6 2 3.5-1.1.8a2 2 0 0 0 0 3.3l1.1.8-2 3.5-1.3-.5a2 2 0 0 0-2.6 1.2L14 18h-4l-.4-1.4A2 2 0 0 0 7 15.4l-1.3.5-2-3.5 1.1-.8a2 2 0 0 0 0-3.3l-1.1-.8 2-3.5 1.3.6a2 2 0 0 0 2.6-1.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="1.7"/></svg>
-      <span class="settings-label">Settings</span>
-    </button>
+    <div class="header-actions">
+      <span class="status-pill busy" id="header-status">Loading</span>
+      <button class="icon-button" id="settings-button" type="button" aria-label="Open bridge settings" aria-haspopup="dialog" aria-controls="settings-dialog" hidden>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.6 3.4 10 2h4l.4 1.4a2 2 0 0 0 2.6 1.2l1.3-.6 2 3.5-1.1.8a2 2 0 0 0 0 3.3l1.1.8-2 3.5-1.3-.5a2 2 0 0 0-2.6 1.2L14 18h-4l-.4-1.4A2 2 0 0 0 7 15.4l-1.3.5-2-3.5 1.1-.8a2 2 0 0 0 0-3.3l-1.1-.8 2-3.5 1.3.6a2 2 0 0 0 2.6-1.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="1.7"/></svg>
+        <span class="settings-label">Settings</span>
+      </button>
+    </div>
   </header>
 
-  <main id="main" aria-live="polite" aria-busy="true">
+  <main id="main" aria-busy="true" tabindex="-1">
     <section class="shell skeleton" aria-label="Loading Weber Connect status">
       <div class="connection"><div class="state-orbit"></div><div><div class="skeleton-line" style="width:180px;height:28px"></div><div class="skeleton-line" style="width:230px;margin-top:13px"></div></div></div>
       <div class="probe-region"><div class="probe-list"><div class="probe-row"></div><div class="probe-row"></div><div class="probe-row"></div><div class="probe-row"></div></div></div>
@@ -411,26 +832,69 @@
   </main>
   <footer class="page-footer" id="page-footer"></footer>
 </div>
+<div class="sr-only" id="announcer" aria-live="polite" aria-atomic="true"></div>
+<div class="toast-stack" id="toast-stack" aria-live="polite" aria-relevant="additions"></div>
 
 <div class="backdrop" id="settings-backdrop" hidden>
   <section class="sheet" id="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
     <div class="sheet-handle" aria-hidden="true"></div>
     <div class="sheet-header">
-      <h2 class="sheet-title" id="settings-title">Settings</h2>
+      <div><div class="section-kicker">Weber Connect 1.2</div><h2 class="sheet-title" id="settings-title">Bridge settings</h2><p class="sheet-subtitle">Connection behavior, phone handoff, and cloud coexistence.</p></div>
       <button class="icon-button sheet-close" type="button" data-close="settings" aria-label="Close settings">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <div class="field">
-      <div class="field-label" id="poll-label">Update every</div>
-      <div class="segmented" id="poll-options" role="group" aria-labelledby="poll-label"></div>
+    <div class="settings-section">
+      <div class="section-kicker">Local bridge</div>
+      <div class="field">
+        <div class="field-label" id="poll-label">Refresh probe readings</div>
+        <div class="segmented" id="poll-options" role="group" aria-labelledby="poll-label"></div>
+      </div>
+      <div class="field">
+        <div class="field-label" id="handoff-label">Default phone session</div>
+        <div class="segmented" id="handoff-options" role="group" aria-labelledby="handoff-label"></div>
+      </div>
     </div>
-    <div class="field">
-      <div class="field-label" id="handoff-label">Phone handoff duration</div>
-      <div class="segmented" id="handoff-options" role="group" aria-labelledby="handoff-label"></div>
+    <div class="settings-section field" id="cloud-field">
+      <div class="section-kicker">Default experience</div>
+      <div class="field-label">Phone + Home Assistant</div>
+      <p class="field-help">Pair a private bridge companion once. The Weber app can then use Bluetooth while Home Assistant follows the same cook through Weber Cloud.</p>
+      <div class="cloud-card">
+        <div class="cloud-benefit">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9H7Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 14h6m-3-3v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <div><strong>No Weber account login</strong><span>The bridge creates its own companion identity. Your email, password, and phone secrets stay out of Home Assistant.</span></div>
+        </div>
+        <div class="cloud-status" id="cloud-status"></div>
+        <div class="cloud-actions" id="cloud-actions"></div>
+        <div class="cloud-confirm" id="cloud-create-confirm" hidden>
+          <p>Keep the hub awake and nearby. When it beeps, press its physical button. Association can take up to five minutes.</p>
+          <div class="confirm-checks">
+            <div class="confirm-check"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 12 4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>The Weber app remains paired</span></div>
+            <div class="confirm-check"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 12 4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>No personal Weber login is requested</span></div>
+          </div>
+          <div class="inline-actions"><button class="button neutral" id="cancel-cloud-create" type="button">Not now</button><button class="button" id="confirm-cloud-create" type="button">Start pairing</button></div>
+        </div>
+        <div class="verification-row" id="cloud-verification" hidden>
+          <input class="text-input" id="cloud-verification-code" autocomplete="one-time-code" placeholder="Provisioning verification code" aria-label="Provisioning verification code">
+          <button class="button neutral" id="cloud-associate" type="button">Associate</button>
+        </div>
+        <details class="cloud-manual" id="cloud-manual">
+          <summary>Advanced recovery</summary>
+          <div class="input-grid">
+            <input class="text-input" id="cloud-device-id" autocomplete="off" spellcheck="false" placeholder="32-character App Identifier" aria-label="Cloud App Identifier">
+            <input class="text-input" id="cloud-device-password" type="password" autocomplete="new-password" placeholder="Device password" aria-label="Cloud device password">
+            <select class="select-input" id="cloud-temperature-unit" aria-label="Cloud temperature unit">
+              <option value="fahrenheit">Cloud values are °F</option>
+              <option value="celsius">Cloud values are °C</option>
+              <option value="deci_celsius">Cloud values are deci-°C</option>
+            </select>
+            <button class="button neutral" id="cloud-save" type="button">Save and test</button>
+          </div>
+        </details>
+      </div>
     </div>
-    <div class="sheet-divider"></div>
-    <div class="danger-zone">
+    <div class="settings-section danger-zone">
+      <div class="section-kicker">Reset</div>
       <button class="button danger" id="forget-button" type="button">Forget This Hub</button>
       <div class="danger-confirm" id="forget-confirm" hidden>
         <p>This removes the paired hub from the bridge. Home Assistant entities may become unavailable until you pair again.</p>
@@ -452,15 +916,44 @@
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <p class="handoff-copy">The bridge will release its Bluetooth connection so the Weber app can find your hub.</p>
+    <p class="handoff-copy">Release the hub’s one Bluetooth connection to the Weber app. Home Assistant can keep following the cook through cloud when coexistence is ready.</p>
+    <div class="handoff-route" aria-label="Phone handoff transport plan">
+      <div class="route-node"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 17h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><strong>Weber app</strong><span>Uses Bluetooth</span></div>
+      <div class="route-arrow"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="route-node"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9H7Z" stroke="currentColor" stroke-width="1.8"/></svg><strong>Home Assistant</strong><span id="handoff-cloud-route">Uses cloud when ready</span></div>
+    </div>
+    <div class="handoff-options"><div class="field-label" id="handoff-dialog-label">Reconnect Bluetooth after</div><div class="segmented" id="handoff-dialog-options" role="group" aria-labelledby="handoff-dialog-label"></div></div>
     <div class="handoff-summary">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 17h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m14 7 4 4-4 4m4-4h-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div><strong id="handoff-duration">Reconnects automatically</strong><span>Open the Weber app after the hub is released.</span></div>
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v5l3 2m5-2a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <div><strong id="handoff-duration">Reconnects automatically</strong><span>Open the Weber app after the panel says Bluetooth is free.</span></div>
     </div>
     <div class="sheet-actions">
       <button class="button neutral" type="button" data-close="handoff">Cancel</button>
-      <button class="button" id="confirm-handoff" type="button">Release Hub</button>
+      <button class="button" id="confirm-handoff" type="button">Release Bluetooth</button>
     </div>
+  </section>
+</div>
+
+<div class="backdrop" id="nickname-backdrop" hidden>
+  <section class="sheet nickname-sheet" id="nickname-dialog" role="dialog" aria-modal="true" aria-labelledby="nickname-title" tabindex="-1">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-header">
+      <div><div class="section-kicker">Probe identity</div><h2 class="sheet-title" id="nickname-title">Name Probe 1</h2></div>
+      <button class="icon-button sheet-close" type="button" data-close="nickname" aria-label="Close probe nickname">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <p class="nickname-preview">Add a helpful name such as <strong>Brisket</strong>. The physical probe number will always remain visible.</p>
+    <form class="nickname-form" id="nickname-form">
+      <label class="field-label" id="nickname-label" for="nickname-input">Nickname</label>
+      <input class="text-input" id="nickname-input" maxlength="32" autocomplete="off" placeholder="Example: Brisket" aria-labelledby="nickname-label">
+      <p class="nickname-help" id="nickname-help">Home Assistant will show “Brisket · Probe 1”. Leave blank to use only the probe number.</p>
+      <div class="sheet-actions">
+        <button class="button danger" id="clear-nickname" type="button">Remove nickname</button>
+        <button class="button neutral" type="button" data-close="nickname">Cancel</button>
+        <button class="button" id="save-nickname" type="submit">Save nickname</button>
+      </div>
+    </form>
   </section>
 </div>
 
@@ -468,16 +961,22 @@
 (() => {
   "use strict";
 
-  const POLL_CHOICES = [[15, "15 sec"], [30, "30 sec"], [60, "1 min"], [120, "2 min"]];
-  const HANDOFF_CHOICES = [[5, "5 min"], [15, "15 min"], [30, "30 min"], [0, "Until I return"]];
+  const POLL_CHOICES = [[10, "Live · 10 sec"], [30, "30 sec"], [60, "1 min"], [120, "2 min"]];
+  const HANDOFF_CHOICES = [[15, "15 min"], [30, "30 min"], [60, "1 hour"], [0, "Until I return"]];
   const main = document.getElementById("main");
   const pageFooter = document.getElementById("page-footer");
   const settingsButton = document.getElementById("settings-button");
   const settingsBackdrop = document.getElementById("settings-backdrop");
   const handoffBackdrop = document.getElementById("handoff-backdrop");
+  const nicknameBackdrop = document.getElementById("nickname-backdrop");
+  const headerStatus = document.getElementById("header-status");
+  const announcer = document.getElementById("announcer");
+  const toastStack = document.getElementById("toast-stack");
 
   let status = null;
   let countdownEnd = null;
+  let handoffSelection = 15;
+  let nicknameNumber = 1;
   let activeAction = null;
   let actionError = null;
   let refreshRequest = null;
@@ -493,23 +992,54 @@
     check: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6.5 12.5 3.3 3.3L17.5 8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     alert: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5m0 3.5v.1M10.3 3.9 2.4 18a2 2 0 0 0 1.8 3h15.6a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     bluetooth: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    chevron: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    cloud: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9H7Z" stroke="currentColor" stroke-width="1.8"/></svg>`,
+    home: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`,
+    clock: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v5l3 2m5-2a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    shield: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    chevron: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    edit: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14.7 5.3 4 4M4 20l3.8-.8L19 8a2.8 2.8 0 0 0-4-4L3.8 15.2 3 19l1 1Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`
   })[name];
 
   async function api(path, body) {
-    const options = body === undefined ? {} : {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), body === undefined ? 8000 : 32000);
+    const options = body === undefined ? { headers: { "Accept": "application/json" }, signal: controller.signal } : {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify(body),
+      signal: controller.signal,
     };
-    const response = await fetch(`api/${path}`, options);
-    let payload;
-    try { payload = await response.json(); }
-    catch (_) { throw new Error(`The bridge returned an unreadable response (${response.status}).`); }
-    if (!response.ok || payload.ok === false) {
-      throw new Error(payload.error || `The bridge request failed (${response.status}).`);
+    try {
+      const response = await fetch(`api/${path}`, options);
+      let payload;
+      try { payload = await response.json(); }
+      catch (_) { throw new Error(`The bridge returned an unreadable response (${response.status}).`); }
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `The bridge request failed (${response.status}).`);
+      }
+      return payload;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("The bridge took too long to respond. Check its logs and try again.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
     }
-    return payload;
+  }
+
+  function announce(message) {
+    announcer.textContent = "";
+    window.setTimeout(() => { announcer.textContent = message; }, 20);
+  }
+
+  function toast(message, kind = "success") {
+    const element = document.createElement("div");
+    element.className = `toast ${kind}`;
+    element.setAttribute("role", kind === "error" ? "alert" : "status");
+    element.innerHTML = `${icon(kind === "error" ? "alert" : "check")}<span>${esc(message)}</span>`;
+    toastStack.appendChild(element);
+    window.setTimeout(() => element.remove(), 4200);
   }
 
   function timeAgo(iso) {
@@ -547,60 +1077,80 @@
     const setupError = st.setup_error || actionError;
 
     if (st.state === "setup") {
-      if (st.scanning) return renderSetupBusy("Looking for your hub…", "Wake the hub and keep it near Home Assistant.", setupError);
+      if (st.scanning) return renderSetupBusy("Looking for your hub…", "Wake the hub and keep it near Home Assistant.", setupError, "Discover");
       if (st.candidates?.length) {
         return `<div class="connection centered"><div class="setup-panel">
+          <div class="connection-eyebrow" style="justify-content:center"><span class="eyebrow">Setup · Choose</span></div>
           <div class="setup-icon">${icon("bluetooth")}</div>
           <h2 class="setup-title">Choose your hub</h2>
-          <p class="setup-copy">Select the nearby Weber Connect hub you want Home Assistant to monitor.</p>
+          <p class="setup-copy">Select the nearby hub to connect it with both Home Assistant and the Weber app.</p>
           <div class="candidate-list">${st.candidates.map((candidate) => `<button class="candidate" type="button" data-address="${esc(candidate.address)}" ${activeAction ? "disabled" : ""}>
             <span><span class="candidate-name">${esc(candidate.name || "Weber Connect Hub")}</span><span class="candidate-address">${esc(candidate.address)}</span></span>
             <span class="candidate-signal">${esc(signalLabel(candidate.rssi))}</span>${icon("chevron")}
           </button>`).join("")}</div>
           ${noticeMarkup(setupError)}
-          <button class="button neutral" type="button" data-action="scan" ${activeAction ? "disabled" : ""}>${activeAction === "scan" ? "Scanning…" : "Scan Again"}</button>
+          <div class="inline-actions"><button class="button neutral" type="button" data-action="pair-local" ${activeAction ? "disabled" : ""}>Local Bluetooth only</button><button class="button neutral" type="button" data-action="scan" ${activeAction ? "disabled" : ""}>${activeAction === "scan" ? "Scanning…" : "Scan Again"}</button></div>
         </div></div>`;
       }
       return `<div class="connection centered"><div class="setup-panel">
-        <div class="setup-icon">${icon("bluetooth")}</div>
-        <h2 class="setup-title">Connect your hub</h2>
-        <p class="setup-copy">Power on your Weber Connect hub and keep it near Home Assistant. When the hub beeps, press its button to confirm pairing.</p>
+        <div class="connection-eyebrow" style="justify-content:center"><span class="eyebrow">Recommended setup · Phone + Home Assistant</span></div>
+        <div class="setup-icon">${icon("phone")}</div>
+        <h2 class="setup-title">Connect once. Cook anywhere.</h2>
+        <p class="setup-copy">Pair a private bridge companion so Home Assistant can follow every cook while the Weber app stays available. No Weber login or phone secret is required.</p>
         ${noticeMarkup(setupError)}
-        <button class="button" type="button" data-action="pair" ${activeAction ? "disabled" : ""}>${activeAction === "pair" ? "Finding Hub…" : "Find My Hub"}</button>
+        <div class="inline-actions"><button class="button neutral" type="button" data-action="pair-local" ${activeAction ? "disabled" : ""}>Local only</button><button class="button" type="button" data-action="pair-phone" ${activeAction ? "disabled" : ""}>${activeAction === "pair" ? "Finding Hub…" : "Set Up My Hub"}</button></div>
       </div></div>`;
     }
 
-    if (st.state === "scanning") return renderSetupBusy("Scanning…", "Looking for nearby Weber Connect hubs.", setupError);
-    if (st.state === "pairing") return renderSetupBusy("Pairing…", "When the hub beeps, press the button on the hub to confirm.", setupError);
+    if (st.state === "scanning") return renderSetupBusy("Scanning…", "Looking for nearby Weber Connect hubs.", setupError, "Discover");
+    if (st.state === "pairing") {
+      const cloudPairing = st.cloud?.state === "pairing";
+      return renderSetupBusy(
+        cloudPairing ? "Adding cloud companion…" : "Confirm on the hub",
+        cloudPairing
+          ? "Press the hub button when it beeps. After BLE confirmation, Weber may take up to five minutes to publish cloud access."
+          : "When the hub beeps, press its physical button to approve Home Assistant.",
+        setupError,
+        cloudPairing ? "Phone + Home Assistant" : "Confirm",
+        cloudPairing,
+      );
+    }
     if (st.state === "handoff") {
       const sub = countdownEnd
         ? `Reconnects in <span class="countdown" id="countdown">${formatCountdown((countdownEnd - Date.now()) / 1000)}</span>`
         : "Paused until you reconnect";
+      const cloudLive = st.source === "cloud" && st.readings_stale !== true;
       return `<div class="connection">
-        <div class="state-orbit handoff" aria-hidden="true"></div>
-        <div class="connection-copy"><h2 class="connection-title handoff">Free for your phone</h2><p class="connection-name">${hubName}</p><p class="connection-meta">${sub}</p><p class="connection-detail">Open the Weber app now. The bridge is not using the hub’s Bluetooth connection.</p></div>
-        ${actionButton("Reconnect Now", "resume", "secondary")}
+        <div class="state-orbit ${cloudLive ? "cloud" : "handoff"}" aria-hidden="true"></div>
+        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Phone session</span><span class="transport-chip ${cloudLive ? "cloud" : ""}">${icon(cloudLive ? "cloud" : "phone")}${cloudLive ? "Cloud telemetry" : "Bluetooth released"}</span></div><h2 class="connection-title ${cloudLive ? "cloud" : "handoff"}">${cloudLive ? "Cooking together" : "Ready for your phone"}</h2><p class="connection-name">${hubName}</p><p class="connection-meta">${sub}</p><p class="connection-detail">${cloudLive ? "The Weber app has Bluetooth while Home Assistant receives the same cook through Weber Cloud." : "Open the Weber app now. Home Assistant will resume Bluetooth when this session ends."}</p></div>
+        <div class="connection-actions">${actionButton("Reconnect now", "resume", "secondary")}</div>
       </div>`;
     }
     if (st.state === "online") {
+      const cloudSource = st.source === "cloud";
       return `<div class="connection">
-        <div class="state-orbit online" aria-hidden="true"></div>
-        <div class="connection-copy"><h2 class="connection-title online">Connected</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p></div>
-        ${actionButton("Use with Phone", "open-handoff", "secondary", "phone")}
+        <div class="state-orbit ${cloudSource ? "cloud" : "online"}" aria-hidden="true"></div>
+        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Live cook</span><span class="transport-chip ${cloudSource ? "cloud" : ""}">${icon(cloudSource ? "cloud" : "bluetooth")}${cloudSource ? "Weber Cloud" : "Local Bluetooth"}</span></div><h2 class="connection-title ${cloudSource ? "cloud" : "online"}">${cloudSource ? "Cloud connected" : "Connected"}</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${cloudSource ? "Home Assistant is receiving current cook snapshots from Weber Cloud." : "Home Assistant has a direct, local connection to your hub."}</p></div>
+        <div class="connection-actions">${actionButton("Use with phone", "open-handoff", "secondary", "phone")}</div>
       </div>`;
     }
     if (st.state === "connecting") {
-      return `<div class="connection"><div class="state-orbit busy" aria-hidden="true"></div><div class="connection-copy"><h2 class="connection-title">Connecting…</h2><p class="connection-name">${hubName}</p><p class="connection-meta">Waiting for the first probe reading</p></div></div>`;
+      return `<div class="connection"><div class="state-orbit busy" aria-hidden="true"></div><div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Bridge starting</span></div><h2 class="connection-title">Connecting…</h2><p class="connection-name">${hubName}</p><p class="connection-meta">Waiting for the first probe reading</p></div></div>`;
     }
     return `<div class="connection">
       <div class="state-orbit offline" aria-hidden="true"></div>
-      <div class="connection-copy"><h2 class="connection-title offline">Hub unreachable</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${esc(st.last_error || "The bridge will retry automatically. Make sure the hub is powered on and in range.")}</p></div>
-      ${actionButton("Use with Phone", "open-handoff", "secondary", "phone")}
+      <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Connection interrupted</span></div><h2 class="connection-title offline">Hub unreachable</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${esc(st.last_error || "The bridge will retry automatically. Make sure the hub is powered on and in range.")}</p></div>
+      <div class="connection-actions">${actionButton("Use with phone", "open-handoff", "secondary", "phone")}</div>
     </div>`;
   }
 
-  function renderSetupBusy(title, copy, error) {
-    return `<div class="connection centered"><div class="setup-panel"><div class="state-orbit busy" style="margin:0 auto 22px" aria-hidden="true"></div><h2 class="setup-title">${title}</h2><p class="setup-copy">${copy}</p>${noticeMarkup(error)}</div></div>`;
+  function renderSetupBusy(title, copy, error, step, cloudPairing = false) {
+    const progress = cloudPairing ? `<div class="cloud-progress" aria-label="Cloud pairing progress">
+      <div class="progress-row done"><span class="progress-dot">1</span><span>Companion identity registered</span></div>
+      <div class="progress-row current"><span class="progress-dot">2</span><span>Confirming companion on the hub</span></div>
+      <div class="progress-row"><span class="progress-dot">3</span><span>Waiting for Weber Cloud association</span></div>
+    </div>` : "";
+    return `<div class="connection centered"><div class="setup-panel"><div class="connection-eyebrow" style="justify-content:center"><span class="eyebrow">${esc(step)}</span></div><div class="state-orbit busy" style="margin:0 auto 22px" aria-hidden="true"></div><h2 class="setup-title">${esc(title)}</h2><p class="setup-copy">${esc(copy)}</p>${progress}${noticeMarkup(error)}</div></div>`;
   }
 
   function signalLabel(rssi) {
@@ -614,24 +1164,53 @@
     if (!st.paired || ["setup", "scanning", "pairing"].includes(st.state)) return "";
     const stale = st.readings_stale === true;
     const byNumber = new Map((st.probes || []).filter((probe) => probe.probe_number).map((probe) => [Number(probe.probe_number), probe]));
+    const activeCount = [...byNumber.values()].filter((probe) => probe.probe_temp_f != null || probe.probe_temp_c != null).length;
     const rows = Array.from({ length: Number(st.max_probes) || 4 }, (_, index) => {
       const number = index + 1;
       const probe = byNumber.get(number);
       const hasReading = probe && (probe.probe_temp_f != null || probe.probe_temp_c != null);
-      const label = probe?.label || `Probe ${number}`;
+      const nickname = String(st.settings?.probe_names?.[number] || probe?.nickname || "").trim();
+      const label = nickname || `Probe ${number}`;
+      const identity = nickname ? `${nickname}, Probe ${number}` : `Probe ${number}`;
+      const editButton = `<button class="probe-edit" type="button" data-action="edit-probe" data-probe-number="${number}" aria-label="Edit nickname for Probe ${number}">${icon("edit")}</button>`;
       if (!probe) {
-        return `<article class="probe-row empty" aria-label="Probe ${number}, no probe inserted">
-          <div class="probe-identity">${icon("probe")}<div><div class="probe-label">Probe ${number}</div><div class="probe-state">No probe</div></div></div>
+        return `<article class="probe-row empty" aria-label="${esc(identity)}, no probe inserted">
+          <div class="probe-identity">${icon("probe")}<div class="probe-copy"><div class="probe-heading-line"><div class="probe-label">${esc(label)}</div>${editButton}</div><div class="probe-state">${nickname ? `Probe ${number} · ` : ""}No probe</div></div></div>
           <div class="probe-temp"><div class="probe-f">—</div><div class="probe-c">—</div></div><div class="probe-battery"></div>
         </article>`;
       }
-      return `<article class="probe-row${hasReading ? "" : " empty"}" aria-label="${esc(label)}, ${hasReading ? `${Math.round(probe.probe_temp_f)} degrees Fahrenheit` : "temperature unavailable"}">
-        <div class="probe-identity">${icon("probe")}<div><div class="probe-label">${esc(label)}</div><div class="probe-state">${stale ? "Last known reading" : esc(friendlyState(probe.state))}</div></div></div>
+      const spokenTemperature = probe.probe_temp_f != null
+        ? `${Math.round(probe.probe_temp_f)} degrees Fahrenheit`
+        : probe.probe_temp_c != null
+          ? `${Math.round(probe.probe_temp_c)} degrees Celsius`
+          : "temperature unavailable";
+      const stateLabel = stale ? "Last known reading" : friendlyState(probe.state);
+      return `<article class="probe-row${hasReading ? "" : " empty"}" aria-label="${esc(identity)}, ${spokenTemperature}">
+        <div class="probe-identity">${icon("probe")}<div class="probe-copy"><div class="probe-heading-line"><div class="probe-label">${esc(label)}</div>${editButton}</div><div class="probe-state">${nickname ? `Probe ${number} · ` : ""}${esc(stateLabel)}</div></div></div>
         <div class="probe-temp"><div class="probe-f">${probe.probe_temp_f != null ? `${Math.round(probe.probe_temp_f)}°F` : "—"}</div><div class="probe-c">${probe.probe_temp_c != null ? `${Math.round(probe.probe_temp_c)}°C` : "—"}</div></div>
         <div class="probe-battery">${probe.battery_level != null ? `${icon("battery")}<span>${esc(probe.battery_level)}%</span>` : ""}</div>
       </article>`;
     }).join("");
-    return `<section class="probe-region${stale ? " stale" : ""}" aria-label="${stale ? "Last known probe readings" : "Probe readings"}"><div class="probe-list">${rows}</div></section>`;
+    return `<section class="probe-region${stale ? " stale" : ""}" aria-labelledby="probe-heading"><div class="section-heading"><div><h2 id="probe-heading">Probe temperatures</h2><p>${stale ? "Showing the last known readings" : "Live readings from the active cook"}</p></div><span class="section-count">${activeCount} of ${Number(st.max_probes) || 4} active</span></div><div class="probe-list">${rows}</div></section>`;
+  }
+
+  function renderContext(st) {
+    if (!st.paired || ["setup", "scanning", "pairing"].includes(st.state)) return "";
+    const source = st.source === "cloud" ? "Weber Cloud" : st.source === "ble" ? "Local Bluetooth" : "Waiting for data";
+    const cloud = st.cloud || {};
+    const phoneReady = cloud.configured && cloud.enabled && ["ready", "online", "idle"].includes(cloud.state);
+    const mqtt = st.mqtt || {};
+    const mqttValue = !mqtt.configured ? "Needs setup" : mqtt.error ? "Publishing issue" : "Entities online";
+    return `<section class="context-strip" aria-label="Bridge health summary">
+      <div class="context-item"><div class="context-icon ${st.source === "cloud" ? "cloud" : st.source === "ble" ? "good" : ""}">${icon(st.source === "cloud" ? "cloud" : "bluetooth")}</div><div><div class="context-label">Reading source</div><div class="context-value">${source}</div></div></div>
+      <div class="context-item"><div class="context-icon ${phoneReady ? "cloud" : ""}">${icon("phone")}</div><div><div class="context-label">Phone coexistence</div><div class="context-value">${phoneReady ? "Ready" : "Not configured"}</div></div></div>
+      <div class="context-item"><div class="context-icon ${mqtt.configured && !mqtt.error ? "good" : ""}">${icon("home")}</div><div><div class="context-label">Home Assistant</div><div class="context-value">${mqttValue}</div></div></div>
+    </section>`;
+  }
+
+  function renderCloudInvite(st) {
+    if (!st.paired || st.cloud?.configured || st.cloud?.state === "pairing") return "";
+    return `<aside class="cloud-invite" aria-label="Finish phone and Home Assistant setup"><div class="cloud-invite-icon">${icon("cloud")}</div><div><strong>Finish the recommended phone + Home Assistant setup</strong><span>Add the bridge as its own Weber Cloud companion—no account login or phone secret required.</span></div><button class="button" type="button" data-action="open-cloud-settings">Finish setup</button></aside>`;
   }
 
   function renderHealth(st) {
@@ -646,9 +1225,17 @@
     if (!status) return;
     settingsButton.hidden = !status.paired;
     const globalError = actionError && status.paired ? noticeMarkup(actionError) : "";
-    main.innerHTML = `<section class="shell">${globalError}${renderConnection(status)}${renderProbes(status)}${renderHealth(status)}</section>`;
+    main.innerHTML = `<section class="shell">${globalError}${renderConnection(status)}${renderContext(status)}${renderProbes(status)}${renderCloudInvite(status)}${renderHealth(status)}</section>`;
     main.setAttribute("aria-busy", activeAction ? "true" : "false");
-    pageFooter.innerHTML = `<span>Weber Connect Bridge ${esc(status.version || "")}</span><span>Unofficial integration · Local only</span>`;
+    const headerClass = status.state === "online"
+      ? status.source === "cloud" ? "cloud" : "online"
+      : ["scanning", "pairing", "connecting"].includes(status.state) ? "busy" : status.state === "handoff" ? "handoff" : status.state === "setup" ? "busy" : "offline";
+    const headerLabel = status.state === "online"
+      ? status.source === "cloud" ? "Cloud live" : "Bluetooth live"
+      : status.state === "handoff" ? "Phone session" : status.state === "setup" ? "Setup" : friendlyState(status.state);
+    headerStatus.className = `status-pill ${headerClass}`;
+    headerStatus.textContent = headerLabel;
+    pageFooter.innerHTML = `<span>Weber Connect Bridge ${esc(status.version || "")}</span><span>Unofficial · Read-only · <a href="https://github.com/ProspectOre/weber-connect-home-assistant-addon/wiki" target="_blank" rel="noreferrer">Help</a></span>`;
     bindMainActions();
     renderSettings();
   }
@@ -658,13 +1245,20 @@
       button.addEventListener("click", () => {
         const action = button.dataset.action;
         if (action === "open-handoff") openDialog("handoff");
+        else if (action === "edit-probe") openNickname(Number(button.dataset.probeNumber));
+        else if (action === "open-cloud-settings") {
+          openDialog("settings");
+          window.setTimeout(() => document.getElementById("cloud-field").scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+        }
         else if (action === "scan") act("scan");
-        else if (action === "pair") act("pair", {});
+        else if (action === "pair-phone") act("pair", { phone_coexistence: true });
+        else if (action === "pair-local") act("pair", { phone_coexistence: false });
+        else if (action === "pair") act("pair", { phone_coexistence: true });
         else if (action === "resume") act("resume");
       });
     });
     main.querySelectorAll("[data-address]").forEach((button) => {
-      button.addEventListener("click", () => act("pair", { address: button.dataset.address }));
+      button.addEventListener("click", () => act("pair", { address: button.dataset.address, phone_coexistence: true }));
     });
   }
 
@@ -678,8 +1272,33 @@
       if (path === "forget") closeDialog("settings");
       if (path === "handoff") closeDialog("handoff");
       await refresh(true);
+      const successMessages = {
+        settings: "Bridge preference saved.",
+        resume: "Bluetooth reconnect requested.",
+        handoff: "Bluetooth released for the Weber app.",
+        forget: "Hub removed from this bridge.",
+      };
+      const cloudMessages = {
+        pair: "Cloud companion pairing started.",
+        test: "Cloud access verified.",
+        enable: "Cloud coexistence enabled.",
+        disable: "Cloud coexistence disabled.",
+        remove: "Local cloud credentials removed.",
+        save: "Companion credentials saved and tested.",
+        associate: "Cloud association verified.",
+      };
+      const message = path === "cloud"
+        ? cloudMessages[body.action]
+        : path === "settings" && body.probe_names
+          ? `Probe ${nicknameNumber} nickname saved.`
+          : successMessages[path];
+      if (message) { toast(message); announce(message); }
+      return true;
     } catch (error) {
       actionError = error instanceof Error ? error.message : "The request failed.";
+      toast(actionError, "error");
+      announce(actionError);
+      return false;
     } finally {
       activeAction = null;
       render();
@@ -717,10 +1336,71 @@
     const settings = status.settings || {};
     renderSegment("poll-options", POLL_CHOICES, settings.poll_seconds, (value) => act("settings", { poll_seconds: value }));
     renderSegment("handoff-options", HANDOFF_CHOICES, settings.handoff_minutes, (value) => act("settings", { handoff_minutes: value }));
-    const minutes = settings.handoff_minutes;
-    document.getElementById("handoff-duration").textContent = minutes
-      ? `Reconnects automatically after ${minutes} minute${minutes === 1 ? "" : "s"}`
+    if (handoffBackdrop.hidden) handoffSelection = Number(settings.handoff_minutes) || 0;
+    renderSegment("handoff-dialog-options", HANDOFF_CHOICES, handoffSelection, (value) => {
+      handoffSelection = value;
+      renderSettings();
+    });
+    document.getElementById("handoff-duration").textContent = handoffSelection
+      ? `Reconnects automatically after ${handoffSelection} minute${handoffSelection === 1 ? "" : "s"}`
       : "Stays released until you reconnect";
+    const cloudReady = status.cloud?.configured && status.cloud?.enabled && ["ready", "online", "idle"].includes(status.cloud?.state);
+    document.getElementById("handoff-cloud-route").textContent = cloudReady ? "Continues through cloud" : "Pauses until reconnect";
+    renderCloud();
+  }
+
+  function renderCloud() {
+    const cloud = status.cloud || { configured: false, enabled: false, state: "unconfigured" };
+    const statusElement = document.getElementById("cloud-status");
+    const actions = document.getElementById("cloud-actions");
+    const verification = document.getElementById("cloud-verification");
+    const manual = document.getElementById("cloud-manual");
+    const createConfirm = document.getElementById("cloud-create-confirm");
+    const stateLabels = {
+      unconfigured: "Not configured",
+      pairing: "Pairing companion with your hub",
+      disabled: "Configured but disabled",
+      ready: "Ready for phone coexistence",
+      online: "Home Assistant is live through cloud",
+      idle: "No active cloud cook",
+      error: "Cloud unavailable",
+    };
+    const detail = cloud.error
+      ? cloud.error
+      : cloud.configured
+        ? `${cloud.identity_source === "bridge" ? "Bridge identity" : "Existing companion"} · ID ending ${cloud.device_id_suffix || ""}`
+        : "No personal cloud credentials are stored.";
+    statusElement.innerHTML = `<strong>${esc(stateLabels[cloud.state] || cloud.state)}</strong><span>${esc(detail)}</span>`;
+    if (!cloud.configured) {
+      const pairing = cloud.state === "pairing";
+      actions.innerHTML = `<button class="button neutral" id="cloud-create" type="button" ${activeAction || pairing ? "disabled" : ""}>${pairing ? "Pairing in progress…" : "Set up phone coexistence"}</button>${pairing ? `<div class="cloud-progress" aria-label="Cloud pairing progress"><div class="progress-row done"><span class="progress-dot">1</span><span>Companion registered</span></div><div class="progress-row current"><span class="progress-dot">2</span><span>Confirm on the hub when it beeps</span></div><div class="progress-row"><span class="progress-dot">3</span><span>Weber Cloud association (up to five minutes)</span></div></div>` : ""}`;
+      verification.hidden = true;
+      manual.hidden = false;
+      if (pairing) createConfirm.hidden = true;
+      document.getElementById("cloud-create").addEventListener("click", () => {
+        createConfirm.hidden = false;
+        document.getElementById("confirm-cloud-create").focus();
+      });
+      return;
+    }
+    createConfirm.hidden = true;
+    actions.innerHTML = `
+      <button class="button neutral" data-cloud-action="${cloud.enabled ? "disable" : "enable"}" type="button" ${activeAction ? "disabled" : ""}>${cloud.enabled ? "Disable" : "Enable"}</button>
+      <button class="button neutral" data-cloud-action="test" type="button" ${activeAction ? "disabled" : ""}>Test</button>
+      <button class="button danger" data-cloud-action="remove" type="button" ${activeAction ? "disabled" : ""}>Remove credentials</button>`;
+    actions.querySelectorAll("[data-cloud-action]").forEach((button) => button.addEventListener("click", () => {
+      const action = button.dataset.cloudAction;
+      if (action === "remove") {
+        actions.innerHTML = `<div class="danger-confirm" style="width:100%;margin:0"><p>Remove locally stored cloud credentials? The server-side Weber companion cannot be revoked by this bridge.</p><div class="danger-actions"><button class="button neutral" id="cancel-cloud-remove" type="button">Cancel</button><button class="button" id="confirm-cloud-remove" type="button">Remove</button></div></div>`;
+        document.getElementById("cancel-cloud-remove").addEventListener("click", renderCloud);
+        document.getElementById("confirm-cloud-remove").addEventListener("click", () => act("cloud", { action: "remove" }));
+        document.getElementById("confirm-cloud-remove").focus();
+      } else {
+        act("cloud", { action });
+      }
+    }));
+    verification.hidden = !(cloud.error || cloud.pairing_verification_code_available);
+    manual.hidden = false;
   }
 
   function renderSegment(id, choices, value, onSelect) {
@@ -729,10 +1409,30 @@
     element.querySelectorAll("button").forEach((button) => button.addEventListener("click", () => onSelect(Number(button.dataset.value))));
   }
 
+  function dialogBackdrop(name) {
+    return name === "settings" ? settingsBackdrop : name === "handoff" ? handoffBackdrop : nicknameBackdrop;
+  }
+
+  function openNickname(number) {
+    nicknameNumber = Math.max(1, Math.min(4, Number(number) || 1));
+    const nickname = status?.settings?.probe_names?.[nicknameNumber] || "";
+    document.getElementById("nickname-title").textContent = `Name Probe ${nicknameNumber}`;
+    document.getElementById("nickname-help").textContent = `Home Assistant will always include “Probe ${nicknameNumber}” beside the nickname.`;
+    document.getElementById("nickname-input").value = nickname;
+    document.getElementById("clear-nickname").hidden = !nickname;
+    openDialog("nickname");
+    window.setTimeout(() => document.getElementById("nickname-input").focus(), 80);
+  }
+
   function openDialog(name) {
-    const backdrop = name === "settings" ? settingsBackdrop : handoffBackdrop;
+    const backdrop = dialogBackdrop(name);
+    if (name === "handoff") {
+      const cloudReady = status?.cloud?.configured && status?.cloud?.enabled && ["ready", "online", "idle"].includes(status?.cloud?.state);
+      handoffSelection = cloudReady ? 0 : Number(status?.settings?.handoff_minutes) || 15;
+    }
     lastFocused = document.activeElement;
     backdrop.hidden = false;
+    if (name === "handoff") renderSettings();
     document.body.style.overflow = "hidden";
     requestAnimationFrame(() => {
       backdrop.classList.add("open");
@@ -741,21 +1441,24 @@
   }
 
   function closeDialog(name) {
-    const backdrop = name === "settings" ? settingsBackdrop : handoffBackdrop;
+    const backdrop = dialogBackdrop(name);
     backdrop.classList.remove("open");
     window.setTimeout(() => { backdrop.hidden = true; }, 190);
     document.body.style.overflow = "";
     if (lastFocused instanceof HTMLElement) lastFocused.focus();
-    if (name === "settings") document.getElementById("forget-confirm").hidden = true;
+    if (name === "settings") {
+      document.getElementById("forget-confirm").hidden = true;
+      document.getElementById("cloud-create-confirm").hidden = true;
+    }
   }
 
   function trapDialog(event, backdrop) {
     if (event.key === "Escape") {
-      closeDialog(backdrop === settingsBackdrop ? "settings" : "handoff");
+      closeDialog(backdrop === settingsBackdrop ? "settings" : backdrop === handoffBackdrop ? "handoff" : "nickname");
       return;
     }
     if (event.key !== "Tab") return;
-    const focusable = [...backdrop.querySelectorAll("button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex='-1'])")];
+    const focusable = [...backdrop.querySelectorAll("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])")];
     if (!focusable.length) return;
     const first = focusable[0], last = focusable[focusable.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
@@ -764,14 +1467,44 @@
 
   settingsButton.addEventListener("click", () => openDialog("settings"));
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.close)));
-  [settingsBackdrop, handoffBackdrop].forEach((backdrop) => {
-    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeDialog(backdrop === settingsBackdrop ? "settings" : "handoff"); });
+  [settingsBackdrop, handoffBackdrop, nicknameBackdrop].forEach((backdrop) => {
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeDialog(backdrop === settingsBackdrop ? "settings" : backdrop === handoffBackdrop ? "handoff" : "nickname"); });
     backdrop.addEventListener("keydown", (event) => trapDialog(event, backdrop));
   });
   document.getElementById("forget-button").addEventListener("click", () => { document.getElementById("forget-confirm").hidden = false; document.getElementById("confirm-forget").focus(); });
   document.getElementById("cancel-forget").addEventListener("click", () => { document.getElementById("forget-confirm").hidden = true; document.getElementById("forget-button").focus(); });
   document.getElementById("confirm-forget").addEventListener("click", () => act("forget"));
-  document.getElementById("confirm-handoff").addEventListener("click", () => act("handoff", {}));
+  document.getElementById("cancel-cloud-create").addEventListener("click", () => { document.getElementById("cloud-create-confirm").hidden = true; document.getElementById("cloud-create")?.focus(); });
+  document.getElementById("confirm-cloud-create").addEventListener("click", () => {
+    document.getElementById("cloud-create-confirm").hidden = true;
+    act("cloud", { action: "pair" });
+  });
+  document.getElementById("confirm-handoff").addEventListener("click", () => act("handoff", { minutes: handoffSelection }));
+  document.getElementById("nickname-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const names = { ...(status?.settings?.probe_names || {}) };
+    const nickname = document.getElementById("nickname-input").value.trim().replace(/\s+/g, " ");
+    if (nickname) names[String(nicknameNumber)] = nickname;
+    else delete names[String(nicknameNumber)];
+    if (await act("settings", { probe_names: names })) closeDialog("nickname");
+  });
+  document.getElementById("clear-nickname").addEventListener("click", () => {
+    document.getElementById("nickname-input").value = "";
+    document.getElementById("nickname-form").requestSubmit();
+  });
+  document.getElementById("cloud-save").addEventListener("click", () => {
+    const password = document.getElementById("cloud-device-password");
+    act("cloud", {
+      action: "save",
+      device_id: document.getElementById("cloud-device-id").value,
+      device_password: password.value,
+      temperature_unit: document.getElementById("cloud-temperature-unit").value,
+    }).finally(() => { password.value = ""; });
+  });
+  document.getElementById("cloud-associate").addEventListener("click", () => {
+    const input = document.getElementById("cloud-verification-code");
+    act("cloud", { action: "associate", verification_code: input.value }).finally(() => { input.value = ""; });
+  });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(true); });
 
   window.setInterval(() => {

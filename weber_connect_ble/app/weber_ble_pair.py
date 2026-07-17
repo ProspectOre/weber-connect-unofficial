@@ -49,17 +49,14 @@ def normalize_hex(value: str, expected_bytes: int, label: str) -> str:
 
 
 def generate_companion_keypair() -> tuple[str, str]:
-    """Generate a NIST P-256 keypair; public key is the 64-byte X||Y point."""
-    from cryptography.hazmat.primitives.asymmetric import ec
+    """Generate the opaque 64-byte key material used by Weber's app.
 
-    private_key = ec.generate_private_key(ec.SECP256R1())
-    numbers = private_key.private_numbers()
-    private_hex = numbers.private_value.to_bytes(32, "big").hex()
-    public = numbers.public_numbers
-    public_hex = (
-        public.x.to_bytes(32, "big") + public.y.to_bytes(32, "big")
-    ).hex()
-    return private_hex, public_hex
+    The Android SDK's ``DefaultCipher`` fills both fields independently with
+    ``SecureRandom`` bytes.  Despite their public/private names, they are not
+    a conventional encoded EC keypair.
+    """
+
+    return secrets.token_hex(64), secrets.token_hex(64)
 
 
 def generate_pairing_keys(display_name: str) -> dict[str, Any]:
@@ -99,8 +96,13 @@ def load_or_create_pairing_keys(
     keys["companion_id"] = normalize_hex(keys["companion_id"], 16, "companion id")
     keys["companion_public_key"] = normalize_hex(keys["companion_public_key"], 64, "companion public key")
     if keys.get("companion_private_key"):
+        private_key = str(keys["companion_private_key"])
+        # Keep accepting 32-byte keys created by older bridge builds; the
+        # private field is never sent during pairing. New identities match the
+        # official app's 64-byte opaque key shape.
+        expected_private_bytes = 64 if len(private_key.replace(":", "").replace("-", "").strip()) == 128 else 32
         keys["companion_private_key"] = normalize_hex(
-            keys["companion_private_key"], 32, "companion private key"
+            private_key, expected_private_bytes, "companion private key"
         )
 
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -135,6 +137,9 @@ def extract_pairing_response(event: dict[str, Any]) -> dict[str, Any] | None:
     parsed = candidate.get("parsed_payload")
     if parsed and parsed.get("kind") == "pairing_response":
         response = dict(parsed)
+        verification_code = envelope.get("verification_code")
+        if isinstance(verification_code, int) and verification_code > 0:
+            response["verification_code"] = verification_code
         response["transport_sequence"] = decoded.get("sequence")
         response["message_version"] = candidate.get("message_version")
         response["source"] = event.get("source")
@@ -357,6 +362,35 @@ async def pair_once(args: argparse.Namespace, keys: dict[str, Any]) -> dict[str,
         if not pairing_seen.is_set():
             LOGGER.warning("No pairing response received within %ss", args.listen_seconds)
 
+        # Pairing stores the companion key, but it does not itself start a
+        # JOSL session.  The official app immediately greets the hub again
+        # with the newly paired identity.  That second greeting is important:
+        # the hub answers it with HANDSHAKE_SUCCESS and derives the same
+        # per-connection secure-session key as the companion.  Keep this on
+        # the pairing connection so a newly paired bridge completes the same
+        # lifecycle as the official app before disconnecting.
+        post_pair_handshake = False
+        latest_pairing = pairing_responses[-1] if pairing_responses else None
+        if latest_pairing and latest_pairing.get("status") == "CONFIRMED":
+            handshake_success.clear()
+            post_pair_nonce = secrets.token_bytes(32)
+            post_pair_frame = build_command_frame(
+                sequence=sequence + 1,
+                message_version=version,
+                type_value=0x70,
+                payload=build_handshake_body(keys["companion_id"], post_pair_nonce),
+            )
+            LOGGER.info("Starting the paired companion session")
+            await write_frame(post_pair_frame)
+            await poll_response(
+                min(args.listen_seconds, 10.0),
+                stop=handshake_success.is_set,
+                interval=0.25,
+            )
+            post_pair_handshake = handshake_success.is_set()
+            if not post_pair_handshake:
+                LOGGER.warning("Hub did not acknowledge the paired companion session")
+
         for uuid in subscribed:
             try:
                 await client.stop_notify(uuid)
@@ -375,6 +409,7 @@ async def pair_once(args: argparse.Namespace, keys: dict[str, Any]) -> dict[str,
             "companion_public_key": keys["companion_public_key"],
             "pairing_response": latest_response,
             "pairing_responses": pairing_responses,
+            "post_pair_handshake": post_pair_handshake,
             "events": events,
         }
         return result

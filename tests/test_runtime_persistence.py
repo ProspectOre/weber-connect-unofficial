@@ -18,6 +18,7 @@ from weber_persistence import read_json, write_json_atomic  # noqa: E402
 from weber_runtime import (  # noqa: E402
     BridgeSettings,
     TaskSupervisor,
+    normalize_probe_names,
     parse_whole_number,
 )
 
@@ -100,6 +101,21 @@ class BridgeSettingsTests(unittest.TestCase):
     def test_updated_rejects_unknown_key(self) -> None:
         with self.assertRaises(ValueError):
             BridgeSettings().updated({"mystery": 1})
+
+    def test_probe_nicknames_are_normalized_and_round_trip(self) -> None:
+        settings = BridgeSettings.from_mapping(
+            {"probe_names": {"1": "  Brisket   Flat  ", "2": ""}}
+        )
+        self.assertEqual(settings.probe_names, {1: "Brisket Flat"})
+        self.assertEqual(settings.as_dict()["probe_names"], {"1": "Brisket Flat"})
+
+    def test_probe_nicknames_are_bounded(self) -> None:
+        with self.assertRaises(ValueError):
+            normalize_probe_names({"5": "Smoker"})
+        with self.assertRaises(ValueError):
+            normalize_probe_names({"1": "x" * 33})
+        with self.assertRaises(ValueError):
+            normalize_probe_names({"1": 123})
 
 
 class TaskSupervisorTests(unittest.TestCase):

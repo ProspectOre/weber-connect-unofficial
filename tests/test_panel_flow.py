@@ -196,6 +196,12 @@ class PanelFlowTests(unittest.IsolatedAsyncioTestCase):
         result = await controller.pair(1234)
         self.assertFalse(result["ok"])
 
+    async def test_pair_rejects_non_boolean_phone_coexistence(self) -> None:
+        controller = self.controller()
+        result = await controller.pair(ADDRESS, phone_coexistence="yes")
+        self.assertFalse(result["ok"])
+        self.assertIn("boolean", result["error"])
+
     async def test_pair_rejects_concurrent_operation(self) -> None:
         controller = self.controller()
         controller.runtime.scanning = True
@@ -439,7 +445,7 @@ class PanelFlowTests(unittest.IsolatedAsyncioTestCase):
         self.data_dir.joinpath("handoff.json").write_text("not json", encoding="utf-8")
         with self.assertLogs("weber_connect_panel", level="WARNING"):
             controller = self.controller()
-        self.assertEqual(controller.settings.poll_seconds, 30)
+        self.assertEqual(controller.settings.poll_seconds, 10)
         await controller.stop()
 
     async def test_load_indefinite_handoff(self) -> None:
