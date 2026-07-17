@@ -11,13 +11,20 @@ profile weber_connect_ble flags=(attach_disconnected,mediate_deleted) {
   signal (receive) set=(kill,term,int,hup,cont),
 
   # S6-Overlay init system from the Home Assistant base image.
-  /init ix,
-  /bin/** ix,
-  /usr/bin/** ix,
-  /usr/local/bin/** ix,
-  /run/{s6,s6-rc*,service}/** ix,
-  /package/** ix,
-  /command/** ix,
+  # S6's /init launcher is interpreted by /bin/sh on current HA base images,
+  # so AppArmor must permit the interpreter to read it as well as execute it.
+  /init rix,
+  /run.sh rix,
+  # S6 launches several interpreted helper scripts from these paths. AppArmor
+  # therefore needs read permission alongside inherited execution permission.
+  /bin/** rix,
+  /usr/bin/** rix,
+  /usr/local/bin/** rix,
+  /run/{s6,s6-rc*,service}/** rix,
+  /package/** rix,
+  /command/** rix,
+  /etc/s6-overlay/ r,
+  /etc/s6-overlay/** rix,
   /etc/services.d/** rwix,
   /etc/cont-init.d/** rwix,
   /etc/cont-finish.d/** rwix,
@@ -25,8 +32,21 @@ profile weber_connect_ble flags=(attach_disconnected,mediate_deleted) {
   /dev/tty rw,
 
   # bashio + the add-on options provided by Supervisor.
-  /usr/lib/bashio/** r,
+  /usr/lib/bashio/** rix,
   /data/options.json r,
+
+  # libc resolver configuration used by curl, bashio, and the Python cloud
+  # client. Keep this read-only and limited to name-service configuration.
+  /etc/host.conf r,
+  /etc/hosts r,
+  /etc/nsswitch.conf r,
+  /etc/resolv.conf r,
+
+  # TLS trust store used by Python's HTTPS client for the opt-in Weber cloud
+  # fallback. Certificates are public and remain read-only.
+  /etc/ssl/cert.pem r,
+  /etc/ssl/certs/ r,
+  /etc/ssl/certs/** r,
 
   # Python runtime and the add-on application code (read/execute only).
   /usr/bin/python3* ix,
@@ -53,8 +73,15 @@ profile weber_connect_ble flags=(attach_disconnected,mediate_deleted) {
        interface=org.freedesktop.DBus,
   /usr/bin/bluetoothctl ix,
 
-  # The ingress HTTP panel listens on the internal port (8099); no extra
-  # network mediation beyond the base abstraction is required.
+  # The ingress HTTP panel, MQTT, and opt-in HTTPS cloud fallback use TCP.
+  # DNS resolution for Supervisor and cloud hostnames requires UDP datagrams;
+  # raw sockets and network-administration capabilities remain forbidden.
+  network unix stream,
   network inet stream,
   network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  # Alpine/musl consults interface and route metadata through NETLINK_ROUTE
+  # while resolving names. This does not permit raw IP packet sockets.
+  network netlink raw,
 }

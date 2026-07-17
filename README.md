@@ -1,83 +1,114 @@
 # Weber Connect Home Assistant Add-ons
 
-Unofficial Home Assistant add-ons for local Weber Connect telemetry.
+Unofficial Home Assistant add-ons for Weber Connect telemetry.
 
-The first add-on in this repository is `weber_connect_ble`, a local BLE bridge
-that reads Weber Connect Hub probe status and publishes the data to Home
-Assistant through MQTT discovery.
+The **Weber Connect BLE Bridge** pairs directly with a Weber Connect Hub,
+publishes four stable probe slots through MQTT discovery, and provides a built-in
+one-screen Home Assistant control center for setup and phone handoff. Probe slots
+can have optional nicknames while always retaining their physical probe number.
+BLE remains the preferred local transport. The recommended first-run setup also
+creates a bridge-owned Weber Cloud companion so telemetry keeps flowing while
+the official Weber app owns Bluetooth.
 
 ## Add-on
 
 | Add-on | Purpose | Status |
 | --- | --- | --- |
-| Weber Connect BLE Bridge | Publishes Weber Connect probe temperature, state, and battery sensors over MQTT | Stable 1.0 release |
+| Weber Connect BLE Bridge | Probe temperature, state, and battery sensors through MQTT discovery | Stable BLE bridge with phone coexistence by default |
 
 ## Install
 
 [![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FProspectOre%2Fweber-connect-home-assistant-addon)
 
-1. Click the button above, or in Home Assistant open **Settings > Apps**,
-   choose **Install app**, then choose **Repositories** from the overflow menu
-   and add:
+1. Click the button above, or open **Settings > Apps**, choose **Install app**,
+   open **Repositories**, and add:
 
    ```text
    https://github.com/ProspectOre/weber-connect-home-assistant-addon
    ```
 
-   On older Home Assistant versions, the same area may be labeled
-   **Settings > Add-ons > Add-on Store** instead of **Apps**.
+   Older Home Assistant versions may label this area **Settings > Add-ons >
+   Add-on Store**.
+2. Install and start **Weber Connect BLE Bridge**.
+3. Open its Web UI and select **Set Up My Hub**.
+4. Press the hub button when it beeps to confirm pairing.
 
-2. Install **Weber Connect BLE Bridge** and start it.
-3. Click **Open Web UI** and tap **Find My Hub**.
-4. When the hub beeps, **press the button on the hub** to confirm pairing.
+The recommended path registers a private bridge companion with Weber Cloud,
+pairs that same identity with the hub, and publishes the probe entities
+automatically. It needs one setup action and one physical confirmation. Users
+who do not want cloud access can select **Local only** instead.
 
-The panel discovers your hub, pairs with it, and starts publishing probe
-sensors automatically. No configuration is required.
+## Use Home Assistant And The Weber App Together
 
-When you need the Weber phone app to connect, tap **Use with Phone** in the
-panel. The add-on releases the hub for the Weber app and reconnects on its own
-when the handoff window ends.
+The hub accepts one active BLE client, so phone coexistence is the default
+onboarding path. It solves that limitation without copying a phone secret or
+asking for a Weber account password. On a fresh installation, select **Set Up
+My Hub**, confirm on the hub, and allow up to five minutes for Weber's backend
+to publish the association. For an older or local-only installation, open
+**Settings > Phone + Home Assistant** and select **Set up phone coexistence**.
+
+The bridge creates and registers its own random companion identity, pairs that
+same identity with the hub over BLE, and stores it privately. This is a
+per-install setup suitable for normal users; it does not depend on Android
+packet capture, certificate interception, phone app storage, or email/password
+login.
+
+During phone handoff, the Weber app can display the hub and start a recipe while
+Home Assistant continues receiving the session's probe telemetry through Weber
+Cloud. Home Assistant currently exposes probe readings and connection state,
+not the recipe title, instructions, or cooking controls.
+
+New installs refresh local probe readings every 10 seconds. During a phone
+handoff, cloud-ready bridges preselect **Until I return** so Home Assistant can
+keep following the cook without an arbitrary reconnect; otherwise the saved
+timed fallback is used.
 
 ## Requirements
 
-- Home Assistant OS, Supervised, or another installation type that supports add-ons.
+- Home Assistant OS, Supervised, or another installation with add-on support.
 - A Bluetooth adapter available to Home Assistant.
-- The MQTT integration and an MQTT broker, such as the Mosquitto broker add-on.
+- The MQTT integration and a broker such as the Mosquitto broker add-on.
+- Internet access for the recommended phone-coexistence path; **Local only**
+  remains available without it.
+
+## Compatibility And Validation
+
+Version 1.2.0 has been physically verified with a Weber Connect Hub, Home
+Assistant Yellow, and the official Weber app on Android. The verified scenario
+includes first-party app handoff, simultaneous Home Assistant cloud telemetry,
+and probe updates from a recipe started in the Weber app. The release is also
+covered by 302 automated tests with a 95% branch-coverage gate.
+
+That is the project's current test matrix, not a claim that every Weber model,
+firmware version, Home Assistant host, Bluetooth adapter, or region has been
+certified. The BLE protocol and Weber's private cloud API may vary. If another
+combination behaves differently, please open an issue or pull request and
+include the non-sensitive environment details listed in
+[CONTRIBUTING.md](CONTRIBUTING.md). Community compatibility reports are how the
+documented matrix will grow.
 
 ## Privacy And Scope
 
-This bridge talks to the hub locally over BLE and publishes only local telemetry
-to MQTT. It does not use Weber cloud credentials, does not send data to a
-third-party service, and does not issue control commands to the grill.
+BLE readings stay local between Home Assistant and the hub. The recommended
+phone-coexistence setup also uses Weber's private, undocumented API; **Local
+only** is available during onboarding. The cloud path sends companion
+authentication and cook-history requests but never configures Wi-Fi, starts a
+cook, changes a target, or controls a grill.
 
-Private pairing summaries, pairing keys, app captures, MQTT passwords, and
-runtime JSON output are intentionally excluded from this repository.
+Pairing keys, cloud device passwords and tokens, MQTT passwords, app captures,
+and runtime JSON are private runtime data and are excluded from the repository.
 
-## Supported Versions
+## Support
 
-- Home Assistant OS and Supervised installations, where add-ons are managed by
-  the Supervisor.
-- Tested against the Home Assistant releases current at each add-on release. No
-  specific minimum release is claimed beyond Supervisor add-on support.
-
-## Upgrade Policy
-
-- Releases are versioned and delivered through the Home Assistant add-on store.
-- Each release records user-visible changes in
-  [weber_connect_ble/CHANGELOG.md](weber_connect_ble/CHANGELOG.md).
-- No breaking changes are introduced within a minor release line.
-
-## Support Boundaries
-
-This is an unofficial project and is not affiliated with, endorsed by, or
-supported by Weber. It is provided under the terms of its license with no
-warranty. Report issues through this repository's tracker; see
-[SECURITY.md](SECURITY.md) for security reporting.
+This project is not affiliated with, endorsed by, or supported by Weber. The
+private cloud API can change without notice. Report bugs through the repository
+issue tracker and security problems through GitHub's private vulnerability
+reporting flow.
 
 ## Documentation
 
-See [weber_connect_ble/DOCS.md](weber_connect_ble/DOCS.md) for setup,
-configuration, troubleshooting, and release notes.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for runtime boundaries, lifecycle
-invariants, persistence guarantees, and verification gates.
+- [Full setup and troubleshooting](weber_connect_ble/DOCS.md)
+- [Architecture](ARCHITECTURE.md)
+- [Security policy](SECURITY.md)
+- [Changelog](weber_connect_ble/CHANGELOG.md)
+- [GitHub wiki](https://github.com/ProspectOre/weber-connect-home-assistant-addon/wiki)

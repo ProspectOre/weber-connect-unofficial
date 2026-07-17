@@ -2,139 +2,219 @@
 
 ## What It Does
 
-This add-on reads Weber Connect Hub probe status locally over Bluetooth Low
-Energy and publishes the result to Home Assistant through MQTT discovery.
-Everything is managed from the add-on's built-in web panel.
+The add-on reads a Weber Connect Hub over Bluetooth Low Energy and publishes
+four stable probe slots to Home Assistant through MQTT discovery. Everything is
+managed from its built-in Home Assistant panel.
 
-It is intentionally read-only. It does not start cooks, change setpoints,
-modify timers, configure Wi-Fi, or use Weber cloud credentials.
+The control center is designed to keep connection source, all four probe slots,
+and Home Assistant publishing health visible on one screen.
+
+BLE is always preferred. Recommended onboarding also configures Weber Cloud so
+the official Weber app can own the hub's single BLE connection while Home
+Assistant continues reading probe telemetry. The bridge creates its own Weber
+companion identity; users do not need to reveal a Weber account password or
+extract a secret from a phone. A **Local only** setup remains available.
+
+The integration is read-only. It does not start recipes, change targets or
+timers, configure Wi-Fi, or control a grill.
 
 ## Requirements
 
-- Home Assistant with add-on support.
-- A working Bluetooth adapter on the Home Assistant host.
-- MQTT broker access. The Mosquitto broker add-on is the easiest path.
-- MQTT integration enabled in Home Assistant.
+- Home Assistant OS, Supervised, or another installation with add-on support.
+- A working Bluetooth adapter available to the Home Assistant host.
+- The MQTT integration and a broker. The Mosquitto broker add-on is the easiest
+  option and is discovered automatically.
+- Internet access for the recommended phone-coexistence setup; **Local only**
+  works without it.
 
-## Setup
+## Verified Compatibility
 
-1. Install the add-on and start it.
-2. Click **Open Web UI**.
-3. Power on the Weber hub, keep it near the Home Assistant Bluetooth adapter,
-   and tap **Find My Hub**.
-4. When the hub beeps, **press the button on the hub** to confirm pairing —
-   the same confirmation the Weber phone app asks for.
-5. The panel finishes pairing and starts publishing probe sensors
-   automatically.
+The 1.2.0 physical test matrix is intentionally specific:
 
-That's the whole setup. There is no required configuration.
+| Component | Verified setup |
+| --- | --- |
+| Hub | Weber Connect Hub |
+| Home Assistant host | Home Assistant Yellow |
+| Phone client | Official Weber app on Android |
+| Local transport | Bluetooth Low Energy through host BlueZ/D-Bus |
+| Shared-use path | Official app owns BLE while Home Assistant receives Weber Cloud probe snapshots |
+| Cook scenario | Probe telemetry from a recipe started in the official app |
 
-## The Panel
+The release also passes 302 deterministic tests, strict type checking, linting,
+release validation, and a 95% branch-coverage gate. Automated tests exercise
+pairing, cloud registration and authentication, appliance association,
+pagination, handoff, MQTT discovery, persistence, malformed input, stale data,
+and the panel contracts.
 
-The web panel always shows the current connection state and what to do next:
+This matrix describes what maintainers tested; it is not a universal
+certification. Other hub models, firmware versions, Home Assistant hosts,
+Bluetooth adapters, app versions, accounts, and regions may behave differently,
+especially because Weber's cloud API is private and undocumented. Successful
+and unsuccessful compatibility reports are welcome. See
+[CONTRIBUTING.md](../CONTRIBUTING.md) for the safe details to include and how to
+submit a fix.
+
+## Recommended First Run
+
+1. Add this repository to the Home Assistant app/add-on store.
+2. Install and start **Weber Connect BLE Bridge**.
+3. Open its Web UI.
+4. Power on the Weber hub, keep it near the Home Assistant Bluetooth adapter,
+   and select **Set Up My Hub**.
+5. When the hub beeps, press its physical button to confirm pairing.
+6. Keep the hub powered and online while Weber publishes the private companion
+   association. This can take up to five minutes.
+7. Wait for **Connected**. MQTT discovery creates the probe entities
+   automatically, and phone coexistence is ready.
+
+This single flow registers the bridge companion before BLE pairing and uses the
+same identity for both local and cloud access. No identifiers, YAML, Weber
+login, or second pairing pass are required. Select **Local only** on the first
+screen if the user explicitly does not want the cloud route.
+
+## Panel States
 
 | State | Meaning |
 | --- | --- |
-| Connected | Telemetry is flowing; probe cards show live readings. |
-| Free for the Weber app | The hub is released for your phone; a countdown shows when the bridge reconnects. |
-| Hub unreachable | The hub is off, asleep, or out of range. The bridge retries automatically. |
+| Connected | A current BLE or cloud read succeeded. |
+| Monitoring through cloud | The official app can own BLE while new cloud snapshots reach Home Assistant. |
+| Free for the Weber app | Bluetooth has been released for a timed or indefinite phone handoff. |
+| Hub unreachable | The hub is off, asleep, out of range, or busy; retry is automatic. |
+| Pairing | The bridge is waiting for the hub exchange and, when required, physical confirmation. |
 
-When a live read fails, the panel labels retained values as **Last known
-reading**. MQTT receives an explicit disconnected state with empty probe
-values, so stale telemetry is never presented as current automation data.
+The panel labels retained values **Last known reading** after a failed live
+read. MQTT receives explicit disconnected availability rather than presenting
+stale values as current automation data.
 
-Empty probe slots report a `No probe` state and a `null` temperature. The four
-probe slots are fixed and always publish, so Home Assistant entities remain
-stable as physical probes are inserted and removed.
+The hub has four fixed probe slots. Empty slots remain present with `No probe`
+state and a `null` temperature so Home Assistant entity IDs do not churn.
+Each slot can also have an optional nickname. The panel and MQTT discovery keep
+the physical identity in the displayed name—for example,
+`Brisket · Probe 1 Temperature`—so a nickname never hides the probe number.
 
-From the panel you can also:
+## Pair With Weber Cloud
 
-- **Use with Phone** — releases the hub so the Weber app can find and use it.
-  The bridge reconnects automatically when the handoff window ends, or
-  immediately when you tap **Reconnect Now**.
-- **Settings** (gear icon) — update interval, phone handoff duration, and
-  **Forget This Hub**.
+Phone coexistence uses Weber's private, undocumented `walker-cloud` service and
+may stop working if Weber changes that service. It is the recommended setup
+because most users also use the official phone app; local-only pairing remains
+available.
 
-## Using The Weber Phone App
+### Normal setup
 
-The Weber hub accepts only one active BLE connection at a time and does not
-advertise while connected, so the phone app cannot find the hub while the
-add-on holds the connection.
+On a fresh installation, select **Set Up My Hub** on the first screen and press
+the hub button when prompted. The bridge completes local and cloud companion
+pairing together. On an existing local-only installation:
 
-Tap **Use with Phone** in the panel. The add-on disconnects, clears any stale
-Bluetooth connection, and waits. Open the Weber app on your phone; it will
-find the hub normally. When the handoff window ends (15 minutes by default,
-adjustable in Settings), the bridge reconnects automatically.
+1. Open the panel's **Settings**.
+2. Under **Phone + Home Assistant**, select **Set up phone coexistence**.
+3. If the hub prompts, press its physical button.
+4. Keep the hub powered, online, and near Home Assistant. Weber may take up to
+   five minutes to publish the new association.
+5. When the panel reports that cloud access is ready, select **Test**.
 
-The handoff deadline is stored durably. Restarting the add-on does not take
-the hub back from the phone early; an indefinite handoff remains paused until
-you select **Reconnect Now**.
+This flow is per installation and does not use the user's personal Weber login.
+It performs the same companion-level operations needed by a normal client:
 
-Stopping the add-on also releases the hub cleanly.
+1. Generate a fresh companion ID, device password, and companion keys.
+2. Register that identity with Weber Cloud before BLE pairing.
+3. Present the same ID during BLE pairing and complete the paired companion
+   handshake.
+4. Wait for Weber Cloud to associate that companion with the hub.
+5. Verify that the identity can read the specific appliance, not merely obtain
+   an authentication token.
 
-## Configuration Options
+The generated password is never displayed or returned by the status API. The
+identity is stored in `/data/weber-connect-bridge/cloud_credentials.json` with
+mode `0600`.
 
-Only two options exist; most installs never need to touch them.
+### Advanced recovery fields
+
+**Use existing companion credentials** is for advanced recovery and research.
+It accepts an existing companion/App Identifier and its matching device
+password. The password is not the user's Weber account password and is normally
+not visible in the official app.
+
+The provisioning verification-code field is retained for legacy/manual
+association flows. It is not part of the normal bridge-owned companion setup.
+Do not reset or reconfigure hub Wi-Fi merely to obtain a code unless a specific
+legacy device requires that recovery path.
+
+**Remove Credentials** deletes the local identity. It cannot remove a companion
+record already held by Weber because this private flow has no supported remote
+revocation endpoint.
+
+## Use The Official Weber App At The Same Time
+
+The hub accepts only one active BLE client and normally stops advertising while
+connected. Without cloud support, Home Assistant and the official app therefore
+take turns.
+
+1. Configure and test cloud support.
+2. Select **Use with Phone** in the panel.
+3. Choose a phone-session duration and select **Release Bluetooth**.
+4. Open the Weber app and connect to the hub.
+
+The app then owns Bluetooth while Home Assistant polls Weber Cloud. When cloud
+coexistence is ready, **Until I return** is preselected because telemetry can
+continue without an arbitrary BLE reconnect. If cloud is unavailable, the panel
+preselects the saved timed fallback (15 minutes on a fresh install). Users can
+choose 15 minutes, 30 minutes, one hour, or **Until I return** every time. The
+saved fallback is not rewritten by the adaptive recommendation.
+
+Handoff state survives add-on restarts. Stopping the add-on also releases its
+BLE connection cleanly.
+
+## Recipes And Cooking Data
+
+Starting a recipe in the official app works during cloud handoff. The hub
+continues uploading the cook session, and Home Assistant receives the new probe
+snapshots while the phone remains connected.
+
+Current Home Assistant entities expose:
+
+- Probe temperature
+- Probe connection/state
+- Probe battery when available
+- Bridge/cloud connectivity and source metadata
+
+The bridge does not currently expose the recipe name, recipe instructions,
+doneness selection, target changes, or timers as controllable Home Assistant
+entities. It never sends recipe or grill-control commands.
+
+Weber cloud temperatures are encoded in tenths of a degree Celsius. The bridge
+normalizes them and publishes correct Fahrenheit and Celsius values. Existing
+bridge-generated cloud identities created with the older Fahrenheit assumption
+are migrated automatically.
+
+## Configuration
+
+Most settings live in the panel. Only two Supervisor options are exposed:
 
 | Option | Default | Description |
 | --- | ---: | --- |
 | `log_level` | `info` | Add-on log verbosity. |
-| `mqtt` | empty | External MQTT broker settings. Leave blank to use the Mosquitto add-on service automatically. |
+| `mqtt` | empty | External MQTT broker settings; leave blank for automatic Mosquitto service discovery. |
 
-If the Mosquitto broker add-on is installed, MQTT requires no configuration at
-all. The panel footer shows whether publishing to Home Assistant is working.
+Panel settings include read interval, phone handoff duration, probe nicknames,
+cloud pairing, cloud test/disable/removal, and **Forget This Hub**. New installs
+use the **Live · 10 sec** local read interval. Existing installations retain a
+previously saved interval until the user changes it.
 
 ## Home Assistant Entities
 
-The add-on publishes a single **Weber Connect Hub** MQTT device with, per
-probe slot:
+The add-on publishes one **Weber Connect Hub** MQTT device with these entities
+for each of four probe slots:
 
-| Entity Type | Example Name |
+| Entity Type | Example |
 | --- | --- |
 | Temperature sensor | `Probe 1 Temperature` |
 | State sensor | `Probe 1 State` |
 | Battery sensor | `Probe 1 Battery` |
 
-## Troubleshooting
-
-If **Find My Hub** finds nothing:
-
-1. Make sure the hub is powered on and awake (press a button on it).
-2. Move the hub closer to the Home Assistant Bluetooth adapter.
-3. Make sure the Weber phone app is fully closed — if the phone is connected,
-   the hub does not advertise.
-4. Tap **Scan Again**.
-
-If pairing fails:
-
-1. Press the button on the hub when it beeps — pairing is not confirmed
-   until the button is pressed.
-2. Wake the hub and keep it close, then try again. Pairing can take up to a
-   minute and a half.
-3. If the hub declines pairing, power-cycle the hub and retry.
-4. Make sure no phone or tablet with the Weber app is connected to the hub;
-   it only serves one Bluetooth connection at a time.
-
-If no entities appear in Home Assistant:
-
-1. Check the panel footer — it shows MQTT publishing status and errors.
-2. Confirm the MQTT integration is enabled in Home Assistant.
-3. Restart Home Assistant or reload MQTT entities if discovery was just
-   enabled.
-
-If the panel shows **Hub unreachable**:
-
-1. Confirm the hub is powered and in range.
-2. The bridge retries automatically at the configured interval.
-3. If your phone's Weber app is connected to the hub, the bridge cannot reach
-   it — close the app or wait for it to disconnect.
-
-If probe values are unavailable:
-
-1. Make sure probes are inserted and visible on the hub.
-2. Wait one or two update cycles after inserting a probe.
-
-## MQTT Topics
+With the optional nickname `Brisket`, these become
+`Brisket · Probe 1 Temperature`, `Brisket · Probe 1 State`, and
+`Brisket · Probe 1 Battery`. MQTT unique IDs stay unchanged, so renaming does
+not create a new entity.
 
 Default state topic:
 
@@ -142,7 +222,7 @@ Default state topic:
 weber_connect/{device_id}/state
 ```
 
-Default discovery topics:
+Example discovery topics:
 
 ```text
 homeassistant/sensor/{device_id}_probe_1_temperature/config
@@ -150,25 +230,79 @@ homeassistant/sensor/{device_id}_probe_1_state/config
 homeassistant/sensor/{device_id}_probe_1_battery/config
 ```
 
-## Security Notes
+## Troubleshooting
 
-- The panel is reachable only through Home Assistant ingress; no extra port is
+### Set Up My Hub finds nothing
+
+1. Power on and wake the hub.
+2. Move it closer to Home Assistant's Bluetooth adapter.
+3. Fully close the Weber app; a connected hub does not advertise.
+4. Select **Scan Again**.
+
+### Pairing fails
+
+1. Press the physical hub button when it beeps.
+2. Keep the hub awake and nearby; BLE confirmation can take up to 90 seconds.
+3. Ensure no phone or tablet is connected.
+4. Power-cycle the hub and retry after a decline or timeout.
+
+### No Home Assistant entities appear
+
+1. Check the panel footer for MQTT publishing status.
+2. Confirm the MQTT integration and broker are running.
+3. Reload MQTT entities or restart Home Assistant if discovery was only just
+   enabled.
+
+### Cloud pairing appears stuck
+
+1. Allow the full five-minute association window.
+2. Keep the hub powered and connected to its already-configured Wi-Fi.
+3. Confirm the physical pairing prompt if the hub displays one.
+4. Select **Test** after setup completes.
+5. If authentication works but appliance access is denied, remove the failed
+   identity and repeat **Pair with Weber Cloud** while the hub is online.
+
+### Cloud is ready but no current reading appears
+
+1. Confirm the official app itself displays a current probe temperature.
+2. Start or resume a cook/recipe so the hub publishes current snapshots.
+3. Allow one or two configured poll intervals.
+4. Cloud is reported idle when no active snapshot arrives beyond the stale-data
+   grace window.
+
+### The phone cannot connect
+
+1. Select **Use with Phone**, then confirm **Release Hub**.
+2. Wait for **Free for the Weber app** before opening the official app.
+3. If needed, force-close and reopen the Weber app after the release.
+
+## Security And Privacy
+
+- The panel is reachable through Home Assistant ingress; no host port is
   exposed.
-- The add-on stores MQTT credentials and pairing material in
-  `/data/weber-connect-bridge` with mode `0600`.
-- The add-on logs the BLE address and MQTT host, but not MQTT passwords.
-- Do not attach private pairing exports or Android app data to public issues.
-- This project is unofficial and is not affiliated with Weber.
+- Pairing keys, cloud credentials, handoff state, runtime status, and MQTT
+  credentials are stored privately under `/data/weber-connect-bridge`.
+- Passwords and bearer tokens are excluded from logs and public status data.
+- Cloud support does not capture the official app, intercept TLS, or require a
+  personal Weber login.
+- Enabling cloud sends authentication and cook-history requests to Weber's
+  service. Leaving it disabled keeps the bridge BLE/MQTT-only.
+- Do not attach private captures, pairing exports, phone app data, or runtime
+  credential files to public issues.
 
 ## Privileges
 
-The add-on requests the minimum privileges required to reach a local Bluetooth
-adapter through Supervisor.
-
-| Privilege | Requested | Rationale |
+| Privilege | Requested | Reason |
 | --- | --- | --- |
 | `host_dbus` | Yes | BlueZ access over the host D-Bus system bus. |
-| `NET_ADMIN` | No | Not required; the add-on does not manage network interfaces. |
-| `NET_RAW` | No | Not required; the add-on does not use raw sockets. |
-| `udev` | No | Not required; device access is mediated through BlueZ. |
-| AppArmor profile | Yes | Confines the add-on runtime to its expected file and system access. |
+| `NET_ADMIN` | No | The add-on does not manage network interfaces. |
+| `NET_RAW` | No | The add-on does not use raw sockets. |
+| `udev` | No | BlueZ mediates hardware access. |
+| AppArmor profile | Yes | Restricts runtime file, D-Bus, network, and process access. |
+
+## Support Boundary
+
+This project is unofficial and is not affiliated with Weber. BLE firmware and
+the private cloud API may vary by hub model or change without notice. Include
+the add-on version, Home Assistant version, hub model, and redacted logs when
+reporting a problem.

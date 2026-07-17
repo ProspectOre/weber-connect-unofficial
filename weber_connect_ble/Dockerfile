@@ -1,12 +1,14 @@
-# Base image pinned by digest for supply-chain integrity. Digests are
-# per-architecture, so CI/publish supply the digest matching BUILD_ARCH via the
-# BASE_DIGEST build arg. The 3.21 tag (Alpine 3.21) is retained for readability;
-# the digest is what actually gets resolved. Refresh both when bumping the base:
+# Base images are pinned by their per-architecture digests for supply-chain
+# integrity. Selecting a named stage keeps local Supervisor rebuilds pinned too;
+# Supervisor supplies BUILD_ARCH but does not supply a BASE_DIGEST build arg.
+# Refresh both when bumping the Alpine 3.21 base:
 #   amd64-base:3.21   sha256:995fc8a44059b3bac015603f63b56b1bf935c2227c5176823d9bb76b45fc2249
 #   aarch64-base:3.21 sha256:5100b3a2e4741440e7bd587c124920fa3bf02287c4de3cb48aacef7049530ee1
 ARG BUILD_ARCH=amd64
-ARG BASE_DIGEST=sha256:995fc8a44059b3bac015603f63b56b1bf935c2227c5176823d9bb76b45fc2249
-FROM ghcr.io/home-assistant/${BUILD_ARCH}-base:3.21@${BASE_DIGEST}
+FROM --platform=linux/amd64 ghcr.io/home-assistant/amd64-base:3.21@sha256:995fc8a44059b3bac015603f63b56b1bf935c2227c5176823d9bb76b45fc2249 AS base-amd64
+FROM --platform=linux/arm64 ghcr.io/home-assistant/aarch64-base:3.21@sha256:5100b3a2e4741440e7bd587c124920fa3bf02287c4de3cb48aacef7049530ee1 AS base-aarch64
+
+FROM base-${BUILD_ARCH}
 
 ARG BUILD_ARCH=amd64
 ARG BUILD_VERSION=dev
@@ -28,6 +30,7 @@ COPY app/requirements.txt /tmp/requirements.txt
 RUN apk add --no-cache \
         bash \
         bluez \
+        ca-certificates \
         dbus \
         python3 \
         py3-pip \
@@ -38,6 +41,7 @@ RUN apk add --no-cache \
     && apk del .build-deps
 
 COPY app /app
+COPY --chmod=0644 icon.png logo.png /app/static/
 COPY run.sh /run.sh
 
 RUN chmod a+x /run.sh

@@ -1,9 +1,9 @@
 name: Weber Connect BLE Bridge
 slug: weber_connect_ble
-version: 1.1.0
+version: 1.2.0
 stage: stable
 image: ghcr.io/prospectore/{arch}-addon-weber_connect_ble
-description: Local BLE bridge for Weber Connect probe telemetry in Home Assistant.
+description: BLE-first Weber Connect telemetry with optional bridge-owned cloud pairing for phone handoff.
 url: https://github.com/ProspectOre/weber-connect-home-assistant-addon/tree/main/weber_connect_ble
 arch:
   - aarch64
@@ -12,6 +12,7 @@ startup: services
 boot: auto
 init: false
 host_dbus: true
+hassio_api: true
 watchdog: http://[HOST]:[PORT:8099]/api/health
 services:
   - mqtt:want

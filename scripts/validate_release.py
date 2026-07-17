@@ -116,6 +116,7 @@ def check_required_files() -> None:
         "weber_connect_ble/app/saber_frames.py",
         "weber_connect_ble/app/weber_ble_pair.py",
         "weber_connect_ble/app/weber_ble_scan.py",
+        "weber_connect_ble/app/weber_cloud.py",
         "weber_connect_ble/app/weber_status_bridge.py",
         "weber_connect_ble/app/weber_panel.py",
         "weber_connect_ble/app/weber_http.py",
@@ -221,12 +222,14 @@ def check_artwork() -> None:
 
 def check_dockerfile() -> None:
     dockerfile = (ADDON / "Dockerfile").read_text(encoding="utf-8")
-    if "FROM ghcr.io/home-assistant/${BUILD_ARCH}-base:3.21" not in dockerfile:
-        fail("Dockerfile must select the Home Assistant base image from BUILD_ARCH")
-    if "${BUILD_ARCH}-base:3.21@${BASE_DIGEST}" not in dockerfile:
-        fail("Dockerfile must pin the base image by digest via the BASE_DIGEST build arg")
-    if not re.search(r"^ARG BASE_DIGEST=sha256:[0-9a-f]{64}$", dockerfile, re.MULTILINE):
-        fail("Dockerfile must declare a default BASE_DIGEST pinned to a sha256 digest")
+    for architecture in ("amd64", "aarch64"):
+        if not re.search(
+            rf"home-assistant/{architecture}-base:3\.21@sha256:[0-9a-f]{{64}} AS base-{architecture}",
+            dockerfile,
+        ):
+            fail(f"Dockerfile must pin the {architecture} base image by digest")
+    if "FROM base-${BUILD_ARCH}" not in dockerfile:
+        fail("Dockerfile must select the pinned base stage using BUILD_ARCH")
     if (ADDON / "build.yaml").exists():
         fail("build.yaml is deprecated; base images come from the BUILD_FROM build arg")
     for expected in (
