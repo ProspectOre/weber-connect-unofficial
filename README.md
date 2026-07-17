@@ -5,7 +5,7 @@ Unofficial Home Assistant add-ons for Weber Connect telemetry.
 **Weber Connect for Home Assistant** is an unofficial add-on that pairs directly
 with a Weber Connect Hub, publishes four stable probe slots through MQTT
 discovery, and provides a built-in one-screen Home Assistant control center for
-setup and phone handoff. Probe slots can have optional nicknames while always
+setup and Weber app access. Probe slots can have optional nicknames while always
 retaining their physical probe number.
 BLE remains the preferred local transport. The recommended first-run setup also
 creates a bridge-owned Weber Cloud companion so telemetry keeps flowing while
@@ -15,7 +15,7 @@ the official Weber app owns Bluetooth.
 
 | Add-on | Purpose | Status |
 | --- | --- | --- |
-| Weber Connect for Home Assistant (Unofficial) | Probe temperature, state, and battery sensors through MQTT discovery | Stable BLE-first monitoring with phone coexistence by default |
+| Weber Connect for Home Assistant (Unofficial) | Probe temperature, state, and battery sensors through MQTT discovery | Stable BLE-first monitoring with Weber app access by default |
 
 ## Install
 
@@ -31,8 +31,10 @@ the official Weber app owns Bluetooth.
    Older Home Assistant versions may label this area **Settings > Add-ons >
    Add-on Store**.
 2. Install and start **Weber Connect for Home Assistant (Unofficial)**.
-3. Open its Web UI and select **Set Up My Hub**.
-4. Press the hub button when it beeps to confirm pairing.
+3. Fully close the Weber app on every nearby phone or tablet so it is not
+   connected to the hub over Bluetooth.
+4. Open the add-on Web UI and select **Set Up My Hub**.
+5. Press the hub button when it beeps to confirm pairing.
 
 The recommended path registers a private bridge companion with Weber Cloud,
 pairs that same identity with the hub, and publishes the probe entities
@@ -41,41 +43,41 @@ who do not want cloud access can select **Local only** instead.
 
 ## Use Home Assistant And The Weber App Together
 
-The hub accepts one active BLE client, so phone coexistence is the default
+The hub accepts one active BLE client, so Weber app access is the default
 onboarding path. It solves that limitation without copying a phone secret or
 asking for a Weber account password. On a fresh installation, select **Set Up
 My Hub**, confirm on the hub, and allow up to five minutes for Weber's backend
 to publish the association. For an older or local-only installation, open
-**Settings > Phone + Home Assistant** and select **Set up phone coexistence**.
+**Settings > Weber app + Home Assistant** and select **Set up Weber app access**.
 
 The bridge creates and registers its own random companion identity, pairs that
 same identity with the hub over BLE, and stores it privately for that add-on
 installation. Setup does not depend on Android packet capture, certificate
 interception, phone app storage, or email/password login.
 
-During phone handoff, the Weber app can display the hub and start a recipe while
-Home Assistant continues receiving the session's probe telemetry through Weber
+While the Weber app is using Bluetooth, it can display the hub and start a
+recipe while Home Assistant receives the same probe telemetry through Weber
 Cloud. Home Assistant currently exposes probe readings and connection state,
 not the recipe title, instructions, or cooking controls.
 
-New installs refresh local probe readings every 10 seconds. During a phone
-handoff, cloud-ready bridges preselect **Manual reconnect** so Home Assistant
-can keep following the cook without an arbitrary deadline; otherwise the saved
-timed fallback is used.
+New installs refresh local probe readings every 10 seconds. While the Weber app
+has Bluetooth access, cloud-ready bridges preselect **Manual reconnect** so Home
+Assistant can keep following the cook without an arbitrary deadline; otherwise
+the saved timed fallback is used.
 
 ## Requirements
 
 - Home Assistant OS, Supervised, or another installation with add-on support.
 - A Bluetooth adapter available to Home Assistant.
 - The MQTT integration and a broker such as the Mosquitto broker add-on.
-- Internet access for the recommended phone-coexistence path; **Local only**
+- Internet access for the recommended Weber app access path; **Local only**
   remains available without it.
 
 ## Compatibility And Validation
 
 The 2.0 release has been physically verified with a Weber Connect Hub, Home
 Assistant Yellow, and the official Weber app on Android. The verified scenario
-includes first-party app handoff, simultaneous Home Assistant cloud telemetry,
+includes Weber app access, simultaneous Home Assistant cloud telemetry,
 and probe updates from a recipe started in the Weber app. The release is also
 covered by 302 automated tests with a 95% branch-coverage gate.
 

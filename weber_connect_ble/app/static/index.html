@@ -461,25 +461,6 @@
   .brand-copy h1 { font-size: clamp(22px, 3vw, 29px); }
   .brand-subtitle { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; font-weight: 620; letter-spacing: 0.01em; }
   .header-actions { display: flex; align-items: center; gap: 8px; }
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    min-height: 34px;
-    padding: 0 11px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 720;
-    backdrop-filter: blur(12px);
-  }
-  .status-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--quiet); }
-  .status-pill.online::before { background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
-  .status-pill.cloud::before, .status-pill.handoff::before { background: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
-  .status-pill.busy::before { background: var(--accent); animation: pulse 1.25s ease-in-out infinite; }
-  .status-pill.offline::before { background: var(--red); box-shadow: 0 0 0 4px var(--red-soft); }
 
   .shell { border-radius: 28px; box-shadow: 0 24px 80px rgba(20, 24, 28, 0.09), 0 2px 12px rgba(20, 24, 28, 0.04); }
   .connection {
@@ -655,7 +636,6 @@
     .sheet-handle { display: none; }
   }
   @media (max-width: 720px) {
-    .status-pill { display: none; }
     .connection { grid-template-columns: auto 1fr; }
     .connection-actions { grid-column: 1 / -1; width: 100%; min-width: 0; margin-top: 5px; }
     .context-strip { grid-template-columns: 1fr; }
@@ -816,7 +796,6 @@
       <div class="brand-copy"><h1>Weber Connect</h1><span class="brand-subtitle">Unofficial · Home Assistant</span></div>
     </div>
     <div class="header-actions">
-      <span class="status-pill busy" id="header-status">Loading</span>
       <button class="icon-button" id="settings-button" type="button" aria-label="Open settings" aria-haspopup="dialog" aria-controls="settings-dialog" hidden>
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.6 3.4 10 2h4l.4 1.4a2 2 0 0 0 2.6 1.2l1.3-.6 2 3.5-1.1.8a2 2 0 0 0 0 3.3l1.1.8-2 3.5-1.3-.5a2 2 0 0 0-2.6 1.2L14 18h-4l-.4-1.4A2 2 0 0 0 7 15.4l-1.3.5-2-3.5 1.1-.8a2 2 0 0 0 0-3.3l-1.1-.8 2-3.5 1.3.6a2 2 0 0 0 2.6-1.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="1.7"/></svg>
         <span class="settings-label">Settings</span>
@@ -839,7 +818,7 @@
   <section class="sheet" id="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
     <div class="sheet-handle" aria-hidden="true"></div>
     <div class="sheet-header">
-      <div><div class="section-kicker">Unofficial add-on · 2.0</div><h2 class="sheet-title" id="settings-title">Settings</h2><p class="sheet-subtitle">Connection behavior, phone handoff, and cloud coexistence.</p></div>
+      <div><div class="section-kicker">Unofficial add-on · 2.0</div><h2 class="sheet-title" id="settings-title">Settings</h2><p class="sheet-subtitle">Connection behavior, Weber app access, and cloud coexistence.</p></div>
       <button class="icon-button sheet-close" type="button" data-close="settings" aria-label="Close settings">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -857,7 +836,7 @@
     </div>
     <div class="settings-section field" id="cloud-field">
       <div class="section-kicker">Default experience</div>
-      <div class="field-label">Phone + Home Assistant</div>
+      <div class="field-label">Weber app + Home Assistant</div>
       <p class="field-help">Pair a private bridge companion once. The Weber app can then use Bluetooth while Home Assistant follows the same cook through Weber Cloud.</p>
       <div class="cloud-card">
         <div class="cloud-benefit">
@@ -867,7 +846,7 @@
         <div class="cloud-status" id="cloud-status"></div>
         <div class="cloud-actions" id="cloud-actions"></div>
         <div class="cloud-confirm" id="cloud-create-confirm" hidden>
-          <p>Keep the hub awake and nearby. When it beeps, press its physical button. Association can take up to five minutes.</p>
+          <p>Before pairing, fully close the Weber app on every nearby phone or tablet so it is not connected to the hub over Bluetooth. Keep the hub awake and nearby; when it beeps, press its physical button. Association can take up to five minutes.</p>
           <div class="confirm-checks">
             <div class="confirm-check"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 12 4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>The Weber app remains paired</span></div>
             <div class="confirm-check"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 12 4 4 8-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>No personal Weber login is requested</span></div>
@@ -911,13 +890,13 @@
   <section class="sheet" id="handoff-dialog" role="dialog" aria-modal="true" aria-labelledby="handoff-title" tabindex="-1">
     <div class="sheet-handle" aria-hidden="true"></div>
     <div class="sheet-header">
-      <h2 class="sheet-title" id="handoff-title">Use with Phone</h2>
-      <button class="icon-button sheet-close" type="button" data-close="handoff" aria-label="Close phone handoff">
+      <h2 class="sheet-title" id="handoff-title">Use the Weber app</h2>
+      <button class="icon-button sheet-close" type="button" data-close="handoff" aria-label="Close Weber app access">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <p class="handoff-copy">Release the hub’s one Bluetooth connection to the Weber app. Home Assistant can keep following the cook through cloud when coexistence is ready.</p>
-    <div class="handoff-route" aria-label="Phone handoff transport plan">
+    <p class="handoff-copy">Make the hub’s Bluetooth connection available to the Weber app. Home Assistant keeps following the cook through cloud when cloud access is ready.</p>
+    <div class="handoff-route" aria-label="Weber app and Home Assistant connection plan">
       <div class="route-node"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 17h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><strong>Weber app</strong><span>Uses Bluetooth</span></div>
       <div class="route-arrow"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="route-node"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9H7Z" stroke="currentColor" stroke-width="1.8"/></svg><strong>Home Assistant</strong><span id="handoff-cloud-route">Uses cloud when ready</span></div>
@@ -925,7 +904,7 @@
     <div class="handoff-options"><div class="field-label" id="handoff-dialog-label">Bluetooth reconnect</div><div class="segmented" id="handoff-dialog-options" role="group" aria-labelledby="handoff-dialog-label"></div></div>
     <div class="handoff-summary">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v5l3 2m5-2a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <div><strong id="handoff-duration">Reconnects automatically</strong><span>Open the Weber app after the panel says Bluetooth is free.</span></div>
+      <div><strong id="handoff-duration">Reconnects automatically</strong><span>Open the Weber app after the panel says Bluetooth is available.</span></div>
     </div>
     <div class="sheet-actions">
       <button class="button neutral" type="button" data-close="handoff">Cancel</button>
@@ -969,7 +948,6 @@
   const settingsBackdrop = document.getElementById("settings-backdrop");
   const handoffBackdrop = document.getElementById("handoff-backdrop");
   const nicknameBackdrop = document.getElementById("nickname-backdrop");
-  const headerStatus = document.getElementById("header-status");
   const announcer = document.getElementById("announcer");
   const toastStack = document.getElementById("toast-stack");
 
@@ -1083,7 +1061,7 @@
           <div class="connection-eyebrow" style="justify-content:center"><span class="eyebrow">Setup · Choose</span></div>
           <div class="setup-icon">${icon("bluetooth")}</div>
           <h2 class="setup-title">Choose your hub</h2>
-          <p class="setup-copy">Select the nearby hub to connect it with both Home Assistant and the Weber app.</p>
+          <p class="setup-copy">Fully close the Weber app on every nearby phone or tablet, then select the hub. It cannot pair while the app is connected over Bluetooth.</p>
           <div class="candidate-list">${st.candidates.map((candidate) => `<button class="candidate" type="button" data-address="${esc(candidate.address)}" ${activeAction ? "disabled" : ""}>
             <span><span class="candidate-name">${esc(candidate.name || "Weber Connect Hub")}</span><span class="candidate-address">${esc(candidate.address)}</span></span>
             <span class="candidate-signal">${esc(signalLabel(candidate.rssi))}</span>${icon("chevron")}
@@ -1093,10 +1071,10 @@
         </div></div>`;
       }
       return `<div class="connection centered"><div class="setup-panel">
-        <div class="connection-eyebrow" style="justify-content:center"><span class="eyebrow">Recommended setup · Phone + Home Assistant</span></div>
+        <div class="connection-eyebrow" style="justify-content:center"><span class="eyebrow">Recommended setup · Weber app + Home Assistant</span></div>
         <div class="setup-icon">${icon("phone")}</div>
         <h2 class="setup-title">Connect once. Cook anywhere.</h2>
-        <p class="setup-copy">Pair a private bridge companion so Home Assistant can follow every cook while the Weber app stays available. No Weber login or phone secret is required.</p>
+        <p class="setup-copy">Before pairing, fully close the Weber app on every nearby phone or tablet so it is not connected to the hub over Bluetooth. No Weber login or phone secret is required.</p>
         ${noticeMarkup(setupError)}
         <div class="inline-actions"><button class="button neutral" type="button" data-action="pair-local" ${activeAction ? "disabled" : ""}>Local only</button><button class="button" type="button" data-action="pair-phone" ${activeAction ? "disabled" : ""}>${activeAction === "pair" ? "Finding Hub…" : "Set Up My Hub"}</button></div>
       </div></div>`;
@@ -1111,18 +1089,18 @@
           ? "Press the hub button when it beeps. After BLE confirmation, Weber may take up to five minutes to publish cloud access."
           : "When the hub beeps, press its physical button to approve Home Assistant.",
         setupError,
-        cloudPairing ? "Phone + Home Assistant" : "Confirm",
+        cloudPairing ? "Weber app + Home Assistant" : "Confirm",
         cloudPairing,
       );
     }
     if (st.state === "handoff") {
       const sub = countdownEnd
         ? `Reconnects in <span class="countdown" id="countdown">${formatCountdown((countdownEnd - Date.now()) / 1000)}</span>`
-        : "Paused until you reconnect";
+        : "Automatic reconnect is off";
       const cloudLive = st.source === "cloud" && st.readings_stale !== true;
       return `<div class="connection">
         <div class="state-orbit ${cloudLive ? "cloud" : "handoff"}" aria-hidden="true"></div>
-        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Phone session</span><span class="transport-chip ${cloudLive ? "cloud" : ""}">${icon(cloudLive ? "cloud" : "phone")}${cloudLive ? "Cloud telemetry" : "Bluetooth released"}</span></div><h2 class="connection-title ${cloudLive ? "cloud" : "handoff"}">${cloudLive ? "Cooking together" : "Ready for your phone"}</h2><p class="connection-name">${hubName}</p><p class="connection-meta">${sub}</p><p class="connection-detail">${cloudLive ? "The Weber app has Bluetooth while Home Assistant receives the same cook through Weber Cloud." : "Open the Weber app now. Home Assistant will resume Bluetooth when this session ends."}</p></div>
+        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Weber app access</span><span class="transport-chip ${cloudLive ? "cloud" : ""}">${icon(cloudLive ? "cloud" : "phone")}${cloudLive ? "Cloud live" : "Bluetooth available"}</span></div><h2 class="connection-title ${cloudLive ? "cloud" : "handoff"}">${cloudLive ? "Following through cloud" : "Ready for the Weber app"}</h2><p class="connection-name">${hubName}</p><p class="connection-meta">${sub}</p><p class="connection-detail">${cloudLive ? "The Weber app can use Bluetooth while Home Assistant receives the cook through Weber Cloud." : "Open the Weber app to connect. Select Reconnect now when you want Home Assistant to use Bluetooth again."}</p></div>
         <div class="connection-actions">${actionButton("Reconnect now", "resume", "secondary")}</div>
       </div>`;
     }
@@ -1131,7 +1109,7 @@
       return `<div class="connection">
         <div class="state-orbit ${cloudSource ? "cloud" : "online"}" aria-hidden="true"></div>
         <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Live cook</span><span class="transport-chip ${cloudSource ? "cloud" : ""}">${icon(cloudSource ? "cloud" : "bluetooth")}${cloudSource ? "Weber Cloud" : "Local Bluetooth"}</span></div><h2 class="connection-title ${cloudSource ? "cloud" : "online"}">${cloudSource ? "Cloud connected" : "Connected"}</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${cloudSource ? "Home Assistant is receiving current cook snapshots from Weber Cloud." : "Home Assistant has a direct, local connection to your hub."}</p></div>
-        <div class="connection-actions">${actionButton("Use with phone", "open-handoff", "secondary", "phone")}</div>
+        <div class="connection-actions">${actionButton("Use Weber app", "open-handoff", "secondary", "phone")}</div>
       </div>`;
     }
     if (st.state === "connecting") {
@@ -1140,7 +1118,7 @@
     return `<div class="connection">
       <div class="state-orbit offline" aria-hidden="true"></div>
       <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Connection interrupted</span></div><h2 class="connection-title offline">Hub unreachable</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${esc(st.last_error || "The bridge will retry automatically. Make sure the hub is powered on and in range.")}</p></div>
-      <div class="connection-actions">${actionButton("Use with phone", "open-handoff", "secondary", "phone")}</div>
+      <div class="connection-actions">${actionButton("Use Weber app", "open-handoff", "secondary", "phone")}</div>
     </div>`;
   }
 
@@ -1227,14 +1205,6 @@
     const globalError = actionError && status.paired ? noticeMarkup(actionError) : "";
     main.innerHTML = `<section class="shell">${globalError}${renderConnection(status)}${renderContext(status)}${renderProbes(status)}${renderCloudInvite(status)}${renderHealth(status)}</section>`;
     main.setAttribute("aria-busy", activeAction ? "true" : "false");
-    const headerClass = status.state === "online"
-      ? status.source === "cloud" ? "cloud" : "online"
-      : ["scanning", "pairing", "connecting"].includes(status.state) ? "busy" : status.state === "handoff" ? "handoff" : status.state === "setup" ? "busy" : "offline";
-    const headerLabel = status.state === "online"
-      ? status.source === "cloud" ? "Cloud live" : "Bluetooth live"
-      : status.state === "handoff" ? "Phone session" : status.state === "setup" ? "Setup" : friendlyState(status.state);
-    headerStatus.className = `status-pill ${headerClass}`;
-    headerStatus.textContent = headerLabel;
     pageFooter.innerHTML = `<span>Weber Connect for Home Assistant ${esc(status.version || "")}</span><span>Unofficial · Read-only · <a href="https://github.com/ProspectOre/weber-connect-home-assistant-addon/wiki" target="_blank" rel="noreferrer">Help</a></span>`;
     bindMainActions();
     renderSettings();
@@ -1360,7 +1330,7 @@
       unconfigured: "Not configured",
       pairing: "Pairing companion with your hub",
       disabled: "Configured but disabled",
-      ready: "Ready for phone coexistence",
+      ready: "Ready for Weber app access",
       online: "Home Assistant is live through cloud",
       idle: "No active cloud cook",
       error: "Cloud unavailable",
@@ -1373,7 +1343,7 @@
     statusElement.innerHTML = `<strong>${esc(stateLabels[cloud.state] || cloud.state)}</strong><span>${esc(detail)}</span>`;
     if (!cloud.configured) {
       const pairing = cloud.state === "pairing";
-      actions.innerHTML = `<button class="button neutral" id="cloud-create" type="button" ${activeAction || pairing ? "disabled" : ""}>${pairing ? "Pairing in progress…" : "Set up phone coexistence"}</button>${pairing ? `<div class="cloud-progress" aria-label="Cloud pairing progress"><div class="progress-row done"><span class="progress-dot">1</span><span>Companion registered</span></div><div class="progress-row current"><span class="progress-dot">2</span><span>Confirm on the hub when it beeps</span></div><div class="progress-row"><span class="progress-dot">3</span><span>Weber Cloud association (up to five minutes)</span></div></div>` : ""}`;
+      actions.innerHTML = `<button class="button neutral" id="cloud-create" type="button" ${activeAction || pairing ? "disabled" : ""}>${pairing ? "Pairing in progress…" : "Set up Weber app access"}</button>${pairing ? `<div class="cloud-progress" aria-label="Cloud pairing progress"><div class="progress-row done"><span class="progress-dot">1</span><span>Companion registered</span></div><div class="progress-row current"><span class="progress-dot">2</span><span>Confirm on the hub when it beeps</span></div><div class="progress-row"><span class="progress-dot">3</span><span>Weber Cloud association (up to five minutes)</span></div></div>` : ""}`;
       verification.hidden = true;
       manual.hidden = false;
       if (pairing) createConfirm.hidden = true;

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.2 — 2026-07-17
+
+- Made the Bluetooth prerequisite explicit at every pairing entry point: fully
+  close the Weber app on nearby phones and tablets before setup so it releases
+  the hub's single Bluetooth connection.
+- Replaced the internal-sounding **Phone session** interface with direct Weber
+  app and Bluetooth status labels.
+- Removed the duplicate connection-status pill from the header; the primary
+  connection card remains the single status source.
+
 ## 2.0.1 — 2026-07-17
 
 - Replaced the vague **Until I return** phone-session option with **Manual

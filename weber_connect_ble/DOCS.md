@@ -24,7 +24,7 @@ timers, configure Wi-Fi, or control a grill.
 - A working Bluetooth adapter available to the Home Assistant host.
 - The MQTT integration and a broker. The Mosquitto broker add-on is the easiest
   option and is discovered automatically.
-- Internet access for the recommended phone-coexistence setup; **Local only**
+- Internet access for the recommended Weber app access setup; **Local only**
   works without it.
 
 ## Verified Compatibility
@@ -59,13 +59,15 @@ submit a fix.
 1. Add this repository to the Home Assistant app/add-on store.
 2. Install and start **Weber Connect for Home Assistant (Unofficial)**.
 3. Open its Web UI.
-4. Power on the Weber hub, keep it near the Home Assistant Bluetooth adapter,
+4. Fully close the Weber app on every nearby phone or tablet. The hub cannot
+   pair while the app is connected to it over Bluetooth.
+5. Power on the Weber hub, keep it near the Home Assistant Bluetooth adapter,
    and select **Set Up My Hub**.
-5. When the hub beeps, press its physical button to confirm pairing.
-6. Keep the hub powered and online while Weber publishes the private companion
+6. When the hub beeps, press its physical button to confirm pairing.
+7. Keep the hub powered and online while Weber publishes the private companion
    association. This can take up to five minutes.
-7. Wait for **Connected**. MQTT discovery creates the probe entities
-   automatically, and phone coexistence is ready.
+8. Wait for **Connected**. MQTT discovery creates the probe entities
+   automatically, and Weber app access is ready.
 
 This flow registers the bridge companion before BLE pairing and uses the same
 identity for local and cloud access. It does not require identifiers, YAML, a
@@ -78,7 +80,7 @@ BLE/MQTT-only.
 | --- | --- |
 | Connected | A current BLE or cloud read succeeded. |
 | Monitoring through cloud | The official app can own BLE while new cloud snapshots reach Home Assistant. |
-| Free for the Weber app | Bluetooth has been released for a timed or manual-reconnect phone session. |
+| Bluetooth available for Weber app | The bridge released Bluetooth; reconnect is timed or manual. |
 | Hub unreachable | The hub is off, asleep, out of range, or busy; retry is automatic. |
 | Pairing | The bridge is waiting for the hub exchange and, when required, physical confirmation. |
 
@@ -101,16 +103,19 @@ Local-only pairing remains available.
 
 ### Normal setup
 
-On a fresh installation, select **Set Up My Hub** on the first screen and press
-the hub button when prompted. The bridge completes local and cloud companion
-pairing together. On an existing local-only installation:
+On a fresh installation, fully close the Weber app on every nearby phone or
+tablet, select **Set Up My Hub** on the first screen, and press the hub button
+when prompted. The bridge completes local and cloud companion pairing together.
+On an existing local-only installation:
 
-1. Open the panel's **Settings**.
-2. Under **Phone + Home Assistant**, select **Set up phone coexistence**.
-3. If the hub prompts, press its physical button.
-4. Keep the hub powered, online, and near Home Assistant. Weber may take up to
+1. Fully close the Weber app on every nearby phone or tablet so it releases the
+   hub's Bluetooth connection.
+2. Open the panel's **Settings**.
+3. Under **Weber app + Home Assistant**, select **Set up Weber app access**.
+4. If the hub prompts, press its physical button.
+5. Keep the hub powered, online, and near Home Assistant. Weber may take up to
    five minutes to publish the new association.
-5. When the panel reports that cloud access is ready, select **Test**.
+6. When the panel reports that cloud access is ready, select **Test**.
 
 The generated companion belongs to this add-on installation and does not use a
 personal Weber login. Setup performs these companion-level operations:
@@ -150,8 +155,8 @@ connected. Without cloud support, Home Assistant and the official app therefore
 take turns.
 
 1. Configure and test cloud support.
-2. Select **Use with Phone** in the panel.
-3. Choose a phone-session duration and select **Release Bluetooth**.
+2. Select **Use Weber app** in the panel.
+3. Choose when Home Assistant should reconnect and select **Release Bluetooth**.
 4. Open the Weber app and connect to the hub.
 
 The app then owns Bluetooth while Home Assistant polls Weber Cloud. When cloud
@@ -166,9 +171,9 @@ BLE connection cleanly.
 
 ## Recipes And Cooking Data
 
-Starting a recipe in the official app works during cloud handoff. The hub
-continues uploading the cook session, and Home Assistant receives the new probe
-snapshots while the phone remains connected.
+Starting a recipe in the official app works while the app uses Bluetooth. The
+hub continues uploading the cook session, and Home Assistant receives the new
+probe snapshots while the phone remains connected.
 
 Current Home Assistant entities expose:
 
@@ -195,10 +200,10 @@ Most settings live in the panel. Only two Supervisor options are exposed:
 | `log_level` | `info` | Add-on log verbosity. |
 | `mqtt` | empty | External MQTT broker settings; leave blank for automatic Mosquitto service discovery. |
 
-Panel settings include read interval, phone handoff duration, probe nicknames,
-cloud pairing, cloud test/disable/removal, and **Forget This Hub**. New installs
-use the **Live · 10 sec** local read interval. Existing installations retain
-their saved interval until it is changed in the panel.
+Panel settings include read interval, Bluetooth reconnect timing, probe
+nicknames, cloud pairing, cloud test/disable/removal, and **Forget This Hub**.
+New installs use the **Live · 10 sec** local read interval. Existing
+installations retain their saved interval until it is changed in the panel.
 
 ## Home Assistant Entities
 
@@ -243,7 +248,8 @@ homeassistant/sensor/{device_id}_probe_1_battery/config
 
 1. Press the physical hub button when it beeps.
 2. Keep the hub awake and nearby; BLE confirmation can take up to 90 seconds.
-3. Ensure no phone or tablet is connected.
+3. Fully close the Weber app on every nearby phone or tablet so it releases the
+   hub's Bluetooth connection.
 4. Power-cycle the hub and retry after a decline or timeout.
 
 ### No Home Assistant entities appear
@@ -272,8 +278,8 @@ homeassistant/sensor/{device_id}_probe_1_battery/config
 
 ### The phone cannot connect
 
-1. Select **Use with Phone**, then confirm **Release Hub**.
-2. Wait for **Free for the Weber app** before opening the official app.
+1. Select **Use Weber app**, then confirm **Release Bluetooth**.
+2. Wait for **Bluetooth available** before opening the official app.
 3. If needed, force-close and reopen the Weber app after the release.
 
 ## Security And Privacy

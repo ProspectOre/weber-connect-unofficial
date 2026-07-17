@@ -86,14 +86,18 @@ class PanelUiContractTests(unittest.TestCase):
             "Set Up My Hub",
             "Connect once. Cook anywhere.",
             "Local only",
-            "Use with phone",
-            "Phone + Home Assistant",
-            "Set up phone coexistence",
+            "Use Weber app",
+            "Weber app + Home Assistant",
+            "Set up Weber app access",
             "Start pairing",
             "Release Bluetooth",
             "Reconnect now",
             "Manual reconnect",
             "Automatic reconnect is off",
+            "Weber app access",
+            "Bluetooth available",
+            "Before pairing, fully close the Weber app on every nearby phone or tablet",
+            "It cannot pair while the app is connected over Bluetooth",
             "The physical probe number will always remain visible",
             'data-action="edit-probe"',
             'act("pair", { phone_coexistence: true })',
@@ -106,6 +110,10 @@ class PanelUiContractTests(unittest.TestCase):
         self.assertNotIn("window.confirm", self.html)
         self.assertNotIn("window.prompt", self.html)
         self.assertNotIn("Until I return", self.html)
+        self.assertNotIn("Phone session", self.html)
+        self.assertNotIn("Use with phone", self.html)
+        self.assertNotIn('id="header-status"', self.html)
+        self.assertNotIn("status-pill", self.html)
 
     def test_panel_is_self_contained_and_responsive(self) -> None:
         self.assertIn('<link rel="icon" href="icon.png" type="image/png">', self.html)
