@@ -1,6 +1,6 @@
 name: Weber Connect for Home Assistant (Unofficial)
 slug: weber_connect_ble
-version: 2.0.0
+version: 2.0.1
 stage: stable
 image: ghcr.io/prospectore/{arch}-addon-weber_connect_ble
 description: Unofficial BLE-first Weber Connect monitoring with phone and Home Assistant coexistence.

@@ -92,6 +92,8 @@ class PanelUiContractTests(unittest.TestCase):
             "Start pairing",
             "Release Bluetooth",
             "Reconnect now",
+            "Manual reconnect",
+            "Automatic reconnect is off",
             "The physical probe number will always remain visible",
             'data-action="edit-probe"',
             'act("pair", { phone_coexistence: true })',
@@ -103,6 +105,7 @@ class PanelUiContractTests(unittest.TestCase):
             self.assertIn(value, self.html)
         self.assertNotIn("window.confirm", self.html)
         self.assertNotIn("window.prompt", self.html)
+        self.assertNotIn("Until I return", self.html)
 
     def test_panel_is_self_contained_and_responsive(self) -> None:
         self.assertIn('<link rel="icon" href="icon.png" type="image/png">', self.html)

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1 — 2026-07-17
+
+- Replaced the vague **Until I return** phone-session option with **Manual
+  reconnect** and the explicit status **Automatic reconnect is off**. Existing
+  saved handoff settings keep the same behavior.
+- Tightened documentation language to describe behavior directly and removed
+  audience labels and presumptive phrasing.
+
 ## 2.0.0 — 2026-07-17
 
 - Marks the product's move beyond a BLE-only bridge: local BLE remains
@@ -8,7 +16,8 @@
 - Renamed the user-facing add-on to **Weber Connect for Home Assistant
   (Unofficial)** now that it combines local BLE with optional read-only cloud
   telemetry. The internal slug, storage paths, image name, MQTT topics, and
-  entity unique IDs remain unchanged for seamless upgrades.
+  entity unique IDs remain unchanged, so existing installations update in
+  place.
 - Made the unofficial status visible in the add-on store, panel branding, and
   primary documentation rather than relying on a support disclaimer alone.
 
@@ -26,8 +35,9 @@
   retain the existing entity unique IDs.
 - Changed the fresh-install local read interval from 30 seconds to 10 seconds.
   Existing saved preferences remain intact.
-- Made phone handoff adaptive: cloud-ready bridges preselect **Until I return**;
-  bridges without a healthy cloud route use the saved timed fallback.
+- Made phone handoff adaptive: cloud-ready bridges disable automatic reconnect
+  by default; bridges without a healthy cloud route use the saved timed
+  fallback.
 - Added opt-in bridge-owned Weber Cloud pairing without a Weber account login,
   phone secret extraction, TLS interception, or Android packet capture.
 - The bridge now registers a fresh companion before BLE pairing, completes the

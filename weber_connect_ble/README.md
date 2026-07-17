@@ -17,7 +17,7 @@ managed from a built-in web panel.
 - Recommended onboarding creates a bridge-owned Weber Cloud companion so Home
   Assistant can keep reading probe telemetry during phone handoff or a BLE
   outage; **Local only** remains available as a fallback.
-- Cloud-ready phone handoff recommends **Until I return**; without cloud, the
+- Cloud-ready phone handoff recommends **Manual reconnect**; without cloud, the
   saved timed reconnect fallback remains preselected.
 - No Weber email/password login, Android traffic capture, phone secret
   extraction, or provisioning code is required for the normal companion-pairing

@@ -49,10 +49,9 @@ to publish the association. For an older or local-only installation, open
 **Settings > Phone + Home Assistant** and select **Set up phone coexistence**.
 
 The bridge creates and registers its own random companion identity, pairs that
-same identity with the hub over BLE, and stores it privately. This is a
-per-install setup suitable for normal users; it does not depend on Android
-packet capture, certificate interception, phone app storage, or email/password
-login.
+same identity with the hub over BLE, and stores it privately for that add-on
+installation. Setup does not depend on Android packet capture, certificate
+interception, phone app storage, or email/password login.
 
 During phone handoff, the Weber app can display the hub and start a recipe while
 Home Assistant continues receiving the session's probe telemetry through Weber
@@ -60,8 +59,8 @@ Cloud. Home Assistant currently exposes probe readings and connection state,
 not the recipe title, instructions, or cooking controls.
 
 New installs refresh local probe readings every 10 seconds. During a phone
-handoff, cloud-ready bridges preselect **Until I return** so Home Assistant can
-keep following the cook without an arbitrary reconnect; otherwise the saved
+handoff, cloud-ready bridges preselect **Manual reconnect** so Home Assistant
+can keep following the cook without an arbitrary deadline; otherwise the saved
 timed fallback is used.
 
 ## Requirements
@@ -74,7 +73,7 @@ timed fallback is used.
 
 ## Compatibility And Validation
 
-Version 2.0.0 has been physically verified with a Weber Connect Hub, Home
+The 2.0 release has been physically verified with a Weber Connect Hub, Home
 Assistant Yellow, and the official Weber app on Android. The verified scenario
 includes first-party app handoff, simultaneous Home Assistant cloud telemetry,
 and probe updates from a recipe started in the Weber app. The release is also

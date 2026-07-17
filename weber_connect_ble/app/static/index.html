@@ -851,7 +851,7 @@
         <div class="segmented" id="poll-options" role="group" aria-labelledby="poll-label"></div>
       </div>
       <div class="field">
-        <div class="field-label" id="handoff-label">Default phone session</div>
+        <div class="field-label" id="handoff-label">Default Bluetooth reconnect</div>
         <div class="segmented" id="handoff-options" role="group" aria-labelledby="handoff-label"></div>
       </div>
     </div>
@@ -922,7 +922,7 @@
       <div class="route-arrow"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="route-node"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9H7Z" stroke="currentColor" stroke-width="1.8"/></svg><strong>Home Assistant</strong><span id="handoff-cloud-route">Uses cloud when ready</span></div>
     </div>
-    <div class="handoff-options"><div class="field-label" id="handoff-dialog-label">Reconnect Bluetooth after</div><div class="segmented" id="handoff-dialog-options" role="group" aria-labelledby="handoff-dialog-label"></div></div>
+    <div class="handoff-options"><div class="field-label" id="handoff-dialog-label">Bluetooth reconnect</div><div class="segmented" id="handoff-dialog-options" role="group" aria-labelledby="handoff-dialog-label"></div></div>
     <div class="handoff-summary">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v5l3 2m5-2a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <div><strong id="handoff-duration">Reconnects automatically</strong><span>Open the Weber app after the panel says Bluetooth is free.</span></div>
@@ -962,7 +962,7 @@
   "use strict";
 
   const POLL_CHOICES = [[10, "Live · 10 sec"], [30, "30 sec"], [60, "1 min"], [120, "2 min"]];
-  const HANDOFF_CHOICES = [[15, "15 min"], [30, "30 min"], [60, "1 hour"], [0, "Until I return"]];
+  const HANDOFF_CHOICES = [[15, "15 min"], [30, "30 min"], [60, "1 hour"], [0, "Manual reconnect"]];
   const main = document.getElementById("main");
   const pageFooter = document.getElementById("page-footer");
   const settingsButton = document.getElementById("settings-button");
@@ -1343,7 +1343,7 @@
     });
     document.getElementById("handoff-duration").textContent = handoffSelection
       ? `Reconnects automatically after ${handoffSelection} minute${handoffSelection === 1 ? "" : "s"}`
-      : "Stays released until you reconnect";
+      : "Automatic reconnect is off";
     const cloudReady = status.cloud?.configured && status.cloud?.enabled && ["ready", "online", "idle"].includes(status.cloud?.state);
     document.getElementById("handoff-cloud-route").textContent = cloudReady ? "Continues through cloud" : "Pauses until reconnect";
     renderCloud();

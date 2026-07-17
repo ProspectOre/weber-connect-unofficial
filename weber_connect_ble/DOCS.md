@@ -29,7 +29,7 @@ timers, configure Wi-Fi, or control a grill.
 
 ## Verified Compatibility
 
-The 2.0.0 physical test matrix is intentionally specific:
+The 2.0 physical test matrix is intentionally specific:
 
 | Component | Verified setup |
 | --- | --- |
@@ -67,10 +67,10 @@ submit a fix.
 7. Wait for **Connected**. MQTT discovery creates the probe entities
    automatically, and phone coexistence is ready.
 
-This single flow registers the bridge companion before BLE pairing and uses the
-same identity for both local and cloud access. No identifiers, YAML, Weber
-login, or second pairing pass are required. Select **Local only** on the first
-screen if the user explicitly does not want the cloud route.
+This flow registers the bridge companion before BLE pairing and uses the same
+identity for local and cloud access. It does not require identifiers, YAML, a
+Weber login, or a second pairing pass. Select **Local only** to keep the setup
+BLE/MQTT-only.
 
 ## Panel States
 
@@ -78,7 +78,7 @@ screen if the user explicitly does not want the cloud route.
 | --- | --- |
 | Connected | A current BLE or cloud read succeeded. |
 | Monitoring through cloud | The official app can own BLE while new cloud snapshots reach Home Assistant. |
-| Free for the Weber app | Bluetooth has been released for a timed or indefinite phone handoff. |
+| Free for the Weber app | Bluetooth has been released for a timed or manual-reconnect phone session. |
 | Hub unreachable | The hub is off, asleep, out of range, or busy; retry is automatic. |
 | Pairing | The bridge is waiting for the hub exchange and, when required, physical confirmation. |
 
@@ -96,8 +96,8 @@ the physical identity in the displayed name—for example,
 
 Phone coexistence uses Weber's private, undocumented `walker-cloud` service and
 may stop working if Weber changes that service. It is the recommended setup
-because most users also use the official phone app; local-only pairing remains
-available.
+when Home Assistant and the official Weber app need access to the same hub.
+Local-only pairing remains available.
 
 ### Normal setup
 
@@ -112,8 +112,8 @@ pairing together. On an existing local-only installation:
    five minutes to publish the new association.
 5. When the panel reports that cloud access is ready, select **Test**.
 
-This flow is per installation and does not use the user's personal Weber login.
-It performs the same companion-level operations needed by a normal client:
+The generated companion belongs to this add-on installation and does not use a
+personal Weber login. Setup performs these companion-level operations:
 
 1. Generate a fresh companion ID, device password, and companion keys.
 2. Register that identity with Weber Cloud before BLE pairing.
@@ -131,8 +131,8 @@ mode `0600`.
 
 **Use existing companion credentials** is for advanced recovery and research.
 It accepts an existing companion/App Identifier and its matching device
-password. The password is not the user's Weber account password and is normally
-not visible in the official app.
+password. This device password is separate from a Weber account password and is
+normally not visible in the official app.
 
 The provisioning verification-code field is retained for legacy/manual
 association flows. It is not part of the normal bridge-owned companion setup.
@@ -155,11 +155,11 @@ take turns.
 4. Open the Weber app and connect to the hub.
 
 The app then owns Bluetooth while Home Assistant polls Weber Cloud. When cloud
-coexistence is ready, **Until I return** is preselected because telemetry can
-continue without an arbitrary BLE reconnect. If cloud is unavailable, the panel
-preselects the saved timed fallback (15 minutes on a fresh install). Users can
-choose 15 minutes, 30 minutes, one hour, or **Until I return** every time. The
-saved fallback is not rewritten by the adaptive recommendation.
+coexistence is ready, **Manual reconnect** is preselected because telemetry can
+continue without an arbitrary BLE deadline. In this mode, automatic reconnect
+is off until **Reconnect now** is selected. If cloud is unavailable, the panel
+preselects the saved timed fallback (15 minutes on a fresh install). The saved
+fallback is not rewritten by the adaptive recommendation.
 
 Handoff state survives add-on restarts. Stopping the add-on also releases its
 BLE connection cleanly.
@@ -197,8 +197,8 @@ Most settings live in the panel. Only two Supervisor options are exposed:
 
 Panel settings include read interval, phone handoff duration, probe nicknames,
 cloud pairing, cloud test/disable/removal, and **Forget This Hub**. New installs
-use the **Live · 10 sec** local read interval. Existing installations retain a
-previously saved interval until the user changes it.
+use the **Live · 10 sec** local read interval. Existing installations retain
+their saved interval until it is changed in the panel.
 
 ## Home Assistant Entities
 
