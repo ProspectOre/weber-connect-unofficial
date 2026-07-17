@@ -1,11 +1,12 @@
-# Weber Connect Home Assistant Add-ons
+# Weber Connect for Home Assistant (Unofficial)
 
 Unofficial Home Assistant add-ons for Weber Connect telemetry.
 
-The **Weber Connect BLE Bridge** pairs directly with a Weber Connect Hub,
-publishes four stable probe slots through MQTT discovery, and provides a built-in
-one-screen Home Assistant control center for setup and phone handoff. Probe slots
-can have optional nicknames while always retaining their physical probe number.
+**Weber Connect for Home Assistant** is an unofficial add-on that pairs directly
+with a Weber Connect Hub, publishes four stable probe slots through MQTT
+discovery, and provides a built-in one-screen Home Assistant control center for
+setup and phone handoff. Probe slots can have optional nicknames while always
+retaining their physical probe number.
 BLE remains the preferred local transport. The recommended first-run setup also
 creates a bridge-owned Weber Cloud companion so telemetry keeps flowing while
 the official Weber app owns Bluetooth.
@@ -14,7 +15,7 @@ the official Weber app owns Bluetooth.
 
 | Add-on | Purpose | Status |
 | --- | --- | --- |
-| Weber Connect BLE Bridge | Probe temperature, state, and battery sensors through MQTT discovery | Stable BLE bridge with phone coexistence by default |
+| Weber Connect for Home Assistant (Unofficial) | Probe temperature, state, and battery sensors through MQTT discovery | Stable BLE-first monitoring with phone coexistence by default |
 
 ## Install
 
@@ -29,7 +30,7 @@ the official Weber app owns Bluetooth.
 
    Older Home Assistant versions may label this area **Settings > Add-ons >
    Add-on Store**.
-2. Install and start **Weber Connect BLE Bridge**.
+2. Install and start **Weber Connect for Home Assistant (Unofficial)**.
 3. Open its Web UI and select **Set Up My Hub**.
 4. Press the hub button when it beeps to confirm pairing.
 
@@ -73,7 +74,7 @@ timed fallback is used.
 
 ## Compatibility And Validation
 
-Version 1.2.0 has been physically verified with a Weber Connect Hub, Home
+Version 2.0.0 has been physically verified with a Weber Connect Hub, Home
 Assistant Yellow, and the official Weber app on Android. The verified scenario
 includes first-party app handoff, simultaneous Home Assistant cloud telemetry,
 and probe updates from a recipe started in the Weber app. The release is also

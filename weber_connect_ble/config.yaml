@@ -1,9 +1,9 @@
-name: Weber Connect BLE Bridge
+name: Weber Connect for Home Assistant (Unofficial)
 slug: weber_connect_ble
-version: 1.2.0
+version: 2.0.0
 stage: stable
 image: ghcr.io/prospectore/{arch}-addon-weber_connect_ble
-description: BLE-first Weber Connect telemetry with optional bridge-owned cloud pairing for phone handoff.
+description: Unofficial BLE-first Weber Connect monitoring with phone and Home Assistant coexistence.
 url: https://github.com/ProspectOre/weber-connect-home-assistant-addon/tree/main/weber_connect_ble
 arch:
   - aarch64

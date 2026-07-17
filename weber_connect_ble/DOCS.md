@@ -1,4 +1,4 @@
-# Weber Connect BLE Bridge
+# Weber Connect for Home Assistant (Unofficial)
 
 ## What It Does
 
@@ -29,7 +29,7 @@ timers, configure Wi-Fi, or control a grill.
 
 ## Verified Compatibility
 
-The 1.2.0 physical test matrix is intentionally specific:
+The 2.0.0 physical test matrix is intentionally specific:
 
 | Component | Verified setup |
 | --- | --- |
@@ -57,7 +57,7 @@ submit a fix.
 ## Recommended First Run
 
 1. Add this repository to the Home Assistant app/add-on store.
-2. Install and start **Weber Connect BLE Bridge**.
+2. Install and start **Weber Connect for Home Assistant (Unofficial)**.
 3. Open its Web UI.
 4. Power on the Weber hub, keep it near the Home Assistant Bluetooth adapter,
    and select **Set Up My Hub**.

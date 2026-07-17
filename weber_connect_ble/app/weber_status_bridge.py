@@ -38,7 +38,7 @@ DEFAULT_PAIRING_SUMMARY = Path("weber_probe/weber_android_pairing_summary.json")
 DEFAULT_JSON_OUT = Path("weber_probe/weber_status_latest.json")
 DEFAULT_TOPIC_ROOT = "weber_connect"
 STATE_TOPIC_SUFFIX = "state"
-VERSION = "1.2.0"
+VERSION = "2.0.0"
 HEX_16_BYTES_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 LOGGER = logging.getLogger("weber_connect_bridge")
 
@@ -290,7 +290,7 @@ def build_mqtt_publish_plan(
             "sw_version": hub.get("software_revision"),
         }
         origin = {
-            "name": "Weber Connect BLE Bridge",
+            "name": "Weber Connect for Home Assistant (Unofficial)",
             "sw": VERSION,
             "url": "https://github.com/ProspectOre/weber-connect-home-assistant-addon",
         }

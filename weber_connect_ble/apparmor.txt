@@ -1,6 +1,6 @@
 #include <tunables/global>
 
-# AppArmor profile for the Weber Connect BLE Bridge add-on.
+# AppArmor profile for the unofficial Weber Connect for Home Assistant add-on.
 # The profile name must match the add-on slug so Supervisor loads it.
 profile weber_connect_ble flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>

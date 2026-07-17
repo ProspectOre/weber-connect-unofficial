@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0 — 2026-07-17
+
+- Marks the product's move beyond a BLE-only bridge: local BLE remains
+  preferred, with read-only cloud telemetry enabling the official Weber app
+  and Home Assistant to follow the same cook.
+- Renamed the user-facing add-on to **Weber Connect for Home Assistant
+  (Unofficial)** now that it combines local BLE with optional read-only cloud
+  telemetry. The internal slug, storage paths, image name, MQTT topics, and
+  entity unique IDs remain unchanged for seamless upgrades.
+- Made the unofficial status visible in the add-on store, panel branding, and
+  primary documentation rather than relying on a support disclaimer alone.
+
 ## 1.2.0 — 2026-07-16
 
 - Rebuilt the ingress panel as a responsive, accessible one-screen control

@@ -1,7 +1,7 @@
-# Weber Connect BLE Bridge
+# Weber Connect for Home Assistant (Unofficial)
 
-Read-only, BLE-first Weber Connect Hub telemetry for Home Assistant, managed
-from a built-in web panel.
+An unofficial, read-only, BLE-first Weber Connect Hub add-on for Home Assistant,
+managed from a built-in web panel.
 
 ## Highlights
 
