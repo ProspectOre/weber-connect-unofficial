@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import tempfile
@@ -16,9 +15,22 @@ class PanelParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.elements: list[tuple[str, dict[str, str]]] = []
+        self.scripts: list[str] = []
+        self._script_parts: list[str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.elements.append((tag, {key: value or "" for key, value in attrs}))
+        if tag == "script":
+            self._script_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._script_parts is not None:
+            self._script_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._script_parts is not None:
+            self.scripts.append("".join(self._script_parts))
+            self._script_parts = None
 
 
 class PanelUiContractTests(unittest.TestCase):
@@ -108,10 +120,9 @@ class PanelUiContractTests(unittest.TestCase):
         node = shutil.which("node")
         if node is None:
             self.skipTest("node is unavailable")
-        scripts = re.findall(r"<script>(.*?)</script>", self.html, flags=re.DOTALL)
-        self.assertEqual(len(scripts), 1)
+        self.assertEqual(len(self.parser.scripts), 1)
         with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8") as handle:
-            handle.write(scripts[0])
+            handle.write(self.parser.scripts[0])
             handle.flush()
             result = subprocess.run(
                 [node, "--check", handle.name],
