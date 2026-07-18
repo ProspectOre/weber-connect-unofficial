@@ -411,8 +411,9 @@ def build_mqtt_publish_plan(
             "name": device_name,
             "manufacturer": "Weber",
             "model": hub.get("model") or "Connect Hub",
-            "sw_version": hub.get("software_revision"),
         }
+        if hub.get("software_revision"):
+            device["sw_version"] = hub["software_revision"]
         origin = {
             "name": "Weber Connect for Home Assistant (Unofficial)",
             "sw": VERSION,

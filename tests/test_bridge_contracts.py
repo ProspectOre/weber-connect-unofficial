@@ -250,8 +250,25 @@ class BridgeContractTests(unittest.TestCase):
         self.assertEqual(temp_payload["expire_after"], 120)
         self.assertEqual(temp_payload["device"]["identifiers"], ["TESTSERIAL"])
         self.assertEqual(temp_payload["device"]["manufacturer"], "Weber")
+        self.assertEqual(temp_payload["device"]["sw_version"], "1.2.3")
         self.assertEqual(temp_payload["origin"]["sw"], bridge.VERSION)
         self.assertNotIn("availability_topic", temp_payload)
+
+    def test_mqtt_discovery_omits_unknown_software_version(self):
+        summary = self.summary()
+        summary["hub"]["software_revision"] = None
+        state = bridge.build_state(
+            summary,
+            self.status(),
+            address="AA:BB:CC:DD:EE:FF",
+            connected=True,
+            max_probes=2,
+        )
+
+        plan = bridge.build_mqtt_publish_plan(self.args(), state, summary)
+
+        temperature = json.loads(plan[0]["payload"])
+        self.assertNotIn("sw_version", temperature["device"])
 
     def test_persistent_runtime_discovery_includes_availability(self):
         state = bridge.build_state(
