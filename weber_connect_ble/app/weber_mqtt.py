@@ -76,6 +76,7 @@ class MqttSession:
         # so an offline/online cycle never deletes and recreates entities.
         self._discovery_cache_file = discovery_cache_file
         self._discovery_cache: dict[str, str] = {}
+        self._discovery_announced = False
         # Availability is only (re)published when it changes; reset per
         # connection so a reconnect re-announces the current state.
         self._availability_state: dict[str, str] = {}
@@ -184,6 +185,10 @@ class MqttSession:
         # Discovery state is connection-independent and must survive a
         # reconnect; only availability change-tracking is per-connection.
         self._availability_state.clear()
+        # Reannounce retained discovery after every broker connection. The
+        # on-disk cache still tracks obsolete controls, but cannot prove the
+        # broker retained messages survived its own restart or migration.
+        self._discovery_announced = False
         if client is None:
             return
         try:
@@ -285,7 +290,12 @@ class MqttSession:
 
                 for publish in publish_plan:
                     is_discovery = publish["topic"].endswith("/config")
-                    if is_discovery and self._discovery_cache.get(publish["topic"]) == publish["payload"]:
+                    if (
+                        is_discovery
+                        and self._discovery_announced
+                        and self._discovery_cache.get(publish["topic"])
+                        == publish["payload"]
+                    ):
                         continue
                     result = client.publish(
                         publish["topic"],
@@ -297,6 +307,7 @@ class MqttSession:
                     if is_discovery:
                         self._discovery_cache[publish["topic"]] = publish["payload"]
                         self._persist_discovery_cache()
+                self._discovery_announced = True
                 # Per-probe availability lets a single dead wireless probe go
                 # unavailable without disturbing the others.
                 for number in range(1, self.max_probes + 1):

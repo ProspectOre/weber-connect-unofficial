@@ -66,7 +66,7 @@ def parse_whole_number(value: object, label: str) -> int:
 class BridgeSettings:
     address: str | None = None
     poll_seconds: int = 10
-    handoff_minutes: int = 15
+    handoff_minutes: int = 0
     probe_names: dict[int, str] = field(default_factory=dict)
     remote_controls_enabled: bool = False
 
@@ -77,7 +77,7 @@ class BridgeSettings:
             raise ValueError("address must be a string or null.")
         poll_seconds = parse_whole_number(payload.get("poll_seconds", 10), "poll_seconds")
         handoff_minutes = parse_whole_number(
-            payload.get("handoff_minutes", 15), "handoff_minutes"
+            payload.get("handoff_minutes", 0), "handoff_minutes"
         )
         remote_controls_enabled = payload.get("remote_controls_enabled", False)
         if not isinstance(remote_controls_enabled, bool):

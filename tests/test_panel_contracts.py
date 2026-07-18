@@ -50,6 +50,7 @@ class PanelContractTests(unittest.TestCase):
         self.assertEqual(snap["state"], "setup")
         self.assertFalse(snap["paired"])
         self.assertEqual(snap["settings"]["poll_seconds"], 10)
+        self.assertEqual(snap["settings"]["handoff_minutes"], 0)
 
     def test_settings_persist_across_restarts(self) -> None:
         controller = make_controller(self.data_dir)
@@ -104,7 +105,7 @@ class PanelContractTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(controller.settings.poll_seconds, 10)
-        self.assertEqual(controller.settings.handoff_minutes, 15)
+        self.assertEqual(controller.settings.handoff_minutes, 0)
 
     def test_snapshot_exposes_stable_probe_capacity(self) -> None:
         controller = make_controller(self.data_dir)

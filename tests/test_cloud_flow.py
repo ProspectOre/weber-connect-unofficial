@@ -424,6 +424,26 @@ class ApiFlowTests(unittest.TestCase):
             self.assertIsNotNone(client.poll("hub"))
             self.assertIsNone(client.poll("hub"))
 
+    def test_poll_uses_live_socket_when_history_has_not_advanced(self) -> None:
+        client = ScriptedClient(
+            [
+                {"sessions": [{"session_id": "cook"}]},
+                {"snapshots": []},
+            ]
+        )
+        live = {
+            "probe_count": 1,
+            "probes": [{"probe_number": 1, "probe_temp_f": 145}],
+            "active_cook": {"active": True, "title": "Baby Back Ribs"},
+        }
+        with mock.patch.object(client, "live_status", return_value=live):
+            result = client.poll("hub")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.status["active_cook"]["title"], "Baby Back Ribs")
+        self.assertEqual(result.status["kind"], "cloud_live_session")
+        self.assertEqual(result.snapshot_count, 0)
+
 
 class FakeCloudClient:
     def __init__(self, cloud_config: cloud.CloudConfig) -> None:
@@ -592,6 +612,9 @@ class CloudPanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(controller.runtime.cloud_state, "ready")
         self.assertEqual(controller.cloud_config.device_id, new_id)
         self.assertEqual(controller.cloud_config.appliance_id, APPLIANCE_ID)
+        self.assertEqual(controller.settings.handoff_minutes, 0)
+        self.assertTrue(controller.runtime.handoff_active)
+        self.assertIsNone(controller.runtime.handoff_until)
         self.assertTrue(controller.key_file.exists())
         self.assertFalse(controller.pending_cloud_key_file.exists())
         await controller.stop()
@@ -731,22 +754,27 @@ class CloudPanelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(
             (
-                await controller.remote_command(
-                    "weber_connect/test/command/cook/confirm", "confirm"
+                await controller.panel_command(
+                    {"type": "cook", "action": "confirm"}
                 )
             )["ok"]
         )
         self.assertTrue(
             (
-                await controller.remote_command(
-                    "weber_connect/test/command/timer/2/start", "30"
+                await controller.panel_command(
+                    {
+                        "type": "timer",
+                        "action": "start",
+                        "number": 2,
+                        "duration_s": 30,
+                    }
                 )
             )["ok"]
         )
         self.assertTrue(
             (
-                await controller.remote_command(
-                    "weber_connect/test/command/timer/2/reset", "reset"
+                await controller.panel_command(
+                    {"type": "timer", "action": "reset", "number": 2}
                 )
             )["ok"]
         )
@@ -764,6 +792,8 @@ class CloudPanelTests(unittest.IsolatedAsyncioTestCase):
                 "weber_connect/test/command/cook/stop", "confirm"
             )
         self.assertIn("does not match", controller.runtime.control_error or "")
+        with self.assertRaisesRegex(ValueError, "Unsupported panel"):
+            await controller.panel_command({"type": "grill", "action": "ignite"})
 
         self.assertTrue((await controller.update_cloud({"action": "disable"}))["ok"])
         self.assertFalse(controller.settings.remote_controls_enabled)
@@ -933,16 +963,18 @@ class CloudPanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(controller.runtime.last_source, "cloud")
         await controller.stop()
 
-    async def test_cloud_idle_marks_reading_stale_without_cloud_error(self) -> None:
+    async def test_cloud_idle_is_healthy_and_keeps_normal_polling(self) -> None:
         controller = self.make_controller()
         controller.cloud_config = config()
         controller.runtime.handoff_active = True
         controller._new_cloud_client().poll_result = None
-        with self.assertLogs("weber_connect_panel", level="WARNING"):
-            self.assertFalse(await controller._read_cycle_once())
+        self.assertTrue(await controller._read_cycle_once())
         self.assertEqual(controller.runtime.cloud_state, "idle")
         self.assertIsNone(controller.runtime.cloud_error)
-        self.assertIn("No active cloud cook", controller.runtime.last_error)
+        self.assertTrue(controller.runtime.last_read_ok)
+        self.assertIsNone(controller.runtime.last_error)
+        self.assertEqual(controller.runtime.consecutive_failures, 0)
+        self.assertEqual(controller.runtime.last_good_state["active_cook"], {})
         await controller.stop()
 
     async def test_cloud_poll_failure_and_missing_appliance(self) -> None:

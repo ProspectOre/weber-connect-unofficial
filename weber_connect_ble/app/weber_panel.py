@@ -62,6 +62,22 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class WakeQueue(asyncio.Queue[None]):
+    """Coalesce bridge wakeups without losing one before a scheduled wait."""
+
+    def __init__(self) -> None:
+        super().__init__(maxsize=1)
+
+    def set(self) -> None:
+        try:
+            self.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
+
+    async def wait(self) -> None:
+        await self.get()
+
+
 @dataclass(frozen=True, slots=True)
 class ControllerDependencies:
     scan: Callable[..., Awaitable[dict[str, Any]]] = ble_scan
@@ -105,7 +121,10 @@ class HubController:
 
         self._ble_lock = asyncio.Lock()
         self._cycle_lock = asyncio.Lock()
-        self._wake = asyncio.Event()
+        # A bounded queue preserves a wake request that arrives just before
+        # the bridge begins waiting. Event.clear() made that race lose user
+        # actions and cloud-test wakeups until the next retry deadline.
+        self._wake = WakeQueue()
         self._supervisor = TaskSupervisor()
         self._mqtt_session: MqttSession | None = None
         self._cloud_client: WeberCloudClient | None = None
@@ -530,6 +549,7 @@ class HubController:
         pending_cloud_client: WeberCloudClient | None = None,
     ) -> None:
         pairing_confirmed = False
+        phone_coexistence_ready = False
         try:
             if pending_cloud_client is not None:
                 # The Weber companion is a registered cloud device before its
@@ -605,12 +625,31 @@ class HubController:
                     self._save_cloud()
                     try:
                         await self._wait_for_cloud_association(pending_cloud_client)
+                        # Phone + Home Assistant is the default experience:
+                        # leave Bluetooth available to the Weber app while the
+                        # bridge follows the cook through its cloud companion.
+                        self.settings = self.settings.updated({"handoff_minutes": 0})
+                        self._save_settings()
+                        phone_coexistence_ready = True
                     except (WeberCloudError, RuntimeError, ValueError) as exc:
                         self.runtime.cloud_state = "error"
                         self.runtime.cloud_error = str(exc)
                         LOGGER.warning(
                             "BLE pairing succeeded, but cloud association could not be verified: %r",
                             exc,
+                        )
+            if phone_coexistence_ready:
+                self.runtime.handoff_active = True
+                self.runtime.handoff_until = None
+                self.runtime.handoff_token += 1
+                self._save_handoff()
+                if address:
+                    try:
+                        await asyncio.to_thread(self.dependencies.release, address)
+                    except Exception:
+                        LOGGER.warning(
+                            "Could not release Bluetooth after cloud setup",
+                            exc_info=True,
                         )
         except asyncio.CancelledError:
             raise
@@ -1131,7 +1170,24 @@ class HubController:
         self.runtime.cloud_last_poll_at = utc_now()
         if result is None:
             self.runtime.cloud_state = "idle"
-            raise RuntimeError("No active cloud cook or no new cloud snapshot is available.")
+            self.runtime.cloud_error = None
+            self.runtime.cloud_session_id = None
+            self.runtime.cloud_after_id = 0
+            self.runtime.cloud_snapshot_count = 0
+            # No active cook is a healthy cloud result. Publishing an empty
+            # snapshot clears an ended recipe and keeps the normal poll cadence
+            # instead of escalating into exponential transport backoff.
+            return await self._accept_status(
+                {
+                    "kind": "cloud_idle",
+                    "probe_count": 0,
+                    "probes": [],
+                    "cavities": [],
+                    "timers": [],
+                    "active_cook": None,
+                },
+                source="cloud",
+            )
         self.runtime.cloud_state = "online"
         self.runtime.cloud_error = None
         self.runtime.cloud_session_id = result.session_id
@@ -1223,6 +1279,25 @@ class HubController:
         self._wake.set()
         return {"ok": True}
 
+    async def panel_command(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Route an opt-in cook command from the trusted ingress panel."""
+
+        kind = payload.get("type")
+        action = payload.get("action")
+        if kind == "cook" and action in {"confirm", "stop"}:
+            return await self.remote_command(
+                f"panel/command/cook/{action}",
+                str(action),
+            )
+        if kind == "timer" and action in {"start", "reset"}:
+            number = parse_whole_number(payload.get("number"), "timer number")
+            value = payload.get("duration_s") if action == "start" else "reset"
+            return await self.remote_command(
+                f"panel/command/timer/{number}/{action}",
+                str(value),
+            )
+        raise ValueError("Unsupported panel cook command.")
+
     async def _execute_remote_command(self, topic: str, payload: str) -> None:
         if not self.settings.remote_controls_enabled:
             raise ValueError("Remote cook controls are disabled.")
@@ -1286,7 +1361,6 @@ class HubController:
             LOGGER.warning("Could not close MQTT session cleanly", exc_info=True)
 
     async def _wait_for_wake(self, timeout: float | None = None) -> bool:
-        self._wake.clear()
         try:
             if timeout is None:
                 await self._wake.wait()

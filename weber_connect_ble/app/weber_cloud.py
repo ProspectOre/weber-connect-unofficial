@@ -546,6 +546,33 @@ class WeberCloudClient:
             if isinstance(snapshot_id, int) and not isinstance(snapshot_id, bool):
                 self._after_id = max(self._after_id, snapshot_id)
         if not snapshots:
+            # Cook-history snapshots are not emitted for every live change.
+            # Ask the appliance directly so a recipe started in the Weber app
+            # appears on the next poll even when REST history has not advanced.
+            try:
+                live = self.live_status(appliance_id)
+            except Exception as exc:
+                self.socket_error = str(exc)
+            else:
+                self.socket_error = None
+                previous = self._last_status or {}
+                for key in (
+                    "cavities",
+                    "timers",
+                    "notification",
+                    "snapshot_id",
+                    "server_timestamp",
+                ):
+                    if key in previous:
+                        live[key] = previous[key]
+                live["kind"] = "cloud_live_session"
+                self._last_status = live
+                return CloudPollResult(
+                    status=live,
+                    session_id=session_id,
+                    after_id=self._after_id,
+                    snapshot_count=0,
+                )
             if (
                 self._last_status is not None
                 and time.monotonic() - self._last_snapshot_at <= STALE_GRACE_SECONDS

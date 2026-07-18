@@ -225,6 +225,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             "forget": lambda: self.controller.forget(),
             "settings": lambda: self.controller.update_settings(payload),
             "cloud": lambda: self.controller.update_cloud(payload),
+            "control": lambda: self.controller.panel_command(payload),
         }
         action = actions.get(self._route())
         if action is None:

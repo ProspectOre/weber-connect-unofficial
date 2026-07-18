@@ -317,6 +317,27 @@ def build_state(
         )
         state[f"timer_{number}_remaining_s"] = row.get("remaining_s")
 
+    rendered_cook = state.get("active_cook")
+    if isinstance(rendered_cook, dict) and rendered_cook:
+        rendered_cook["cavities"] = [
+            {
+                "number": number,
+                "temperature_f": state.get(f"cavity_{number}_temperature_f"),
+                "temperature_c": state.get(f"cavity_{number}_temperature_c"),
+            }
+            for number in range(1, 3)
+            if state.get(f"cavity_{number}_temperature_f") is not None
+            or state.get(f"cavity_{number}_temperature_c") is not None
+        ]
+        rendered_cook["timers"] = [
+            {
+                "number": number,
+                "remaining_s": state.get(f"timer_{number}_remaining_s"),
+            }
+            for number in range(1, 5)
+            if state.get(f"timer_{number}_remaining_s") is not None
+        ]
+
     for number in range(1, max_probes + 1):
         prefix = f"probe_{number}"
         state[f"{prefix}_temperature_f"] = None

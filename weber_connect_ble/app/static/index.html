@@ -523,6 +523,35 @@
   .context-label { color: var(--quiet); font-size: 11px; font-weight: 740; letter-spacing: 0.05em; text-transform: uppercase; }
   .context-value { margin-top: 2px; overflow: hidden; color: var(--text); font-size: 13px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
 
+  .cook-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px 24px;
+    min-height: 104px;
+    padding: 15px clamp(24px, 5vw, 46px);
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(115deg, var(--accent-soft), color-mix(in srgb, var(--surface) 92%, var(--accent-soft)));
+  }
+  .cook-copy { min-width: 0; }
+  .cook-heading { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+  .cook-heading h2 { margin: 0; overflow: hidden; font-size: 18px; letter-spacing: -0.02em; text-overflow: ellipsis; white-space: nowrap; }
+  .cook-step { flex: 0 0 auto; color: var(--accent); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+  .cook-instruction { margin: 5px 0 0; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .cook-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .cook-fact { padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--line)); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 10px; font-weight: 700; }
+  .cook-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+  .cook-actions .button { min-height: 36px; padding: 0 11px; font-size: 12px; }
+  .cook-actions .danger-confirm { display: flex; align-items: center; gap: 7px; margin: 0; padding: 6px; }
+  .recipe-sheet { width: min(100%, 760px); }
+  .recipe-summary { display: flex; flex-wrap: wrap; gap: 7px; margin: -8px 0 16px; }
+  .recipe-steps { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .recipe-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+  .recipe-step.current { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); }
+  .recipe-step-number { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--page); color: var(--muted); font-size: 11px; font-weight: 800; }
+  .recipe-step strong { display: block; font-size: 13px; }
+  .recipe-step p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
   .probe-region { padding: clamp(25px, 4vw, 42px) clamp(24px, 5vw, 46px); }
   .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
   .section-heading h2 { margin: 0; font-size: 20px; letter-spacing: -0.025em; }
@@ -589,6 +618,13 @@
   .toast.error svg { color: var(--red); }
 
   .sheet { width: min(100%, 680px); max-height: min(90vh, 820px); }
+  .settings-sheet { width: min(96vw, 1040px); max-height: min(90vh, 700px); overflow: hidden; }
+  .settings-grid { display: grid; grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); gap: 14px; }
+  .settings-column { min-width: 0; }
+  .settings-local { grid-column: 1; grid-row: 1; }
+  .settings-cloud { grid-column: 2; grid-row: 1 / span 3; }
+  .settings-controls { grid-column: 1; grid-row: 2; }
+  .settings-reset { grid-column: 1; grid-row: 3; }
   .sheet-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
   .settings-section { margin-bottom: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-raised); }
   .settings-section .field:last-child { margin-bottom: 0; }
@@ -636,6 +672,9 @@
     .sheet-handle { display: none; }
   }
   @media (max-width: 720px) {
+    .settings-sheet { overflow: auto; }
+    .settings-grid { grid-template-columns: 1fr; }
+    .settings-local, .settings-cloud, .settings-controls, .settings-reset { grid-column: 1; grid-row: auto; }
     .connection { grid-template-columns: auto 1fr; }
     .connection-actions { grid-column: 1 / -1; width: 100%; min-width: 0; margin-top: 5px; }
     .context-strip { grid-template-columns: 1fr; }
@@ -645,6 +684,8 @@
     .cloud-invite { grid-template-columns: auto minmax(0, 1fr); }
     .cloud-invite .button { grid-column: 1 / -1; width: 100%; }
     .toast-stack { top: auto; bottom: max(16px, env(safe-area-inset-bottom)); }
+    .cook-card { grid-template-columns: 1fr; }
+    .cook-actions { justify-content: flex-start; }
   }
   @media (max-width: 480px) {
     .brand-subtitle { display: none; }
@@ -690,6 +731,11 @@
   .context-icon svg { width: 16px; height: 16px; }
   .context-label { font-size: 9px; }
   .context-value { font-size: 12px; }
+  .cook-card { min-height: 82px; padding: 9px clamp(20px, 4vw, 34px); }
+  .cook-heading h2 { font-size: 16px; }
+  .cook-instruction { margin-top: 2px; font-size: 11px; }
+  .cook-facts { margin-top: 5px; }
+  .cook-actions .button { min-height: 32px; }
   .probe-region { padding: 14px clamp(20px, 4vw, 34px); }
   .section-heading { align-items: center; margin-bottom: 9px; }
   .section-heading h2 { font-size: 17px; }
@@ -738,6 +784,7 @@
     .context-item { min-height: 50px; padding: 7px 9px; border-right: 1px solid var(--line); border-bottom: 0; }
     .context-item:last-child { border-right: 0; }
     .context-icon { display: none; }
+    .cook-card { grid-template-columns: minmax(0, 1fr) auto; }
     .probe-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .probe-row { border-bottom: 1px solid var(--line) !important; }
   }
@@ -757,6 +804,10 @@
     .context-item { padding: 6px; }
     .context-label { font-size: 7px; letter-spacing: .04em; }
     .context-value { font-size: 10px; }
+    .cook-card { padding: 7px 10px; gap: 7px; }
+    .cook-instruction { max-width: 52vw; }
+    .cook-facts { display: none; }
+    .cook-actions .button:not(.cook-details-button) { display: none; }
     .probe-region { padding: 10px; }
     .section-heading { margin-bottom: 6px; }
     .section-heading p { display: none; }
@@ -815,7 +866,7 @@
 <div class="toast-stack" id="toast-stack" aria-live="polite" aria-relevant="additions"></div>
 
 <div class="backdrop" id="settings-backdrop" hidden>
-  <section class="sheet" id="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
+  <section class="sheet settings-sheet" id="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
     <div class="sheet-handle" aria-hidden="true"></div>
     <div class="sheet-header">
       <div><div class="section-kicker">Unofficial add-on · 2.0</div><h2 class="sheet-title" id="settings-title">Settings</h2><p class="sheet-subtitle">Connection behavior, Weber app access, and cloud coexistence.</p></div>
@@ -823,7 +874,8 @@
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <div class="settings-section">
+    <div class="settings-grid">
+    <div class="settings-section settings-local">
       <div class="section-kicker">Local connection</div>
       <div class="field">
         <div class="field-label" id="poll-label">Refresh probe readings</div>
@@ -834,7 +886,7 @@
         <div class="segmented" id="handoff-options" role="group" aria-labelledby="handoff-label"></div>
       </div>
     </div>
-    <div class="settings-section field" id="cloud-field">
+    <div class="settings-section settings-cloud field" id="cloud-field">
       <div class="section-kicker">Default experience</div>
       <div class="field-label">Weber app + Home Assistant</div>
       <p class="field-help">Pair a private bridge companion once. The Weber app can then use Bluetooth while Home Assistant follows the same cook through Weber Cloud.</p>
@@ -872,13 +924,13 @@
         </details>
       </div>
     </div>
-    <div class="settings-section field" id="controls-field">
+    <div class="settings-section settings-controls field" id="controls-field">
       <div class="section-kicker">Cook session</div>
       <div class="field-label">Remote cook controls</div>
       <p class="field-help">Adds Home Assistant controls for the active cook and timers. It cannot ignite the grill or start a new recipe. Leave this off if you only want monitoring.</p>
       <div class="segmented" id="controls-options" role="group" aria-label="Remote cook controls"></div>
     </div>
-    <div class="settings-section danger-zone">
+    <div class="settings-section settings-reset danger-zone">
       <div class="section-kicker">Reset</div>
       <button class="button danger" id="forget-button" type="button">Forget This Hub</button>
       <div class="danger-confirm" id="forget-confirm" hidden>
@@ -888,6 +940,7 @@
           <button class="button" id="confirm-forget" type="button">Forget Hub</button>
         </div>
       </div>
+    </div>
     </div>
   </section>
 </div>
@@ -942,25 +995,40 @@
   </section>
 </div>
 
+<div class="backdrop" id="cook-backdrop" hidden>
+  <section class="sheet recipe-sheet" id="cook-dialog" role="dialog" aria-modal="true" aria-labelledby="cook-dialog-title" tabindex="-1">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-header">
+      <div><div class="section-kicker">Active cook</div><h2 class="sheet-title" id="cook-dialog-title">Recipe</h2></div>
+      <button class="icon-button sheet-close" type="button" data-close="cook" aria-label="Close recipe details">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="cook-dialog-content"></div>
+  </section>
+</div>
+
 <script>
 (() => {
   "use strict";
 
   const POLL_CHOICES = [[10, "Live · 10 sec"], [30, "30 sec"], [60, "1 min"], [120, "2 min"]];
-  const HANDOFF_CHOICES = [[15, "15 min"], [30, "30 min"], [60, "1 hour"], [0, "Manual reconnect"]];
+  const HANDOFF_CHOICES = [[0, "Manual reconnect"], [15, "15 min"], [30, "30 min"], [60, "1 hour"]];
   const main = document.getElementById("main");
   const pageFooter = document.getElementById("page-footer");
   const settingsButton = document.getElementById("settings-button");
   const settingsBackdrop = document.getElementById("settings-backdrop");
   const handoffBackdrop = document.getElementById("handoff-backdrop");
   const nicknameBackdrop = document.getElementById("nickname-backdrop");
+  const cookBackdrop = document.getElementById("cook-backdrop");
   const announcer = document.getElementById("announcer");
   const toastStack = document.getElementById("toast-stack");
 
   let status = null;
   let countdownEnd = null;
-  let handoffSelection = 15;
+  let handoffSelection = 0;
   let nicknameNumber = 1;
+  let stopConfirmOpen = false;
   let activeAction = null;
   let actionError = null;
   let refreshRequest = null;
@@ -1040,6 +1108,14 @@
     return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
   }
 
+  function formatDuration(seconds) {
+    const safe = Math.max(0, Math.round(Number(seconds) || 0));
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    if (hours) return `${hours}h ${minutes}m`;
+    return `${minutes}:${String(safe % 60).padStart(2, "0")}`;
+  }
+
   function friendlyState(value) {
     if (!value) return "Ready";
     const normalized = String(value).replaceAll("_", " ").toLowerCase();
@@ -1059,11 +1135,6 @@
   function renderConnection(st) {
     const hubName = esc(st.hub?.display_name || "Weber Connect Hub");
     const setupError = st.setup_error || actionError;
-    const activeCook = st.active_cook || {};
-    const activeTitle = activeCook.title ? esc(activeCook.title) : null;
-    const activeInstruction = activeCook.instruction ? esc(activeCook.instruction) : null;
-    const displayName = activeTitle || hubName;
-    const cookDetail = activeInstruction || (activeTitle ? hubName : null);
 
     if (st.state === "setup") {
       if (st.scanning) return renderSetupBusy("Looking for your hub…", "Wake the hub and keep it near Home Assistant.", setupError, "Discover");
@@ -1111,15 +1182,16 @@
       const cloudLive = st.source === "cloud" && st.readings_stale !== true;
       return `<div class="connection">
         <div class="state-orbit ${cloudLive ? "cloud" : "handoff"}" aria-hidden="true"></div>
-        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Weber app access</span><span class="transport-chip ${cloudLive ? "cloud" : ""}">${icon(cloudLive ? "cloud" : "phone")}${cloudLive ? "Cloud live" : "Bluetooth available"}</span></div><h2 class="connection-title ${cloudLive ? "cloud" : "handoff"}">${cloudLive ? "Following through cloud" : "Ready for the Weber app"}</h2><p class="connection-name">${displayName}</p><p class="connection-meta">${sub}</p><p class="connection-detail">${cookDetail || (cloudLive ? "The Weber app can use Bluetooth while Home Assistant receives the cook through Weber Cloud." : "Open the Weber app to connect. Select Reconnect now when you want Home Assistant to use Bluetooth again.")}</p></div>
+        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Weber app access</span><span class="transport-chip ${cloudLive ? "cloud" : ""}">${icon(cloudLive ? "cloud" : "phone")}${cloudLive ? "Cloud live" : "Bluetooth available"}</span></div><h2 class="connection-title ${cloudLive ? "cloud" : "handoff"}">${cloudLive ? "Following through cloud" : "Ready for the Weber app"}</h2><p class="connection-name">${hubName}</p><p class="connection-meta">${sub}</p><p class="connection-detail">${cloudLive ? "The Weber app can use Bluetooth while Home Assistant receives the cook through Weber Cloud." : "Open the Weber app to connect. Select Reconnect now when you want Home Assistant to use Bluetooth again."}</p></div>
         <div class="connection-actions">${actionButton("Reconnect now", "resume", "secondary")}</div>
       </div>`;
     }
     if (st.state === "online") {
       const cloudSource = st.source === "cloud";
+      const cloudIdle = cloudSource && st.cloud?.state === "idle";
       return `<div class="connection">
         <div class="state-orbit ${cloudSource ? "cloud" : "online"}" aria-hidden="true"></div>
-        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">Live cook</span><span class="transport-chip ${cloudSource ? "cloud" : ""}">${icon(cloudSource ? "cloud" : "bluetooth")}${cloudSource ? "Weber Cloud" : "Local Bluetooth"}</span></div><h2 class="connection-title ${cloudSource ? "cloud" : "online"}">${cloudSource ? "Cloud connected" : "Connected"}</h2><p class="connection-name">${displayName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${cookDetail || (cloudSource ? "Home Assistant is receiving current cook snapshots from Weber Cloud." : "Home Assistant has a direct, local connection to your hub.")}</p></div>
+        <div class="connection-copy"><div class="connection-eyebrow"><span class="eyebrow">${cloudIdle ? "Ready for a cook" : "Live cook"}</span><span class="transport-chip ${cloudSource ? "cloud" : ""}">${icon(cloudSource ? "cloud" : "bluetooth")}${cloudSource ? "Weber Cloud" : "Local Bluetooth"}</span></div><h2 class="connection-title ${cloudSource ? "cloud" : "online"}">${cloudIdle ? "Cloud ready" : cloudSource ? "Cloud connected" : "Connected"}</h2><p class="connection-name">${hubName}</p><p class="connection-meta" data-last-read>${esc(timeAgo(st.last_read_at))}</p><p class="connection-detail">${cloudIdle ? "Start a cook in the Weber app and Home Assistant will follow it automatically." : cloudSource ? "Home Assistant is receiving current cook snapshots from Weber Cloud." : "Home Assistant has a direct, local connection to your hub."}</p></div>
         <div class="connection-actions">${actionButton("Use Weber app", "open-handoff", "secondary", "phone")}</div>
       </div>`;
     }
@@ -1183,6 +1255,46 @@
     return `<section class="probe-region${stale ? " stale" : ""}" aria-labelledby="probe-heading"><div class="section-heading"><div><h2 id="probe-heading">Probe temperatures</h2><p>${stale ? "Showing the last known readings" : "Live readings from the active cook"}</p></div><span class="section-count">${activeCount} of ${Number(st.max_probes) || 4} active</span></div><div class="probe-list">${rows}</div></section>`;
   }
 
+  function renderCook(st) {
+    const cook = st.active_cook || {};
+    const instructions = Array.isArray(cook.instructions) ? cook.instructions : [];
+    if (!cook.title && !cook.instruction && !instructions.length) return "";
+    const currentIndex = instructions.findIndex((row) => Number(row.step_id) === Number(cook.step_id));
+    const stepLabel = currentIndex >= 0
+      ? `Step ${currentIndex + 1} of ${instructions.length}`
+      : cook.state ? friendlyState(cook.state) : "In progress";
+    const facts = [];
+    if (cook.target_temperature_f != null) facts.push(`Target ${Math.round(cook.target_temperature_f)}°F`);
+    if (cook.time_remaining_s != null) facts.push(`${formatDuration(cook.time_remaining_s)} remaining`);
+    for (const cavity of Array.isArray(cook.cavities) ? cook.cavities : []) {
+      if (cavity.temperature_f != null) facts.push(`Cavity ${cavity.number} ${Math.round(cavity.temperature_f)}°F`);
+    }
+    for (const timer of Array.isArray(cook.timers) ? cook.timers : []) {
+      if (Number(timer.remaining_s) > 0) facts.push(`Timer ${timer.number} ${formatDuration(timer.remaining_s)}`);
+    }
+    const controlsEnabled = st.controls?.enabled === true;
+    const controlsAvailable = st.controls?.available === true;
+    let controls = `<button class="button neutral cook-details-button" type="button" data-action="open-cook-details">All steps</button>`;
+    if (controlsEnabled && controlsAvailable) {
+      controls += stopConfirmOpen
+        ? `<div class="danger-confirm"><button class="button neutral" type="button" data-action="cancel-stop-cook">Cancel</button><button class="button" type="button" data-action="confirm-stop-cook">Stop recipe</button></div>`
+        : `<button class="button neutral" type="button" data-action="confirm-cook-step">Confirm step</button><button class="button danger" type="button" data-action="request-stop-cook">Stop</button>`;
+    } else if (!controlsEnabled) {
+      controls += `<button class="button neutral" type="button" data-action="open-controls-settings">Enable controls</button>`;
+    }
+    return `<section class="cook-card" aria-labelledby="active-cook-title"><div class="cook-copy"><div class="cook-heading"><h2 id="active-cook-title">${esc(cook.title || "Active cook")}</h2><span class="cook-step">${esc(stepLabel)}</span></div><p class="cook-instruction">${esc(cook.instruction || cook.short_instruction || "Waiting for the next instruction")}</p>${facts.length ? `<div class="cook-facts">${facts.map((fact) => `<span class="cook-fact">${esc(fact)}</span>`).join("")}</div>` : ""}</div><div class="cook-actions">${controls}</div></section>`;
+  }
+
+  function renderCookDialog() {
+    const cook = status?.active_cook || {};
+    const instructions = Array.isArray(cook.instructions) ? cook.instructions : [];
+    document.getElementById("cook-dialog-title").textContent = cook.title || "Active cook";
+    const facts = [];
+    if (cook.target_temperature_f != null) facts.push(`Target ${Math.round(cook.target_temperature_f)}°F`);
+    if (cook.time_remaining_s != null) facts.push(`${formatDuration(cook.time_remaining_s)} remaining`);
+    document.getElementById("cook-dialog-content").innerHTML = `${facts.length ? `<div class="recipe-summary">${facts.map((fact) => `<span class="cook-fact">${esc(fact)}</span>`).join("")}</div>` : ""}<ol class="recipe-steps">${instructions.length ? instructions.map((row, index) => `<li class="recipe-step${Number(row.step_id) === Number(cook.step_id) ? " current" : ""}"><span class="recipe-step-number">${index + 1}</span><div><strong>${esc(row.title || `Step ${index + 1}`)}</strong><p>${esc(row.instruction || "No instruction text")}</p></div></li>`).join("") : `<li class="recipe-step current"><span class="recipe-step-number">1</span><div><strong>${esc(cook.short_instruction || "Current step")}</strong><p>${esc(cook.instruction || "Waiting for recipe instructions from the hub")}</p></div></li>`}</ol>`;
+  }
+
   function renderContext(st) {
     if (!st.paired || ["setup", "scanning", "pairing"].includes(st.state)) return "";
     const source = st.source === "cloud" ? "Weber Cloud" : st.source === "ble" ? "Local Bluetooth" : "Waiting for data";
@@ -1214,7 +1326,7 @@
     if (!status) return;
     settingsButton.hidden = !status.paired;
     const globalError = actionError && status.paired ? noticeMarkup(actionError) : "";
-    main.innerHTML = `<section class="shell">${globalError}${renderConnection(status)}${renderContext(status)}${renderProbes(status)}${renderCloudInvite(status)}${renderHealth(status)}</section>`;
+    main.innerHTML = `<section class="shell">${globalError}${renderConnection(status)}${renderContext(status)}${renderCook(status)}${renderProbes(status)}${renderCloudInvite(status)}${renderHealth(status)}</section>`;
     main.setAttribute("aria-busy", activeAction ? "true" : "false");
     pageFooter.innerHTML = `<span>Weber Connect for Home Assistant ${esc(status.version || "")}</span><span>Unofficial · ${status.settings?.remote_controls_enabled ? "Remote controls enabled" : "Monitoring"} · <a href="https://github.com/ProspectOre/weber-connect-home-assistant-addon/wiki" target="_blank" rel="noreferrer">Help</a></span>`;
     bindMainActions();
@@ -1227,6 +1339,15 @@
         const action = button.dataset.action;
         if (action === "open-handoff") openDialog("handoff");
         else if (action === "edit-probe") openNickname(Number(button.dataset.probeNumber));
+        else if (action === "open-cook-details") { renderCookDialog(); openDialog("cook"); }
+        else if (action === "confirm-cook-step") act("control", { type: "cook", action: "confirm" });
+        else if (action === "request-stop-cook") { stopConfirmOpen = true; render(); }
+        else if (action === "cancel-stop-cook") { stopConfirmOpen = false; render(); }
+        else if (action === "confirm-stop-cook") { stopConfirmOpen = false; act("control", { type: "cook", action: "stop" }); }
+        else if (action === "open-controls-settings") {
+          openDialog("settings");
+          window.setTimeout(() => document.getElementById("controls-field").scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+        }
         else if (action === "open-cloud-settings") {
           openDialog("settings");
           window.setTimeout(() => document.getElementById("cloud-field").scrollIntoView({ behavior: "smooth", block: "start" }), 120);
@@ -1258,6 +1379,7 @@
         resume: "Bluetooth reconnect requested.",
         handoff: "Bluetooth released for the Weber app.",
         forget: "Hub removed from this bridge.",
+        control: "Cook command sent.",
       };
       const cloudMessages = {
         pair: "Cloud companion pairing started.",
@@ -1392,7 +1514,10 @@
   }
 
   function dialogBackdrop(name) {
-    return name === "settings" ? settingsBackdrop : name === "handoff" ? handoffBackdrop : nicknameBackdrop;
+    if (name === "settings") return settingsBackdrop;
+    if (name === "handoff") return handoffBackdrop;
+    if (name === "nickname") return nicknameBackdrop;
+    return cookBackdrop;
   }
 
   function openNickname(number) {
@@ -1436,7 +1561,7 @@
 
   function trapDialog(event, backdrop) {
     if (event.key === "Escape") {
-      closeDialog(backdrop === settingsBackdrop ? "settings" : backdrop === handoffBackdrop ? "handoff" : "nickname");
+      closeDialog(backdrop === settingsBackdrop ? "settings" : backdrop === handoffBackdrop ? "handoff" : backdrop === nicknameBackdrop ? "nickname" : "cook");
       return;
     }
     if (event.key !== "Tab") return;
@@ -1449,8 +1574,8 @@
 
   settingsButton.addEventListener("click", () => openDialog("settings"));
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.close)));
-  [settingsBackdrop, handoffBackdrop, nicknameBackdrop].forEach((backdrop) => {
-    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeDialog(backdrop === settingsBackdrop ? "settings" : backdrop === handoffBackdrop ? "handoff" : "nickname"); });
+  [settingsBackdrop, handoffBackdrop, nicknameBackdrop, cookBackdrop].forEach((backdrop) => {
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeDialog(backdrop === settingsBackdrop ? "settings" : backdrop === handoffBackdrop ? "handoff" : backdrop === nicknameBackdrop ? "nickname" : "cook"); });
     backdrop.addEventListener("keydown", (event) => trapDialog(event, backdrop));
   });
   document.getElementById("forget-button").addEventListener("click", () => { document.getElementById("forget-confirm").hidden = false; document.getElementById("confirm-forget").focus(); });

@@ -253,8 +253,13 @@ class MqttSessionTests(unittest.TestCase):
             )
             asyncio.run(run(second))
             second_discovery = [r for r in second_clients[0].publications if r[0].endswith("/config")]
-            # A restart reuses the persisted cache, so no discovery is resent.
-            self.assertEqual(second_discovery, [])
+            # A restart reannounces retained discovery in case the broker was
+            # also restarted; stable unique IDs prevent entity recreation.
+            self.assertEqual(len(second_discovery), len(first_discovery))
+            self.assertEqual(
+                {row[0] for row in second_discovery},
+                {row[0] for row in first_discovery},
+            )
 
     def test_custom_topic_template_is_used_for_availability(self) -> None:
         session = MqttSession(
