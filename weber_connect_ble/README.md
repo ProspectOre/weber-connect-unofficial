@@ -26,6 +26,8 @@ managed from a built-in web panel.
 - Recommended onboarding creates a bridge-owned Weber Cloud companion so Home
   Assistant can keep reading probe telemetry while the Weber app uses Bluetooth
   or during a BLE outage; **Local only** remains available as a fallback.
+- Direct Bluetooth uses the Home Assistant host's BlueZ adapter. Home Assistant
+  Bluetooth proxies are not used by this add-on.
 - Cloud-ready Weber app access recommends **Manual reconnect**; without cloud,
   the saved timed reconnect fallback remains preselected.
 - No Weber email/password login, Android traffic capture, phone secret

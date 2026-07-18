@@ -21,6 +21,16 @@
   and remain best-effort rather than physically verified.
 - Fixed Home Assistant MQTT discovery when a hub does not report a firmware
   version by omitting the unknown optional field.
+- Added an explicit MQTT publishing-ready log line with the state topic,
+  discovery prefix, and discovery-topic count so Mosquitto connections can be
+  distinguished from Home Assistant discovery acceptance.
+- Clarified that Bluetooth proxies are not used by the add-on; initial pairing
+  and local BLE reads require the hub to be near the Home Assistant host's
+  Bluetooth adapter.
+- Clarified that reconnecting Home Assistant tries direct Bluetooth first but
+  continues through cloud when local Bluetooth is unavailable.
+- Made **Forget hub** show immediate progress while Bluetooth, cloud, and MQTT
+  sessions are being closed.
 - Removed the redundant version label from Settings and clarified that cloud
   coexistence guarantees probe readings, while rich cook context depends on
   Weber's response.

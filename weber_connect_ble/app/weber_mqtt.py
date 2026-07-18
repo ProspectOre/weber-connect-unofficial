@@ -77,6 +77,7 @@ class MqttSession:
         self._discovery_cache_file = discovery_cache_file
         self._discovery_cache: dict[str, str] = {}
         self._discovery_announced = False
+        self._logged_publish_summary = False
         # Availability is only (re)published when it changes; reset per
         # connection so a reconnect re-announces the current state.
         self._availability_state: dict[str, str] = {}
@@ -321,6 +322,15 @@ class MqttSession:
                         "online" if present else "offline",
                         deadline,
                     )
+                if not self._logged_publish_summary:
+                    discovery_count = len(active_discovery_topics)
+                    LOGGER.info(
+                        "MQTT publishing ready: state_topic=%s discovery_prefix=%s discovery_topics=%s",
+                        f"{self.topic_root}/state",
+                        self.config.discovery_prefix,
+                        discovery_count,
+                    )
+                    self._logged_publish_summary = True
             except Exception:
                 self._discard_client()
                 raise

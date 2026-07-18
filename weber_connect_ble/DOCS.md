@@ -34,6 +34,11 @@ change grill modes.
 - Internet access for the recommended Weber app access setup; **Local only**
   works without it.
 
+Bluetooth is direct from the add-on container to the Home Assistant host's
+BlueZ service. Home Assistant Bluetooth proxies are not used by this add-on.
+Initial pairing and local BLE reads therefore require the hub to be near the
+Home Assistant machine or its attached Bluetooth adapter.
+
 ## Verified Compatibility
 
 The current physical test matrix is intentionally specific:
@@ -302,9 +307,14 @@ homeassistant/sensor/{device_id}_probe_1_battery/config
 
 ### No Home Assistant entities appear
 
-1. Check the panel footer for MQTT publishing status.
-2. Confirm the MQTT integration and broker are running.
-3. Reload MQTT entities or restart Home Assistant if discovery was only just
+1. Confirm the MQTT integration and broker are running.
+2. Check the add-on log for `MQTT publishing ready`. That line includes the
+   state topic, discovery prefix, and number of discovery topics published.
+3. If Mosquitto shows the add-on connected but Home Assistant still creates no
+   entities, confirm MQTT discovery is enabled in Home Assistant and that the
+   integration is listening on the same discovery prefix, normally
+   `homeassistant`.
+4. Reload MQTT entities or restart Home Assistant if discovery was only just
    enabled.
 
 ### Cloud pairing appears stuck
@@ -321,7 +331,11 @@ homeassistant/sensor/{device_id}_probe_1_battery/config
 1. Confirm the official app itself displays a current probe temperature.
 2. Start or resume a cook/recipe so the hub publishes current snapshots.
 3. Allow one or two configured poll intervals.
-4. Cloud is reported idle when no active snapshot arrives beyond the stale-data
+4. Inserted probes can take a moment to appear in Weber's cloud snapshot after
+   the official app connects. **Check connection** only proves the bridge
+   identity can access the hub; it does not force Weber to publish a new probe
+   snapshot.
+5. Cloud is reported idle when no active snapshot arrives beyond the stale-data
    grace window.
 
 ### Recipe title or instructions do not appear
@@ -351,6 +365,15 @@ homeassistant/sensor/{device_id}_probe_1_battery/config
 1. Select **Use Weber app**, then confirm **Release Bluetooth**.
 2. Wait for **Bluetooth available** before opening the official app.
 3. If needed, force-close and reopen the Weber app after the release.
+
+### Reconnect Home Assistant stays on cloud
+
+**Reconnect Home Assistant** asks the bridge to try direct Bluetooth again.
+If the hub is out of range, asleep, busy with another BLE client, or not near
+the Home Assistant host Bluetooth adapter, the bridge keeps using Weber Cloud
+when cloud access is available. Move the hub near the Home Assistant adapter,
+fully close the Weber app, wake the hub, and try again if a direct local BLE
+read is required.
 
 ## Security And Privacy
 

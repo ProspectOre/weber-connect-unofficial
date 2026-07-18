@@ -76,6 +76,11 @@ the saved timed fallback is used.
 - Internet access for the recommended Weber app access path; **Local only**
   remains available without it.
 
+Bluetooth is direct from the add-on container to the Home Assistant host's
+BlueZ service. Home Assistant Bluetooth proxies are not used by this add-on, so
+initial pairing and local BLE reads require the hub to be near the Home
+Assistant machine or its attached Bluetooth adapter.
+
 ## Compatibility And Validation
 
 The current build was physically tested with a Weber Connect Hub running

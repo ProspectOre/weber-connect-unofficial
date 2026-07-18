@@ -115,7 +115,8 @@ class MqttSessionTests(unittest.TestCase):
             await session.publish(state, 30)
             await session.close()
 
-        asyncio.run(scenario())
+        with self.assertLogs("weber_connect_mqtt", level="INFO") as logs:
+            asyncio.run(scenario())
 
         self.assertEqual(len(clients), 1)
         client = clients[0]
@@ -138,6 +139,18 @@ class MqttSessionTests(unittest.TestCase):
         self.assertEqual(len(discovery), 14)
         temperature = [row for row in discovery if row[0].endswith("_probe_1_temperature/config")]
         self.assertTrue(all("availability_topic" in row[1] for row in temperature))
+        self.assertEqual(
+            [
+                line
+                for line in logs.output
+                if "MQTT publishing ready:" in line
+            ],
+            [
+                "INFO:weber_connect_mqtt:MQTT publishing ready: "
+                "state_topic=weber_connect/weber_connect_testserial/state "
+                "discovery_prefix=homeassistant discovery_topics=14"
+            ],
+        )
         self.assertTrue(client.disconnected)
 
     def _probe_status(self) -> dict:
