@@ -1,76 +1,70 @@
 # Contributing
 
-## Development Setup
+## Development setup
 
-Create a virtual environment and install the same dependencies used by CI:
+Use Python 3.14, matching Home Assistant 2026.7:
 
 ```bash
-python3 -m venv .venv
+python3.14 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install --require-hashes -r weber_connect_ble/app/requirements.txt
-python -m pip install -r requirements-dev.txt
+python -m pip install \
+  bandit==1.9.4 \
+  homeassistant==2026.7.2 \
+  mypy==1.19.1 \
+  pip-audit==2.10.0 \
+  pytest==9.0.3 \
+  pytest-cov==7.1.0 \
+  pytest-homeassistant-custom-component==0.13.346 \
+  ruff==0.15.22
 ```
 
-## Development Checks
-
-Run the complete local gate before opening a pull request:
+Run the local gate:
 
 ```bash
-.venv/bin/ruff check .
-.venv/bin/mypy
-.venv/bin/python scripts/validate_release.py
-.venv/bin/coverage run -m unittest discover -s tests
-.venv/bin/coverage report
+ruff check custom_components tests_native scripts
+ruff format --check custom_components tests_native scripts
+mypy --python-version 3.14 --strict --ignore-missing-imports custom_components/weber_connect
+bandit -q -r custom_components/weber_connect scripts
+pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-report=term-missing --cov-fail-under=80
+python scripts/validate_release.py
+pip-audit --requirement requirements-runtime.txt --no-deps --disable-pip
 ```
 
-## Design Constraints
+Hassfest and HACS validation run in GitHub Actions.
 
-- BLE remains the preferred transport and only one bridge BLE operation may own
-  the hub at a time.
-- Cloud access remains opt-in. Monitoring may read live sessions, installed
-  programs, and cook history. Remote commands must remain separately opt-in,
-  narrowly allowlisted, validated, and covered by protocol tests. Do not add
-  recipe installation/start, target changes, Wi-Fi configuration, ignition, or
-  grill-mode controls without a new security review and explicit project scope.
-- Cloud authentication tests must verify appliance-scoped access; a successful
-  companion login alone is not enough.
-- Generated companion credentials must remain private and must never appear in
-  public status payloads or logs.
-- Preserve the physical-confirmation requirement for companion pairing.
-- Add malformed, unauthorized, timeout, pagination, and stale-data tests when
-  changing protocol boundaries.
+## Design constraints
 
-## Pull Requests
+- Use Home Assistant's documented Bluetooth manager. Never connect directly to
+  an ESPHome proxy, copy a proxy key, or read Home Assistant `.storage`.
+- Re-resolve the best adapter or proxy on connection retry and disconnect every
+  GATT client in `finally`.
+- Keep **Phone + Home Assistant** as the default. Local fallback must remain explicit
+  because it may take the hub's single Bluetooth connection from the phone.
+- Preserve physical confirmation for pairing.
+- Never request the user's Weber email/password or extract phone secrets.
+- Cloud authentication alone is insufficient; associate and scope access to
+  the paired appliance.
+- Remote commands must remain opt-in, narrowly allowlisted, range-validated,
+  and covered by protocol tests. Wi-Fi configuration, ignition, recipe
+  installation/start, target changes, and grill-mode control are out of scope.
+- Stable unique IDs must not depend on which adapter or proxy is selected.
 
-- Keep captures, credentials, local runtime JSON, and appliance identifiers out
-  of commits.
-- Redact logs before attaching them.
-- Update `weber_connect_ble/CHANGELOG.md` and every affected user document for
-  user-visible changes.
-- Prefer small, focused patches and explain any private-API assumptions.
+## Compatibility reports
 
-## Compatibility Reports
+Success and failure reports are equally useful. Include:
 
-Reports from hardware and account combinations outside the documented test
-matrix are welcome, whether they succeed or fail. Open an issue with:
+- integration and Home Assistant versions;
+- Home Assistant installation type;
+- Weber product name and firmware version;
+- official app platform/version and account country or region;
+- local adapter or ESPHome proxy model and ESPHome version;
+- whether discovery, physical pairing, cloud association, phone + Home Assistant,
+  local reads, and proxy failover each succeeded.
 
-- Add-on and Home Assistant versions.
-- Home Assistant host type and Bluetooth adapter or proxy model.
-- Weber hub product name and firmware version, when visible in the official
-  app.
-- Official app platform and version, plus the account region or country.
-- Whether local pairing, cloud association, phone handoff, and live probe
-  updates each succeeded.
-- Redacted add-on logs covering the failed step.
+Do not post MAC addresses, appliance or companion IDs, config entries, device
+passwords, bearer tokens, email addresses, packet captures, or unredacted
+diagnostics. Redact identifiers consistently when a sequence needs them.
 
-Never post MAC addresses, appliance or companion identifiers, pairing exports,
-device passwords, bearer tokens, email addresses, packet captures, or files
-from `/data/weber-connect-bridge`. Replace identifiers consistently when they
-are needed to explain a sequence.
-
-Pull requests for additional models or firmware should preserve existing
-behavior, add a regression test for the new protocol shape, and update the
-verified matrix only when the path has also been exercised on physical
-hardware. A report without a code change is still useful and does not need a
-pull request.
+Add a regression test for every new protocol shape. Update the physical matrix
+only after the path was exercised on real hardware.

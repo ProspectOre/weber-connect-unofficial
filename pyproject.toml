@@ -1,5 +1,10 @@
+[project]
+name = "weber-connect-unofficial"
+version = "3.0.0"
+requires-python = ">=3.14"
+
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 100
 extend-exclude = [".venv"]
 
@@ -8,20 +13,24 @@ select = ["E4", "E7", "E9", "F", "I", "B", "ASYNC", "RUF"]
 ignore = ["ASYNC109", "ASYNC110"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*.py" = ["B017"]
+"tests_native/*.py" = ["B017"]
 
 [tool.mypy]
-python_version = "3.12"
-files = ["weber_connect_ble/app"]
+python_version = "3.14"
+files = ["custom_components/weber_connect"]
 strict = true
 ignore_missing_imports = true
 warn_unreachable = true
 show_error_codes = true
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests_native"]
+
 [tool.coverage.run]
 branch = true
-source = ["weber_connect_ble/app"]
-omit = ["*/static/*"]
+source = ["custom_components/weber_connect"]
 
 [tool.coverage.report]
 fail_under = 95

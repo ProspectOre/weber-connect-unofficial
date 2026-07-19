@@ -1,9 +1,8 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+## Supported versions
 
-The latest released version receives security fixes. Earlier releases are not
-supported.
+The latest released version receives security fixes.
 
 ## Reporting
 
@@ -11,48 +10,47 @@ Use GitHub's private **Report a vulnerability** form. If private advisories are
 unavailable, open an issue requesting maintainer contact without technical
 details and continue privately.
 
-Include only the add-on version, Home Assistant version, hardware platform,
-redacted logs, and high-level reproduction steps. Never publish pairing
-summaries, key files, cloud passwords or tokens, MQTT passwords, Android app
-data, or full BLE/network captures.
+Never publish config-entry exports, companion keys, cloud passwords or tokens,
+MAC addresses, appliance IDs, Weber account details, packet captures, or
+unredacted diagnostics.
 
-## Trust Boundaries
+## Trust boundaries
 
-- The web panel is served through Home Assistant ingress. Mutating routes also
-  verify Supervisor ingress network provenance.
-- BlueZ access is mediated through the host D-Bus interface under the bundled
-  AppArmor profile. The add-on does not request `NET_ADMIN`, `NET_RAW`, or raw
-  device access.
-- Local pairing keys, the bridge-owned cloud identity, tokens, handoff state,
-  and MQTT credentials are private runtime data. JSON state uses owner-only
-  permissions and atomic replacement.
-- Status responses and logs do not expose cloud passwords, bearer tokens, or
-  full companion identifiers.
+- Home Assistant Core owns config-entry storage, Bluetooth adapters, ESPHome
+  proxy credentials, connection-slot allocation, and entity authorization.
+- The integration resolves hubs only through Home Assistant's documented
+  Bluetooth API and uses `bleak-retry-connector` for bounded connection retry.
+- The integration never reads Home Assistant `.storage`, contacts ESPHome
+  proxies directly, or exposes a general-purpose GATT transport.
+- Every local connection is released in `finally`, including cancellation and
+  protocol failure paths.
+- Diagnostics redact the hub address, appliance and companion IDs, cloud
+  password, companion keys, and appliance public key.
+- Cloud REST requests are restricted to HTTPS and WebSocket requests to WSS.
 
-## Cloud Security Model
+## Cloud security model
 
-Cloud support is opt-in. The bridge generates its own random companion ID,
-device password, and key material; it does not ask users for their Weber account
-password or copy secrets from the official app. Pairing still requires physical
-access to the hub when it requests confirmation.
+The integration generates its own random companion identity. It does not ask
+for a Weber email/password and does not copy a phone secret. Pairing still
+requires physical access and confirmation on the hub.
 
-The app-global Weber client values in the source identify the Weber application,
-not an individual user. The per-install companion password and bearer tokens are
-the sensitive credentials.
+The app-global Weber client values in source identify Weber's application, not
+an individual user. The generated companion password, key material, and bearer
+token are sensitive per-install credentials.
 
-Weber's cloud API is private and undocumented. Enabling it sends companion
-authentication, live cook-session, installed-program, and cook-history requests
-to Weber. Remote cook commands are a separate setting, disabled by default, and
-require the configured MQTT broker to be trusted. When enabled, the accepted
-command set is limited to confirming or stopping an active cook and starting or
-resetting one of four timers. Topics, payloads, timer ranges, and active-session
-state are validated before a command is sent.
+Weber's cloud API is private and undocumented. The default **Phone + Home
+Assistant** mode sends
+authentication, association, cook-history, live-session, and program-detail
+requests to Weber. Remote commands are separately opt-in and limited to
+confirming or stopping an active cook and resetting an existing timer.
 
-The bridge never uses the cloud path to install or start a recipe, change a
-temperature target, configure Wi-Fi, ignite an appliance, or change a grill
-mode. Disabling or removing cloud access automatically disables and removes the
-remote-control entities.
+The integration does not configure Wi-Fi, install or start recipes, change
+targets, ignite appliances, or change grill mode. Weber exposes no supported
+companion-revocation API; deleting the Home Assistant config entry removes the
+local credential but may not remove Weber's server-side companion record.
 
-**Remove Credentials** deletes the local cloud identity but cannot remove a
-server-side companion record because Weber exposes no supported revocation API
-for this flow.
+## Supply chain
+
+Releases must pass Ruff, strict mypy, Bandit, CodeQL, dependency auditing,
+Home Assistant Hassfest, HACS validation, native config-flow tests, and protocol
+tests. GitHub Actions use immutable commit SHAs.

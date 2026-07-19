@@ -3,166 +3,100 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Detect relevant changes
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.USE_HOSTED_RUNNERS != 'false' && vars.USE_HOSTED_LINUX != 'false' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64"]') }}
-    timeout-minutes: 10
-    outputs:
-      validate: ${{ steps.filter.outputs.validate }}
-      docker: ${{ steps.filter.outputs.docker }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-      - id: filter
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            echo "validate=true" >> "$GITHUB_OUTPUT"
-            echo "docker=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          changed_files="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
-          if printf '%s\n' "$changed_files" | grep -E '^(scripts/|tests/|weber_connect_ble/|\.github/workflows/ci\.yml)' >/dev/null; then
-            echo "validate=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "validate=false" >> "$GITHUB_OUTPUT"
-          fi
-          if printf '%s\n' "$changed_files" | grep -E '^(weber_connect_ble/|\.github/workflows/ci\.yml)' >/dev/null; then
-            echo "docker=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "docker=false" >> "$GITHUB_OUTPUT"
-          fi
-
   validate:
-    needs: changes
-    if: github.event_name != 'pull_request' || (needs.changes.outputs.validate == 'true' && github.event.pull_request.head.repo.full_name == github.repository)
+    name: Native integration
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Install validation dependencies
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install validation runtime
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install --require-hashes -r weber_connect_ble/app/requirements.txt
-          python -m pip install --require-hashes -r requirements-dev.txt
+          python -m pip install \
+            bandit==1.9.4 \
+            homeassistant==2026.7.2 \
+            mypy==1.19.1 \
+            pip-audit==2.10.0 \
+            pytest==9.0.3 \
+            pytest-cov==7.1.0 \
+            pytest-homeassistant-custom-component==0.13.346 \
+            ruff==0.15.22
       - name: Lint and type-check
         run: |
-          .venv/bin/ruff check .
-          .venv/bin/mypy
-      - name: Validate release files
-        run: .venv/bin/python scripts/validate_release.py
-      - name: Run tests with coverage
+          ruff check custom_components tests_native scripts
+          ruff format --check custom_components tests_native scripts
+          mypy --python-version 3.14 --strict --ignore-missing-imports custom_components/weber_connect
+          bandit -q -r custom_components/weber_connect scripts
+      - name: Run native integration tests
+        env:
+          PYTHONASYNCIODEBUG: "1"
+          PYTHONWARNINGS: error::RuntimeWarning
+        run: >-
+          pytest -q --asyncio-mode=auto tests_native
+          --cov=custom_components/weber_connect
+          --cov-report=term-missing
+          --cov-fail-under=95
+      - name: Validate release contract
+        run: python scripts/validate_release.py
+      - name: Audit runtime dependency
+        run: >-
+          pip-audit --requirement requirements-runtime.txt
+          --no-deps --disable-pip
+      - name: Lint workflows
+        env:
+          GOBIN: ${{ runner.temp }}/bin
         run: |
-          .venv/bin/coverage run -m unittest discover -s tests
-          .venv/bin/coverage report
-      - name: Audit runtime dependencies
-        run: .venv/bin/pip-audit --requirement weber_connect_ble/app/requirements.txt --disable-pip
+          go install github.com/rhysd/actionlint/cmd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106
+          "$GOBIN/actionlint"
 
-  docker-build:
-    needs: changes
-    if: github.event_name != 'pull_request' || (needs.changes.outputs.docker == 'true' && github.event.pull_request.head.repo.full_name == github.repository)
+  hassfest:
+    name: Hassfest
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-            base_digest: sha256:995fc8a44059b3bac015603f63b56b1bf935c2227c5176823d9bb76b45fc2249
-          - arch: aarch64
-            platform: linux/arm64
-            base_digest: sha256:5100b3a2e4741440e7bd587c124920fa3bf02287c4de3cb48aacef7049530ee1
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Check Docker availability
-        id: docker
-        run: |
-          if command -v docker >/dev/null 2>&1; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "Docker is not installed on this self-hosted runner; skipping image smoke tests."
-          fi
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-        if: steps.docker.outputs.available == 'true'
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-        if: steps.docker.outputs.available == 'true'
-      - name: Build add-on image
-        if: steps.docker.outputs.available == 'true'
-        run: |
-          docker buildx build \
-            --pull \
-            --load \
-            --platform "${{ matrix.platform }}" \
-            --cache-from "type=gha,scope=weber-connect-ble-${{ matrix.arch }}" \
-            --cache-to "type=gha,scope=weber-connect-ble-${{ matrix.arch }},mode=max" \
-            --build-arg BUILD_ARCH="${{ matrix.arch }}" \
-            --build-arg BUILD_VERSION="$(awk '/^version:/ {print $2; exit}' weber_connect_ble/config.yaml)" \
-            --build-arg BASE_DIGEST="${{ matrix.base_digest }}" \
-            -t "weber-connect-ble:${{ matrix.arch }}" \
-            weber_connect_ble
-      - name: Smoke-test bridge CLI inside image
-        if: steps.docker.outputs.available == 'true'
-        run: docker run --rm --platform "${{ matrix.platform }}" --entrypoint python3 "weber-connect-ble:${{ matrix.arch }}" /app/weber_status_bridge.py --help
-      - name: Smoke-test scanner CLI inside image
-        if: steps.docker.outputs.available == 'true'
-        run: docker run --rm --platform "${{ matrix.platform }}" --entrypoint python3 "weber-connect-ble:${{ matrix.arch }}" /app/weber_ble_scan.py --help
-      - name: Smoke-test pairing CLI inside image
-        if: steps.docker.outputs.available == 'true'
-        run: docker run --rm --platform "${{ matrix.platform }}" --entrypoint python3 "weber-connect-ble:${{ matrix.arch }}" /app/weber_ble_pair.py --help
-      - name: Smoke-test panel CLI inside image
-        if: steps.docker.outputs.available == 'true'
-        run: docker run --rm --platform "${{ matrix.platform }}" --entrypoint python3 "weber-connect-ble:${{ matrix.arch }}" /app/weber_panel.py --help
-      - name: Smoke-test add-on entrypoint startup
-        if: steps.docker.outputs.available == 'true'
-        run: |
-          set +e
-          output="$(timeout 30 docker run --rm --platform "${{ matrix.platform }}" "weber-connect-ble:${{ matrix.arch }}" 2>&1)"
-          status=$?
-          set -e
-          printf '%s\n' "$output"
-          test "$status" -ne 0
-          grep -q "Weber Connect panel listening on port 8099" <<< "$output"
+      - uses: home-assistant/actions/hassfest@f4ca6f671bd429efb108c0f2fa0ae8af0215986c
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        with:
+          category: integration
 
   ci:
     name: ci
-    needs:
-      - changes
-      - validate
-      - docker-build
     if: always()
+    needs: [validate, hassfest, hacs]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check required CI jobs
+      - name: Require every release gate
+        env:
+          VALIDATE: ${{ needs.validate.result }}
+          HASSFEST: ${{ needs.hassfest.result }}
+          HACS: ${{ needs.hacs.result }}
         run: |
-          set -euo pipefail
-
-          validate="${{ needs.validate.result }}"
-          docker_build="${{ needs.docker-build.result }}"
-
-          echo "validate: $validate"
-          echo "docker-build: $docker_build"
-
-          case "$validate" in
-            success|skipped) ;;
-            *) exit 1 ;;
-          esac
-
-          case "$docker_build" in
-            success|skipped) ;;
-            *) exit 1 ;;
-          esac
+          echo "native integration: $VALIDATE"
+          echo "hassfest: $HASSFEST"
+          echo "hacs: $HACS"
+          test "$VALIDATE" = success
+          test "$HASSFEST" = success
+          test "$HACS" = success

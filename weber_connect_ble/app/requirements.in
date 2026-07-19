@@ -1,7 +1,0 @@
-# Runtime dependencies. Regenerate requirements.txt with:
-# uv pip compile --python-version 3.12 --universal --generate-hashes \
-#   requirements.in -o requirements.txt
-bleak==3.0.2
-cryptography==49.0.0
-paho-mqtt==2.1.0
-websockets==16.1

@@ -13,20 +13,7 @@ updates:
         patterns:
           - "*"
 
-  # Runtime dependency lock for the add-on image (requirements.in/.txt).
-  - package-ecosystem: "pip"
-    directory: "/weber_connect_ble/app"
-    schedule:
-      interval: "monthly"
-      time: "05:00"
-      timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 10
-    groups:
-      runtime-python:
-        patterns:
-          - "*"
-
-  # Development / CI dependency lock (requirements-dev.in/.txt).
+  # Python development and test dependencies.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -36,18 +23,5 @@ updates:
     open-pull-requests-limit: 10
     groups:
       dev-python:
-        patterns:
-          - "*"
-
-  # Home Assistant base image referenced by the add-on Dockerfile.
-  - package-ecosystem: "docker"
-    directory: "/weber_connect_ble"
-    schedule:
-      interval: "monthly"
-      time: "05:00"
-      timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 10
-    groups:
-      docker:
         patterns:
           - "*"

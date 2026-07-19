@@ -1,0 +1,28 @@
+{
+  "domain": "weber_connect",
+  "name": "Weber Connect Unofficial",
+  "bluetooth": [
+    {
+      "connectable": true,
+      "manufacturer_id": 3570
+    },
+    {
+      "connectable": true,
+      "manufacturer_id": 1989
+    },
+    {
+      "connectable": true,
+      "local_name": "WEBER*"
+    }
+  ],
+  "codeowners": ["@ProspectOre"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/ProspectOre/weber-connect-unofficial",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/ProspectOre/weber-connect-unofficial/issues",
+  "loggers": ["bleak_retry_connector"],
+  "requirements": ["websockets==16.1"],
+  "version": "3.0.0"
+}

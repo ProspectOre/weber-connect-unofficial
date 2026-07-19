@@ -1,137 +1,135 @@
-# Weber Connect for Home Assistant (Unofficial)
+# Weber Connect Unofficial
 
-Unofficial Home Assistant add-ons for Weber Connect telemetry.
+Native Home Assistant support for the Weber Connect Smart Grilling Hub.
 
-**Weber Connect for Home Assistant** is an unofficial add-on that pairs directly
-with a Weber Connect Hub, publishes four stable probe slots through MQTT
-discovery, and provides a built-in one-screen Home Assistant control center for
-setup and Weber app access. Probe slots can have optional nicknames while always
-retaining their physical probe number.
-BLE remains the preferred local transport. The recommended first-run setup also
-creates a bridge-owned Weber Cloud companion so telemetry keeps flowing while
-the official Weber app owns Bluetooth.
+Version 3.0 is one native Home Assistant integration:
 
-## Add-on
+- automatic Bluetooth discovery through local adapters and active ESPHome proxies;
+- one physically confirmed setup with no Weber email, password, phone secret, or packet capture;
+- native devices and entities—no MQTT broker or separate control panel;
+- four stable probe slots, cavity temperatures, timers, active recipe, current
+  instruction, target, mode, and cook progress;
+- phone + Home Assistant by default: the Weber app may own Bluetooth while
+  Home Assistant follows the cook through its own Weber Cloud connection;
+- optional local Bluetooth fallback and narrowly allowlisted active-cook
+  controls.
 
-| Add-on | Purpose | Status |
-| --- | --- | --- |
-| Weber Connect for Home Assistant (Unofficial) | Probe temperature, state, and battery sensors through MQTT discovery | Stable BLE-first monitoring with Weber app access by default |
+This project is not affiliated with, endorsed by, or supported by Weber.
+
+> [!IMPORTANT]
+> 3.0 is under active development and has not been released yet. The native
+> code and automated Home Assistant 2026.7 tests are in place. Real-hardware
+> setup and direct local readings through one active ESPHome proxy are
+> verified. Recovery, endurance, and proxy-failover tests remain release
+> blockers.
 
 ## Install
 
-[![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FProspectOre%2Fweber-connect-home-assistant-addon)
+3.0 will be installed as a HACS custom integration:
 
-1. Click the button above, or open **Settings > Apps**, choose **Install app**,
-   open **Repositories**, and add:
+1. Open **HACS → Integrations → ⋮ → Custom repositories**.
+2. Add this repository as category **Integration**:
 
    ```text
-   https://github.com/ProspectOre/weber-connect-home-assistant-addon
+   https://github.com/ProspectOre/weber-connect-unofficial
    ```
 
-   Older Home Assistant versions may label this area **Settings > Add-ons >
-   Add-on Store**.
-2. Install and start **Weber Connect for Home Assistant (Unofficial)**.
-3. Fully close the Weber app on every nearby phone or tablet so it is not
-   connected to the hub over Bluetooth.
-4. Open the add-on Web UI and select **Set Up My Hub**.
-5. Press the hub button when it beeps to confirm pairing.
+3. Download **Weber Connect Unofficial** and restart Home Assistant.
+4. Open **Settings → Devices & services**. Select the discovered Weber hub, or
+   choose **Add integration → Weber Connect Unofficial**.
+5. Fully close the Weber app on every phone or tablet that uses it, then
+   temporarily turn off Bluetooth on those devices. This prevents a phone from
+   reclaiming the hub while Home Assistant pairs.
+6. Wake the hub, continue setup, and approve Home Assistant on the hub display.
+7. After setup completes, turn Bluetooth back on and reopen the Weber app.
 
-The recommended path registers a private bridge companion with Weber Cloud,
-pairs that same identity with the hub, and publishes the probe entities
-automatically. It needs one setup action and one physical confirmation. Users
-who do not want cloud access can select **Local only** instead.
+Home Assistant creates and stores its own Weber connection automatically.
 
-## Use Home Assistant And The Weber App Together
+## Everyday behavior
 
-The hub accepts one active BLE client, so Weber app access is the default
-onboarding path. It solves that limitation without copying a phone secret or
-asking for a Weber account password. On a fresh installation, select **Set Up
-My Hub**, confirm on the hub, and allow up to five minutes for Weber's backend
-to publish the association. For an older or local-only installation, open
-**Settings > Weber app + Home Assistant** and select **Set up Weber app access**.
+The default mode is **phone + Home Assistant**. Home Assistant reads through
+Weber Cloud every 10 seconds, leaving the hub's single Bluetooth connection
+available to the Weber app. A recipe started in the Weber app can populate the
+native recipe, instruction, target, progress, temperature, and timer entities
+when Weber makes that live-session data available to Home Assistant.
 
-The bridge creates and registers its own random companion identity, pairs that
-same identity with the hub over BLE, and stores it privately for that add-on
-installation. Setup does not depend on Android packet capture, certificate
-interception, phone app storage, or email/password login.
+Home Assistant uses Bluetooth for initial pairing. If **Local Bluetooth
+fallback** is enabled in the integration options, it can also read locally
+when cloud updates fail. Local reads may temporarily take the hub away from the
+phone. Home Assistant chooses the best reachable local adapter or active proxy
+for every connection attempt and can choose a different path on retry.
 
-While the Weber app is using Bluetooth, it can display the hub and start a
-recipe while Home Assistant continues receiving the hub's cloud probe
-telemetry. Home Assistant also creates entities for cavity temperatures, active
-recipe details, instructions, cook progress, and timers. Those richer fields
-populate only when Weber makes the corresponding live-session data available
-to the bridge companion. Optional remote controls are disabled by default and
-remain experimental until verified on additional hardware.
+Probe entities retain stable slot IDs such as `probe_2_temperature`. Optional
+nicknames keep the physical number visible—for example, **Brisket · Probe 2**—
+without changing the entity's identity.
 
-New installs refresh local probe readings every 10 seconds. While the Weber app
-has Bluetooth access, cloud-ready bridges preselect **Manual reconnect** so Home
-Assistant can keep following the cook without an arbitrary deadline; otherwise
-the saved timed fallback is used.
+The device page starts with the entities most people need: four permanent probe
+slots, detected probe temperatures, the active recipe, the current instruction,
+and connection status. An empty slot reads **Not connected**. Numeric temperature
+and battery entities are added automatically after a probe's first reading so
+Home Assistant never presents a missing value as a live measurement. Batteries,
+cavities, timers, cook details, and diagnostics remain available as disabled
+entities for users who want them.
+
+Idle recipe and instruction entities say that no cook is active. The separate
+receiving-data entity shows whether the integration itself is online.
+
+Remote controls are off by default. When enabled, 3.0 can confirm or stop an
+already-active cook and reset an existing timer. It cannot ignite a grill,
+configure Wi-Fi, install or start a recipe, change a target, or change grill
+mode.
 
 ## Requirements
 
-- Home Assistant OS, Supervised, or another installation with add-on support.
-- A Bluetooth adapter available to Home Assistant.
-- The MQTT integration and a broker such as the Mosquitto broker add-on.
-- Internet access for the recommended Weber app access path; **Local only**
-  remains available without it.
+- Home Assistant 2026.7.0 or newer.
+- HACS for installation until the integration is accepted into Home Assistant.
+- A connectable Home Assistant Bluetooth adapter or active ESPHome Bluetooth
+  proxy in range during setup.
+- Internet access for the default **Phone + Home Assistant** mode.
 
-Bluetooth is direct from the add-on container to the Home Assistant host's
-BlueZ service. Home Assistant Bluetooth proxies are not used by this add-on, so
-initial pairing and local BLE reads require the hub to be near the Home
-Assistant machine or its attached Bluetooth adapter.
+For an ESPHome proxy, `bluetooth_proxy.active` must be enabled and a connection
+slot must be available. No proxy address or encryption key is entered into this
+integration; Home Assistant owns adapter selection and credentials.
 
-## Compatibility And Validation
+## Compatibility and validation
 
-The current build was physically tested with a Weber Connect Hub running
-`2.0.3_7398`, Home Assistant Yellow running Home Assistant `2026.7.2`, and the
-official Weber app `2.10.0.2439` on a Samsung Galaxy Tab A9+ (`SM-X210`, Android
-16). The official app remained connected over Bluetooth while Home Assistant
-received matching Probe 2 temperatures through Weber Cloud. A T-Bone Steak
-recipe started in the app continued producing current Home Assistant probe
-telemetry. The add-on's complete MQTT discovery set was also accepted by Home
-Assistant and updated at the configured 10-second cadence.
+The cloud data path was physically tested on a Weber Connect Hub running
+`2.0.3_7398`, Home Assistant Yellow on Home Assistant `2026.7.2`, and Weber app
+`2.10.0.2439` on a Samsung Galaxy Tab A9+ (`SM-X210`, Android 16). Matching
+probe readings continued through Weber Cloud while the phone owned Bluetooth.
+The same hub was also discovered and paired through an active ESPHome Bluetooth
+proxy running ESPHome `2026.7.0`; Home Assistant identified that proxy as the
+connection path during setup. A later local-only production test received live
+probe data over that proxy and then returned cleanly to the default cloud mode.
 
-On that same setup, Weber did not return live recipe/program details to the
-independently paired bridge companion, so recipe title, instructions, remote
-cook commands, and timer commands are implemented but **not physically
-verified**. The official app logged that it could not fetch the cook-program
-details as well. The build is covered by 331 automated tests with a 95% coverage
-gate.
+For 3.0, Home Assistant 2026.7.2 import, config flow, identity generation,
+entity contracts, protocol frames, cloud normalization, and adapter re-selection
+are automated. Proxy discovery, pairing, and direct readings are verified on
+the equipment above. The remaining recovery, endurance, and failover cases in
+[Production readiness](PRODUCTION_READINESS.md) must pass with the host adapter
+disabled before 3.0 claims full proxy support.
 
-That is the project's current test matrix, not a claim that every Weber model,
-firmware version, Home Assistant host, Bluetooth adapter, or region has been
-certified. The BLE protocol and Weber's private cloud API may vary. If another
-combination behaves differently, please open an issue or pull request and
-include the non-sensitive environment details listed in
-[CONTRIBUTING.md](CONTRIBUTING.md). Community compatibility reports are how the
-documented matrix will grow.
+That is a test matrix, not a claim that every Weber model, firmware, account
+region, or proxy has been certified. Compatibility reports and pull requests
+are welcome; see [Contributing](CONTRIBUTING.md) for the safe details to include.
 
-## Privacy And Scope
+## Privacy
 
-BLE readings stay local between Home Assistant and the hub. The recommended
-phone-coexistence setup also uses Weber's private, undocumented API; **Local
-only** is available during onboarding. The cloud path sends companion
-authentication, live session, program-detail, and cook-history requests. When
-the user explicitly enables remote controls, it may also confirm or stop an
-active cook and start or reset timers. It never configures Wi-Fi, installs or
-starts a recipe, changes a temperature target, ignites an appliance, or changes
-a grill mode.
+The integration generates a random companion ID, device password, and key
+material. Home Assistant stores them in the config entry; diagnostics redact
+them and all hub/companion identifiers. The integration never asks for the user's Weber account password and
+does not copy secrets from the official app.
 
-Pairing keys, cloud device passwords and tokens, MQTT passwords, app captures,
-and runtime JSON are private runtime data and are excluded from the repository.
+Weber Cloud is private and undocumented. The default mode sends Home
+Assistant's generated identity and cook-session requests to Weber. **Home
+Assistant only** mode avoids those requests but cannot share the hub's single
+Bluetooth connection with the phone.
 
-## Support
+## Project documents
 
-This project is not affiliated with, endorsed by, or supported by Weber. The
-private cloud API can change without notice. Report bugs through the repository
-issue tracker and security problems through GitHub's private vulnerability
-reporting flow.
-
-## Documentation
-
-- [Full setup and troubleshooting](weber_connect_ble/DOCS.md)
 - [Architecture](ARCHITECTURE.md)
+- [Production readiness](PRODUCTION_READINESS.md)
 - [Security policy](SECURITY.md)
-- [Changelog](weber_connect_ble/CHANGELOG.md)
-- [GitHub wiki](https://github.com/ProspectOre/weber-connect-home-assistant-addon/wiki)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [GitHub wiki](https://github.com/ProspectOre/weber-connect-unofficial/wiki)

@@ -1,0 +1,156 @@
+{
+  "title": "Weber Connect Unofficial",
+  "config": {
+    "progress": {
+      "approve_hub": "**Step 1 of 2 — Pairing locally.** Home Assistant is connected to the hub and is waiting for your approval on its display. Keep the Weber app closed and Bluetooth turned off on your phone or tablet.",
+      "finishing_setup": "**Step 2 of 2 — Enabling Phone + Home Assistant.** Local pairing is complete. Home Assistant is waiting for Weber to list its new private connection; no action is needed. Keep phone or tablet Bluetooth off until setup completes."
+    },
+    "step": {
+      "user": {
+        "title": "Choose your Weber hub",
+        "description": "Select the hub you want to add. The route shown beside it tells you which local Bluetooth adapter or active ESPHome proxy currently sees it.",
+        "data": {
+          "address": "Weber hub"
+        }
+      },
+      "no_devices": {
+        "title": "No Weber hub found",
+        "description": "Home Assistant cannot currently see a connectable Weber hub. Wake the hub, keep it near Home Assistant or an active ESPHome Bluetooth proxy, and search again.",
+        "menu_options": {
+          "search_again": "Search again"
+        }
+      },
+      "confirm": {
+        "title": "Connect {name}",
+        "description": "**Step 1 of 2 — Pair locally through {path}.** Fully close the Weber app and temporarily turn off Bluetooth on every phone or tablet that uses it. Wake {name}, continue, and approve **Home Assistant** on the hub display. Step 2 will enable simultaneous phone and Home Assistant access."
+      },
+      "pairing_failed": {
+        "title": "The hub did not approve Home Assistant",
+        "description": "Home Assistant did not receive approval from the hub, so no setup was saved. Keep the Weber app closed and phone or tablet Bluetooth off, wake the hub, and try again.",
+        "menu_options": {
+          "retry_pairing": "Try pairing again",
+          "choose_hub": "Choose another hub"
+        }
+      },
+      "cloud_failed": {
+        "title": "Online setup did not finish",
+        "description": "**Step 1 is complete and safely saved for this setup session.** Weber's online service did not finish listing Home Assistant's private connection. Wait a moment and retry; the hub does not need to be approved again.",
+        "menu_options": {
+          "retry_cloud": "Try online setup again",
+          "start_over": "Start over"
+        }
+      },
+      "setup_failed": {
+        "title": "Setup did not finish",
+        "description": "Home Assistant encountered an unexpected problem and did not create the integration entry. Check the Home Assistant logs for the exact cause before starting over.",
+        "menu_options": {
+          "start_over": "Start over"
+        }
+      }
+    },
+    "create_entry": {
+      "default": "**Both setup steps are complete.** Turn Bluetooth back on and reopen the Weber app. The phone may use the hub's Bluetooth connection while Home Assistant continues receiving cook data online."
+    },
+    "abort": {
+      "already_configured": "This Weber hub is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Weber Connect settings",
+        "description": "The recommended defaults let the Weber app and Home Assistant work together.",
+        "sections": {
+          "connection": {
+            "name": "Connection",
+            "description": "Choose who can use the hub and whether Home Assistant may control an active cook.",
+            "data": {
+              "connection_mode": "Use with",
+              "remote_controls": "Allow active-cook controls"
+            }
+          },
+          "probes": {
+            "name": "Probe names",
+            "description": "Optional nicknames appear beside the permanent probe number.",
+            "data": {
+              "probe_name_1": "Probe 1 nickname",
+              "probe_name_2": "Probe 2 nickname",
+              "probe_name_3": "Probe 3 nickname",
+              "probe_name_4": "Probe 4 nickname"
+            }
+          },
+          "advanced": {
+            "name": "Advanced",
+            "description": "Bluetooth fallback may temporarily take the hub's Bluetooth connection away from the Weber app.",
+            "data": {
+              "poll_seconds": "Update speed",
+              "local_fallback": "Use Bluetooth when online updates fail"
+            }
+          }
+        }
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "phone_and_home_assistant": "Phone + Home Assistant — Recommended",
+        "home_assistant_only": "Home Assistant only"
+      }
+    },
+    "update_speed": {
+      "options": {
+        "10": "Live · 10 seconds",
+        "30": "30 seconds",
+        "60": "1 minute",
+        "120": "2 minutes"
+      }
+    }
+  },
+  "issues": {
+    "connection_lost": {
+      "title": "{name} stopped receiving data",
+      "description": "Home Assistant has not received data from this hub for at least one minute.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Retry {name}",
+            "description": "Make sure Home Assistant is online. If Bluetooth fallback is enabled, wake the hub and make sure a local adapter or active proxy is in range. Continue to test the connection."
+          }
+        },
+        "error": {
+          "still_unavailable": "The hub is still unavailable. Check the connection and try again."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "probe_status": {"name": "Probe {number}"},
+      "probe_status_named": {"name": "{nickname} · Probe {number}"},
+      "probe_temperature": {"name": "Probe {number} temperature"},
+      "probe_temperature_named": {"name": "{nickname} · Probe {number} temperature"},
+      "probe_battery": {"name": "Probe {number} battery"},
+      "probe_battery_named": {"name": "{nickname} · Probe {number} battery"},
+      "cavity_temperature": {"name": "Cavity {number} temperature"},
+      "active_recipe": {"name": "Active recipe"},
+      "recipe_state": {"name": "Recipe state"},
+      "current_instruction": {"name": "Current instruction"},
+      "cook_mode": {"name": "Cook mode"},
+      "cook_target_temperature": {"name": "Cook target temperature"},
+      "cook_time_remaining": {"name": "Cook time remaining"},
+      "cook_time_elapsed": {"name": "Cook time elapsed"},
+      "timer_remaining": {"name": "Timer {number} remaining"},
+      "connection_source": {"name": "Data source"},
+      "app_access": {"name": "Weber app access"}
+    },
+    "binary_sensor": {
+      "connected": {"name": "Receiving data"}
+    },
+    "button": {
+      "confirm_cook": {"name": "Confirm current cook step"},
+      "stop_cook": {"name": "Stop active cook"},
+      "reset_timer": {"name": "Reset timer {number}"}
+    }
+  }
+}
