@@ -145,6 +145,25 @@ async def test_live_loop_subtracts_request_time_from_interval(hass: object) -> N
     sleep.assert_awaited_once_with(6.0)
 
 
+@pytest.mark.asyncio
+async def test_live_loop_keeps_a_cooldown_after_a_slow_request(hass: object) -> None:
+    entry = _entry(cloud=False)
+    coordinator = WeberCoordinator(hass, entry)  # type: ignore[arg-type]
+    coordinator.poll_seconds = 10
+    coordinator.async_refresh = AsyncMock(side_effect=[None, asyncio.CancelledError])
+
+    monotonic = iter((100.0, 114.0, 115.0))
+    with (
+        patch.object(asyncio, "get_running_loop") as get_loop,
+        patch.object(asyncio, "sleep", AsyncMock()) as sleep,
+    ):
+        get_loop.return_value.time.side_effect = lambda: next(monotonic)
+        with pytest.raises(asyncio.CancelledError):
+            await coordinator._async_poll_loop()
+
+    sleep.assert_awaited_once_with(1.0)
+
+
 def test_async_start_is_idempotent_and_entry_scoped(hass: object) -> None:
     entry = _entry(cloud=False)
     task = MagicMock()
@@ -200,6 +219,56 @@ async def test_transport_failures_return_stable_offline_state(hass: object) -> N
     assert bluetooth_state["source"] == "bluetooth"
     assert bluetooth_state["connected"] is False
     assert bluetooth_only.last_error == "out of range"
+
+
+@pytest.mark.asyncio
+async def test_bluetooth_update_has_a_hard_deadline(hass: object) -> None:
+    """A wedged proxy operation must never stop the polling loop forever."""
+
+    coordinator = WeberCoordinator(
+        hass,
+        _entry(cloud=False),  # type: ignore[arg-type]
+    )
+
+    async def never_returns(*_args: object, **_kwargs: object) -> dict[str, object]:
+        await asyncio.Event().wait()
+        return {}
+
+    with (
+        patch.object(coordinator_module, "BLUETOOTH_UPDATE_TIMEOUT", 0.01),
+        patch.object(coordinator_module, "async_read_status", never_returns),
+    ):
+        with pytest.raises(WeberBluetoothError, match="timed out"):
+            await coordinator._async_bluetooth_update()
+
+
+@pytest.mark.asyncio
+async def test_transient_failure_preserves_last_valid_readings(hass: object) -> None:
+    coordinator = WeberCoordinator(
+        hass,
+        _entry(cloud=False),  # type: ignore[arg-type]
+    )
+    previous = {
+        "updated_at": "2026-07-19T20:00:00+00:00",
+        "connected": True,
+        "cloud_ready": False,
+        "source": "bluetooth",
+        "probe_4_temperature": 25.0,
+        "probe_4_state": "Probed",
+    }
+    coordinator.data = previous
+    coordinator.last_successful_update = "2026-07-19T20:00:00+00:00"
+    coordinator._async_bluetooth_update = AsyncMock(
+        side_effect=WeberBluetoothError("temporary proxy interruption")
+    )
+
+    state = await coordinator._async_update_data()
+
+    assert state["connected"] is False
+    assert state["probe_4_temperature"] == 25.0
+    assert state["probe_4_state"] == "Probed"
+    assert state["updated_at"] == previous["updated_at"]
+    assert coordinator.last_error == "temporary proxy interruption"
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,7 @@ from .weber_cloud import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+BLUETOOTH_UPDATE_TIMEOUT = 20.0
 
 
 class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -91,9 +92,8 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         while True:
             started = loop.time()
             await self.async_refresh()
-            delay = self.poll_seconds - (loop.time() - started)
-            if delay > 0:
-                await asyncio.sleep(delay)
+            delay = max(1.0, self.poll_seconds - (loop.time() - started))
+            await asyncio.sleep(delay)
 
     async def _async_cloud_update(self) -> dict[str, Any]:
         client = self.cloud_client
@@ -127,12 +127,18 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_bluetooth_update(self) -> dict[str, Any]:
-        status = await async_read_status(
-            self.hass,
-            self.address,
-            self.companion_id,
-            self.message_version,
-        )
+        try:
+            async with asyncio.timeout(BLUETOOTH_UPDATE_TIMEOUT):
+                status = await async_read_status(
+                    self.hass,
+                    self.address,
+                    self.companion_id,
+                    self.message_version,
+                )
+        except TimeoutError as exc:
+            raise WeberBluetoothError(
+                "The Bluetooth update timed out. Home Assistant will retry automatically."
+            ) from exc
         return normalize_state(
             status,
             source="bluetooth",
@@ -160,21 +166,11 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.last_error = str(exc)
                 self._record_failure()
                 _LOGGER.debug("Weber Bluetooth update failed", exc_info=True)
-                return normalize_state(
-                    None,
-                    source="bluetooth",
-                    connected=False,
-                    cloud_ready=self.cloud_ready,
-                )
+                return self._offline_state("bluetooth")
 
         self.last_error = str(cloud_error) if cloud_error else "No transport is available."
         self._record_failure()
-        return normalize_state(
-            None,
-            source="cloud",
-            connected=False,
-            cloud_ready=self.cloud_ready,
-        )
+        return self._offline_state("cloud")
 
     def _record_success(self) -> None:
         """Record a healthy update and clear any stale repair."""
@@ -204,6 +200,24 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             severity=ir.IssueSeverity.WARNING,
             translation_key="connection_lost",
             translation_placeholders={"name": self.entry.title},
+        )
+
+    def _offline_state(self, source: str) -> dict[str, Any]:
+        """Keep the last valid readings visible during a transient outage."""
+
+        if self.last_successful_update is not None and self.data:
+            state = dict(self.data)
+            state.update(
+                connected=False,
+                cloud_ready=self.cloud_ready,
+                source=source,
+            )
+            return state
+        return normalize_state(
+            None,
+            source=source,
+            connected=False,
+            cloud_ready=self.cloud_ready,
         )
 
     async def async_session_command(self, command: str) -> None:

@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Callable, Generator
 from types import SimpleNamespace
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from homeassistant import config_entries
@@ -332,7 +332,8 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
     )
     entry.add_to_hass(hass)
     coordinator = SimpleNamespace(
-        async_config_entry_first_refresh=AsyncMock(),
+        cloud_enabled=False,
+        async_set_updated_data=Mock(),
         async_start=lambda: None,
     )
     submitted = {
@@ -376,4 +377,5 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
     assert WeberOptions.from_mapping(entry.options) == WeberOptions(
         connection_mode=ConnectionMode.HOME_ASSISTANT_ONLY
     )
+    coordinator.async_set_updated_data.assert_called_once()
     reload_entry.assert_awaited_once_with(entry.entry_id)

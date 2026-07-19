@@ -93,8 +93,19 @@ Assistant reported `Bluetooth Proxy ee608c (08:D1:F9:EE:60:8E)` as the hub's
 advertisement source at -48 dBm. The integration then returned successfully to
 the default phone-and-cloud mode.
 
-The host adapter was not disabled, and the one-hour cadence, proxy restart, and
-Home Assistant restart in local mode have not passed yet. Those single-proxy
-rows remain release blockers. Two-proxy failover is explicitly untested because
-a second proxy is not available; it does not block 3.0 and must not be described
-as verified.
+The host adapter was then disabled for a proxy-only endurance run. That run
+exposed slow uncached GATT discovery, an incomplete service-cache failure, and
+an operation that could remain pending. The corrected implementation now uses
+the Home Assistant service cache on the normal path, retries a missing
+characteristic once with fresh discovery, preserves the last valid readings
+during a transient failure, completes config-entry setup without waiting for a
+physical transport, and enforces a 20-second deadline on every local update.
+On Home Assistant 2026.7.2, a production restart completed the integration's
+config-entry setup in 0.45 seconds; timed-out proxy transactions were recorded
+and retried, and no Weber warning or error appeared in the Home Assistant log.
+
+The post-fix one-hour cadence, a proxy restart, and a successful live read after
+a Home Assistant restart still need to pass with the hub awake. Those
+single-proxy rows remain release blockers. Two-proxy failover is explicitly
+untested because a second proxy is not available; it does not block 3.0 and
+must not be described as verified.

@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from bleak.exc import BleakCharacteristicNotFoundError
+from bleak_retry_connector import BleakOutOfConnectionSlotsError
 
 from custom_components.weber_connect import bluetooth as transport
 from custom_components.weber_connect.models import CompanionIdentity
@@ -110,3 +112,94 @@ async def test_connect_re_resolves_best_adapter_or_proxy_for_retries() -> None:
         assert callback() is second_device
     assert resolve.call_count == 2
     resolver.assert_not_awaited()
+    assert establish.await_args.kwargs["use_services_cache"] is True
+    assert establish.await_args.kwargs["max_attempts"] == 1
+    assert establish.await_args.kwargs["timeout"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_pairing_allows_additional_connection_attempts() -> None:
+    hass = SimpleNamespace()
+    identity = transport.generate_identity()
+    with patch.object(
+        transport,
+        "_connect",
+        AsyncMock(side_effect=transport.WeberBluetoothError("not reachable")),
+    ) as connect:
+        with pytest.raises(transport.WeberBluetoothError, match="not reachable"):
+            await transport.async_pair(hass, ADDRESS, identity)
+
+    connect.assert_awaited_once_with(
+        hass,
+        ADDRESS,
+        max_attempts=3,
+        use_services_cache=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_normalizes_busy_proxy_slots() -> None:
+    device = SimpleNamespace(address=ADDRESS, name="Hub via proxy")
+    with (
+        patch.object(
+            transport.bluetooth,
+            "async_ble_device_from_address",
+            return_value=device,
+        ),
+        patch.object(
+            transport,
+            "establish_connection",
+            AsyncMock(side_effect=BleakOutOfConnectionSlotsError(ADDRESS)),
+        ),
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="slot"):
+            await transport._connect(SimpleNamespace(), ADDRESS)
+
+
+@pytest.mark.asyncio
+async def test_status_read_refreshes_a_stale_services_cache() -> None:
+    stale_client = FakeClient()
+    stale_client.write_gatt_char = AsyncMock(
+        side_effect=BleakCharacteristicNotFoundError(transport.SESSION_UUID)
+    )
+    fresh_client = FakeClient()
+
+    with patch.object(
+        transport,
+        "_connect",
+        AsyncMock(side_effect=[stale_client, fresh_client]),
+    ) as connect:
+        status = await transport.async_read_status(
+            SimpleNamespace(),
+            ADDRESS,
+            IDENTITY.companion_id,
+            10,
+            timeout=0.5,
+        )
+
+    assert status["kind"] == "cook_session_status"
+    assert stale_client.disconnected
+    assert fresh_client.disconnected
+    assert connect.await_args_list[0].kwargs == {"use_services_cache": True}
+    assert connect.await_args_list[1].kwargs == {"use_services_cache": False}
+
+
+@pytest.mark.asyncio
+async def test_status_read_normalizes_missing_fresh_characteristic() -> None:
+    clients = [FakeClient(), FakeClient()]
+    for client in clients:
+        client.write_gatt_char = AsyncMock(
+            side_effect=BleakCharacteristicNotFoundError(transport.SESSION_UUID)
+        )
+
+    with patch.object(transport, "_connect", AsyncMock(side_effect=clients)):
+        with pytest.raises(transport.WeberBluetoothError, match="could not be discovered"):
+            await transport.async_read_status(
+                SimpleNamespace(),
+                ADDRESS,
+                IDENTITY.companion_id,
+                10,
+                timeout=0.5,
+            )
+
+    assert all(client.disconnected for client in clients)
