@@ -44,5 +44,7 @@ async def async_get_config_entry_diagnostics(
         "poll_seconds": runtime.coordinator.poll_seconds,
         "last_successful_update": runtime.coordinator.last_successful_update,
         "consecutive_failures": runtime.coordinator.consecutive_failures,
+        "successful_updates": runtime.coordinator.successful_updates,
+        "failed_updates": runtime.coordinator.failed_updates,
         "last_error": runtime.coordinator.last_error,
     }

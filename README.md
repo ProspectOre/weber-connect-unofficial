@@ -21,9 +21,10 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 > code and automated Home Assistant 2026.7 tests are in place. Real-hardware
 > setup and direct local readings through one active ESPHome proxy are
 > verified. Proxy-only startup, proxy restart recovery, and full Home Assistant
-> restart recovery are also verified. The continuous one-hour endurance run has
-> not yet been completed.
-> Multi-proxy failover is not tested and is not claimed.
+> restart recovery are also verified. A one-hour recommended-mode cloud
+> endurance run completed with zero failed refreshes. Active-cook continuity,
+> continuously-awake proxy endurance, and multi-proxy failover are not yet
+> verified.
 
 ## Install
 
@@ -109,8 +110,10 @@ are automated. Proxy discovery, pairing, and direct readings are verified on
 the equipment above. With the host adapter disabled, production validation also
 verified sub-second config-entry setup, live recovery after proxy and Home
 Assistant restarts, stable entity IDs, and exactly four permanent probe
-temperature entities. The continuous one-hour cadence case in
-[Production readiness](PRODUCTION_READINESS.md) remains outstanding.
+temperature entities. A 60-minute production cloud run completed 356
+successful refreshes with zero failures at a mean interval of approximately
+10.15 seconds. Active-cook continuity and continuously-awake local-proxy
+endurance in [Production readiness](PRODUCTION_READINESS.md) remain outstanding.
 Multi-proxy failover remains an explicitly unverified compatibility scenario.
 
 That is a test matrix, not a claim that every Weber model, firmware, account

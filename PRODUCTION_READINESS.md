@@ -118,7 +118,19 @@ removed from the registry; probe state, type, and battery remain attributes of
 the temperature entity. No new Weber warning or error appeared in the Home
 Assistant log during reload or restart.
 
-The continuous one-hour 10-second-cadence run has not yet been completed and
-remains the only single-proxy endurance row without evidence. Two-proxy failover
-is explicitly untested because a second proxy is not available; it does not
-block 3.0 and must not be described as verified.
+A production Weber Cloud endurance run then completed for 60 minutes 14
+seconds in the recommended Phone + Home Assistant mode. Diagnostic counters
+advanced from 29 to 385 successful refreshes: 356 updates at a mean interval
+of approximately 10.15 seconds, with zero failed updates, zero consecutive
+failures, no last error, and a final connected cloud state. All 72 independent
+Home Assistant HTTP availability samples returned 200. Home Assistant recorded
+no Weber warning or error during the run; a separate unclosed LAN channel error
+identified another host, not the Weber hub or ESPHome proxy.
+
+That endurance run validates idle cloud polling, but it does not validate that
+probe, recipe, instruction, target, progress, and timer data stay populated for
+the full duration of an active cook. The active-cook continuity row above still
+requires a cook started from the Weber app. The one-hour proxy-only cadence row
+also remains unverified with the hub continuously awake. Two-proxy failover is
+explicitly untested because a second proxy is not available; it does not block
+3.0 and must not be described as verified.

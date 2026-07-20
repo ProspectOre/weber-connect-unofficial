@@ -246,6 +246,8 @@ async def test_cloud_failure_uses_local_fallback(hass: object) -> None:
 
     assert state == {"source": "bluetooth", "connected": True}
     assert coordinator.last_error is None
+    assert coordinator.successful_updates == 1
+    assert coordinator.failed_updates == 0
 
 
 @pytest.mark.asyncio
@@ -328,6 +330,8 @@ async def test_transient_failure_preserves_last_valid_readings(hass: object) -> 
     assert state["probe_4_state"] == "Probed"
     assert state["updated_at"] == previous["updated_at"]
     assert coordinator.last_error == "temporary proxy interruption"
+    assert coordinator.successful_updates == 0
+    assert coordinator.failed_updates == 1
 
 
 @pytest.mark.asyncio
@@ -355,6 +359,8 @@ async def test_sustained_failures_mark_preserved_readings_offline(hass: object) 
     assert state["connected"] is False
     assert state["probe_4_temperature"] == 25.0
     assert coordinator.consecutive_failures == coordinator_module.OFFLINE_FAILURE_THRESHOLD
+    assert coordinator.successful_updates == 0
+    assert coordinator.failed_updates == coordinator_module.OFFLINE_FAILURE_THRESHOLD
 
 
 @pytest.mark.asyncio
@@ -418,6 +424,8 @@ async def test_diagnostics_redact_all_private_material(hass: object) -> None:
         poll_seconds=10,
         last_successful_update="2026-07-18T12:00:00+00:00",
         consecutive_failures=1,
+        successful_updates=12,
+        failed_updates=1,
         last_error="temporary failure",
     )
     entry = _entry()
@@ -437,4 +445,6 @@ async def test_diagnostics_redact_all_private_material(hass: object) -> None:
     assert diagnostics["entry"][CONF_COMPANION_PUBLIC_KEY] != "public-key"
     assert diagnostics["state"]["appliance_public_key"] != "appliance-key"
     assert diagnostics["state"]["connected"] is True
+    assert diagnostics["successful_updates"] == 12
+    assert diagnostics["failed_updates"] == 1
     assert diagnostics["last_error"] == "temporary failure"

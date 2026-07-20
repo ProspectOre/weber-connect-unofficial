@@ -60,6 +60,8 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_error: str | None = None
         self.last_successful_update: str | None = None
         self.consecutive_failures = 0
+        self.successful_updates = 0
+        self.failed_updates = 0
         if self.cloud_enabled:
             config = CloudConfig.from_mapping(
                 {
@@ -212,6 +214,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _record_success(self) -> None:
         """Record a healthy update and clear any stale repair."""
 
+        self.successful_updates += 1
         self.last_error = None
         self.last_successful_update = datetime.now(timezone.utc).isoformat()
         self.consecutive_failures = 0
@@ -224,6 +227,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _record_failure(self) -> None:
         """Raise one actionable repair only after a sustained outage."""
 
+        self.failed_updates += 1
         self.consecutive_failures += 1
         if self.consecutive_failures < REPAIR_FAILURE_THRESHOLD:
             return
