@@ -26,7 +26,9 @@ permissions:
 jobs:
   update-runner-policy:
     name: Update hosted runner policy
-    runs-on: [self-hosted, macOS, ARM64]
+    # This job decides whether hosted runners may be used, so it must not
+    # depend on the self-hosted fleet it is responsible for falling back from.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Update repository runner variables
