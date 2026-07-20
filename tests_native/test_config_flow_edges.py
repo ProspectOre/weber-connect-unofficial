@@ -16,11 +16,8 @@ from custom_components.weber_connect.config_flow import (
     _is_weber,
 )
 from custom_components.weber_connect.const import (
-    CONF_ADVANCED,
     CONF_CONNECTION,
     CONF_CONNECTION_MODE,
-    CONF_LOCAL_FALLBACK,
-    CONF_POLL_SECONDS,
     CONF_PROBES,
 )
 from custom_components.weber_connect.models import CompanionIdentity, PairingResult
@@ -260,7 +257,6 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
             CONF_CONNECTION_MODE: ConnectionMode.PHONE_AND_HOME_ASSISTANT,
         },
         CONF_PROBES: {},
-        CONF_ADVANCED: {CONF_POLL_SECONDS: "10", CONF_LOCAL_FALLBACK: False},
     }
     with patch.object(options, "async_create_entry", return_value={"type": "created"}) as create:
         assert await options.async_step_init(submitted) == {"type": "created"}

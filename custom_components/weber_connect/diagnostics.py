@@ -13,8 +13,6 @@ from .const import (
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
-    CONF_COMPANION_PRIVATE_KEY,
-    CONF_COMPANION_PUBLIC_KEY,
 )
 from .models import WeberRuntimeData
 
@@ -23,8 +21,8 @@ TO_REDACT = {
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
-    CONF_COMPANION_PRIVATE_KEY,
-    CONF_COMPANION_PUBLIC_KEY,
+    "companion_private_key",
+    "companion_public_key",
     "appliance_public_key",
 }
 
@@ -35,30 +33,32 @@ async def async_get_config_entry_diagnostics(
     """Return support data with credentials and device identifiers removed."""
 
     runtime: WeberRuntimeData = entry.runtime_data
-    cloud_client = runtime.coordinator.cloud_client
-    socket_client = getattr(cloud_client, "_socket_client", None)
+    coordinator = runtime.coordinator
+    state = coordinator.data
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "stored_options": dict(entry.options),
-        "effective_options": runtime.coordinator.options.as_dict(),
-        "state": async_redact_data(dict(runtime.coordinator.data), TO_REDACT),
-        "transport": runtime.coordinator.data.get("source"),
-        "poll_seconds": runtime.coordinator.poll_seconds,
-        "last_successful_update": runtime.coordinator.last_successful_update,
-        "consecutive_failures": runtime.coordinator.consecutive_failures,
-        "successful_updates": runtime.coordinator.successful_updates,
-        "failed_updates": runtime.coordinator.failed_updates,
-        "last_error": runtime.coordinator.last_error,
-        "cloud_live_error": (
-            getattr(cloud_client, "socket_error", None) if cloud_client is not None else None
-        ),
-        "cloud_socket_received_types": getattr(socket_client, "received_types", []),
-        "cloud_history_schema": (
+        "effective_options": coordinator.options.as_dict(),
+        "transport": coordinator.source,
+        "connected": state.get("connected", False),
+        "last_successful_update": coordinator.last_successful_update,
+        "consecutive_failures": coordinator.consecutive_failures,
+        "successful_updates": coordinator.successful_updates,
+        "failed_updates": coordinator.failed_updates,
+        "last_error": coordinator.last_error,
+        "probe_slots": [
             {
-                "session": getattr(cloud_client, "session_schema", {}),
-                "snapshot": getattr(cloud_client, "snapshot_schema", {}),
+                "number": number,
+                "temperature_c": state.get(f"probe_{number}_temperature"),
+                "state": state.get(f"probe_{number}_state"),
+                "type": state.get(f"probe_{number}_type"),
+                "battery_level": state.get(f"probe_{number}_battery"),
             }
-            if cloud_client is not None
-            else {}
+            for number in range(1, 5)
+        ],
+        "cloud_socket_received_types": (
+            list(coordinator.cloud_session.received_types)
+            if coordinator.cloud_session is not None
+            else []
         ),
     }

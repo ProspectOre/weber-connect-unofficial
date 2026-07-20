@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+from collections.abc import Callable
 from typing import Any
 
 from bleak import BleakClient
@@ -28,10 +29,218 @@ from .saber_frames import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+CONNECTION_TIMEOUT = 30.0
+STATUS_INTERVAL = 10.0
+RECONNECT_DELAYS = (1.0, 2.0, 5.0, 10.0, 30.0)
+
+StatusCallback = Callable[[dict[str, Any]], None]
+ErrorCallback = Callable[[str], None]
 
 
 class WeberBluetoothError(RuntimeError):
     """A hub was unavailable or returned an invalid protocol response."""
+
+
+class WeberBluetoothSession:
+    """Own one long-lived local connection to a Weber hub.
+
+    ESPHome proxies are designed to keep an allocated remote GATT connection
+    open. Reconnecting for every temperature sample adds several scan windows,
+    races slot cleanup, and can leave the next attempt waiting on a stale link.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        address: str,
+        companion_id: str,
+        message_version: int,
+    ) -> None:
+        self.hass = hass
+        self.address = address
+        self.companion_id = companion_id
+        self.message_version = message_version
+        self._client: BleakClient | None = None
+        self._lock = asyncio.Lock()
+        self._received = asyncio.Event()
+        self._wake = asyncio.Event()
+        self._latest: dict[str, Any] | None = None
+        self._services_ready = False
+        self._status_callback: StatusCallback | None = None
+        self._sequence = 1
+        self._session_started = False
+        self._closed = False
+
+    def _next_sequence(self) -> int:
+        value = self._sequence
+        self._sequence = 1 if value >= 0xFFFFFFFF else value + 1
+        return value
+
+    def _handle_status(self, _sender: Any, data: bytearray) -> None:
+        _type_value, parsed, _code = _payload(bytes(data))
+        if isinstance(parsed, dict) and parsed.get("kind") == "cook_session_status":
+            self._latest = parsed
+            self._received.set()
+            if self._status_callback is not None:
+                self._status_callback(parsed)
+
+    def _handle_disconnect(self, _client: BleakClient) -> None:
+        self._wake.set()
+
+    async def _async_disconnect_locked(self) -> None:
+        client = self._client
+        self._client = None
+        self._session_started = False
+        if client is not None:
+            await _safe_disconnect(client)
+
+    async def _async_connect_locked(self) -> BleakClient:
+        """Connect once, refreshing GATT services when the proxy needs it."""
+
+        strategies = (True, False) if self._services_ready else (False,)
+        for use_services_cache in strategies:
+            client = await _connect(
+                self.hass,
+                self.address,
+                use_services_cache=use_services_cache,
+                disconnected_callback=self._handle_disconnect,
+            )
+            subscriptions = 0
+            cache_error: BleakCharacteristicNotFoundError | None = None
+            try:
+                for uuid in (STATUS_UUID, NOTIFICATION_UUID, RESPONSE_UUID):
+                    try:
+                        await client.start_notify(uuid, self._handle_status)
+                        subscriptions += 1
+                    except BleakCharacteristicNotFoundError as exc:
+                        cache_error = exc
+                    except Exception:
+                        _LOGGER.debug(
+                            "Hub characteristic %s does not notify",
+                            uuid,
+                            exc_info=True,
+                        )
+                if subscriptions == 0 and cache_error is not None:
+                    raise cache_error
+                if subscriptions == 0:
+                    await _safe_disconnect(client)
+                    raise WeberBluetoothError(
+                        "The hub did not expose a usable status notification. "
+                        "Home Assistant will retry automatically."
+                    )
+            except BleakCharacteristicNotFoundError as exc:
+                await _safe_disconnect(client)
+                self._services_ready = False
+                if not use_services_cache:
+                    raise WeberBluetoothError(
+                        "The hub's Bluetooth services could not be discovered. "
+                        "Home Assistant will retry automatically."
+                    ) from exc
+                continue
+            self._client = client
+            self._services_ready = True
+            self._sequence = 1
+            self._session_started = False
+            return client
+        raise WeberBluetoothError(
+            "The hub's Bluetooth services could not be discovered. Home Assistant will retry automatically."
+        )
+
+    async def async_read_status(self, *, timeout: float = 12.0) -> dict[str, Any]:
+        """Request and return a fresh status while retaining the GATT link."""
+
+        async with self._lock:
+            client = self._client
+            if client is None or not client.is_connected:
+                await self._async_disconnect_locked()
+                client = await self._async_connect_locked()
+
+            self._received.clear()
+            if self._session_started:
+                characteristic = COMMAND_UUID
+                frame = build_command_frame(
+                    self._next_sequence(),
+                    self.message_version,
+                    0x05,
+                    b"",
+                )
+            else:
+                characteristic = SESSION_UUID
+                frame = build_command_frame(
+                    self._next_sequence(),
+                    self.message_version,
+                    0x70,
+                    build_handshake_body(self.companion_id, secrets.token_bytes(32)),
+                )
+            try:
+                await client.write_gatt_char(characteristic, frame, response=True)
+                self._session_started = True
+                await asyncio.wait_for(self._received.wait(), timeout=timeout)
+            except TimeoutError as exc:
+                if not client.is_connected:
+                    await self._async_disconnect_locked()
+                raise WeberBluetoothError(
+                    "The hub connected but did not return a fresh probe reading. "
+                    "Home Assistant will retry automatically."
+                ) from exc
+            except BleakError as exc:
+                await self._async_disconnect_locked()
+                self._services_ready = False
+                raise WeberBluetoothError(
+                    "The Bluetooth session was interrupted. Home Assistant will retry automatically."
+                ) from exc
+
+            if self._latest is None:
+                raise WeberBluetoothError("The hub returned an empty status response.")
+            return self._latest
+
+    async def async_run(
+        self,
+        status_callback: StatusCallback,
+        error_callback: ErrorCallback,
+    ) -> None:
+        """Maintain the local session and publish fresh notifications."""
+
+        self._status_callback = status_callback
+        delay_index = 0
+        try:
+            while not self._closed:
+                # Clear before doing I/O so an advertisement received during a
+                # request remains set and advances the next attempt promptly.
+                self._wake.clear()
+                started = asyncio.get_running_loop().time()
+                try:
+                    await self.async_read_status()
+                except WeberBluetoothError as exc:
+                    error_callback(str(exc))
+                    delay = RECONNECT_DELAYS[min(delay_index, len(RECONNECT_DELAYS) - 1)]
+                    delay_index += 1
+                else:
+                    delay_index = 0
+                    delay = max(
+                        1.0,
+                        STATUS_INTERVAL - (asyncio.get_running_loop().time() - started),
+                    )
+                try:
+                    await asyncio.wait_for(self._wake.wait(), timeout=delay)
+                except TimeoutError:
+                    pass
+        finally:
+            self._status_callback = None
+            await self.async_close()
+
+    def async_wake(self) -> None:
+        """Retry promptly when Home Assistant sees a fresh advertisement."""
+
+        self._wake.set()
+
+    async def async_close(self) -> None:
+        """Release the proxy slot when the config entry unloads."""
+
+        self._closed = True
+        self._wake.set()
+        async with self._lock:
+            await self._async_disconnect_locked()
 
 
 def generate_identity() -> CompanionIdentity:
@@ -65,6 +274,7 @@ async def _connect(
     *,
     max_attempts: int = 1,
     use_services_cache: bool = True,
+    disconnected_callback: Callable[[BleakClient], None] | None = None,
 ) -> BleakClient:
     device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
     if device is None:
@@ -82,12 +292,16 @@ async def _connect(
             BleakClient,
             device,
             NAME,
+            disconnected_callback=disconnected_callback,
             # Live reads already retry on the coordinator cadence. Keeping one
             # connector attempt prevents a sleeping hub or a starting proxy
             # from holding up Home Assistant startup for several minutes.
             max_attempts=max_attempts,
             use_services_cache=use_services_cache,
-            timeout=10.0,
+            # ESPHome proxies may need multiple scan windows before the remote
+            # GATT link is allocated. Ten seconds was enough for local radios
+            # but cancelled healthy proxy attempts before they could finish.
+            timeout=CONNECTION_TIMEOUT,
             ble_device_callback=lambda: (
                 bluetooth.async_ble_device_from_address(hass, address, connectable=True) or device
             ),
@@ -242,114 +456,4 @@ async def async_pair(
         # Disconnecting a Bleak client also removes its notification callbacks.
         # Avoid extra GATT stop-notify traffic after a link has already dropped.
         await _safe_disconnect(client)
-        bluetooth.async_clear_advertisement_history(hass, address)
-
-
-async def _async_read_status_once(
-    hass: HomeAssistant,
-    address: str,
-    companion_id: str,
-    message_version: int,
-    *,
-    timeout: float = 8.0,
-    use_services_cache: bool,
-) -> dict[str, Any]:
-    """Read one status frame using the selected GATT cache strategy."""
-
-    client = await _connect(
-        hass,
-        address,
-        use_services_cache=use_services_cache,
-    )
-    received = asyncio.Event()
-    latest: dict[str, Any] | None = None
-    cache_error: BleakCharacteristicNotFoundError | None = None
-    subscriptions = 0
-
-    def handler(_sender: Any, data: bytearray) -> None:
-        nonlocal latest
-        _type_value, parsed, _code = _payload(bytes(data))
-        if isinstance(parsed, dict) and parsed.get("kind") == "cook_session_status":
-            latest = parsed
-            received.set()
-
-    try:
-        for uuid in (STATUS_UUID, NOTIFICATION_UUID, RESPONSE_UUID):
-            try:
-                await client.start_notify(uuid, handler)
-                subscriptions += 1
-            except BleakCharacteristicNotFoundError as exc:
-                cache_error = exc
-            except Exception:
-                _LOGGER.debug("Hub characteristic %s does not notify", uuid, exc_info=True)
-        if subscriptions == 0 and cache_error is not None:
-            raise cache_error
-        frame = build_command_frame(
-            1,
-            message_version,
-            0x70,
-            build_handshake_body(companion_id, secrets.token_bytes(32)),
-        )
-        await client.write_gatt_char(SESSION_UUID, frame, response=True)
-        try:
-            await asyncio.wait_for(received.wait(), timeout=timeout)
-        except TimeoutError as exc:
-            raise WeberBluetoothError("The hub connected but did not return probe status.") from exc
-        if latest is None:
-            raise WeberBluetoothError("The hub returned an empty status response.")
-        return latest
-    except WeberBluetoothError, BleakCharacteristicNotFoundError:
-        raise
-    except (BleakError, TimeoutError) as exc:
-        raise WeberBluetoothError(
-            "The Bluetooth session was interrupted. Home Assistant will retry automatically."
-        ) from exc
-    finally:
-        await _safe_disconnect(client)
-
-
-async def async_read_status(
-    hass: HomeAssistant,
-    address: str,
-    companion_id: str,
-    message_version: int,
-    *,
-    timeout: float = 8.0,
-) -> dict[str, Any]:
-    """Read one local status frame through the best HA adapter or proxy.
-
-    The normal path reuses Home Assistant's service cache so ten-second proxy
-    updates stay lightweight. If a proxy retained an incomplete GATT table,
-    retry that read once with a fresh discovery and repair the cache.
-    """
-
-    try:
-        try:
-            return await _async_read_status_once(
-                hass,
-                address,
-                companion_id,
-                message_version,
-                timeout=timeout,
-                use_services_cache=True,
-            )
-        except BleakCharacteristicNotFoundError:
-            _LOGGER.debug("Refreshing the Weber hub GATT service cache", exc_info=True)
-            try:
-                return await _async_read_status_once(
-                    hass,
-                    address,
-                    companion_id,
-                    message_version,
-                    timeout=timeout,
-                    use_services_cache=False,
-                )
-            except BleakCharacteristicNotFoundError as exc:
-                raise WeberBluetoothError(
-                    "The hub's Bluetooth services could not be discovered. Home Assistant will retry automatically."
-                ) from exc
-    finally:
-        # Home Assistant deduplicates unchanged advertisements. Clearing that
-        # cache after every attempt guarantees the next short wake broadcast is
-        # delivered to our callback instead of waiting for the polling cadence.
         bluetooth.async_clear_advertisement_history(hass, address)

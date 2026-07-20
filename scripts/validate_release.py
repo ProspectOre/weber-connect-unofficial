@@ -127,11 +127,15 @@ def check_privacy_and_scope() -> None:
     diagnostics = (INTEGRATION / "diagnostics.py").read_text(encoding="utf-8")
     for private_key in (
         "CONF_CLOUD_PASSWORD",
-        "CONF_COMPANION_PRIVATE_KEY",
-        "CONF_COMPANION_PUBLIC_KEY",
+        '"companion_private_key"',
+        '"companion_public_key"',
     ):
         if private_key not in diagnostics:
             fail(f"diagnostics do not redact {private_key}")
+    constants = (INTEGRATION / "const.py").read_text(encoding="utf-8")
+    for removed in ("CONF_COMPANION_PRIVATE_KEY", "CONF_COMPANION_PUBLIC_KEY"):
+        if removed in constants:
+            fail(f"transient pairing material must not have a persisted constant: {removed}")
     bluetooth = (INTEGRATION / "bluetooth.py").read_text(encoding="utf-8")
     if "async_ble_device_from_address" not in bluetooth:
         fail("Bluetooth transport must resolve devices through Home Assistant")

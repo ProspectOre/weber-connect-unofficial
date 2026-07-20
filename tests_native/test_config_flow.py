@@ -18,14 +18,11 @@ from custom_components.weber_connect import async_setup_entry
 from custom_components.weber_connect.bluetooth import WeberBluetoothError
 from custom_components.weber_connect.config_flow import WeberConnectConfigFlow
 from custom_components.weber_connect.const import (
-    CONF_ADVANCED,
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
     CONF_CONNECTION,
     CONF_CONNECTION_MODE,
-    CONF_LOCAL_FALLBACK,
-    CONF_POLL_SECONDS,
     CONF_PROBES,
     DOMAIN,
 )
@@ -331,7 +328,7 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
     )
     entry.add_to_hass(hass)
     coordinator = SimpleNamespace(
-        cloud_enabled=False,
+        initial_state=lambda: {"source": "bluetooth", "connected": False},
         async_set_updated_data=Mock(),
         async_start=lambda: None,
     )
@@ -340,10 +337,6 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
             CONF_CONNECTION_MODE: ConnectionMode.HOME_ASSISTANT_ONLY.value,
         },
         CONF_PROBES: {},
-        CONF_ADVANCED: {
-            CONF_POLL_SECONDS: "10",
-            CONF_LOCAL_FALLBACK: False,
-        },
     }
 
     with (

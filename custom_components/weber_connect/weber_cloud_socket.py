@@ -1,61 +1,32 @@
-"""Weber companion WebSocket protocol for live cook-session reads.
-
-The official companion API routes the same appliance messages used over BLE
-through a binary WebSocket envelope.  This module intentionally implements a
-small, read-only subset for status and program data. It never sends cook
-controls, installs a recipe, or configures appliance networking.
-"""
+"""Persistent read-only Weber companion WebSocket transport."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import struct
-import threading
 import time
-import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from homeassistant.core import HomeAssistant
+from websockets.asyncio.client import ClientConnection, connect
+
 from .saber_frames import parse_cook_session_status_payload
 
-LOGGER = logging.getLogger("weber_connect_cloud_socket")
+LOGGER = logging.getLogger(__name__)
 
 SOCKET_PATH = "/2/messaging/websocket/companion"
 ROUTING_HEADER_LENGTH = 35
 TRANSPORT_HEADER_LENGTH = 6
 MESSAGE_VERSION = 10
+STATUS_INTERVAL = 10.0
+STATUS_TIMEOUT = 12.0
+RECONNECT_DELAYS = (1.0, 2.0, 5.0, 10.0, 30.0)
 
-SESSION_TYPES = {0: "UNKNOWN", 1: "PROBED", 2: "TIMED", 3: "TIMER"}
-COOK_MODES = {
-    0: "unknown",
-    1: "grill",
-    2: "smoke_boost",
-    3: "preheat",
-    4: "indirect",
-    5: "custom",
-    6: "simple",
-    7: "manual",
-    8: "sear",
-    9: "steam",
-    10: "warm",
-}
-TRIGGER_TYPES = {
-    0: "unknown",
-    1: "duration",
-    2: "cavity_temp_ceiling",
-    3: "probe_temp_ceiling",
-    4: "food_present",
-    5: "user_interaction",
-    6: "probe_connected",
-    7: "remaining",
-    8: "cavity_temp_floor",
-    9: "probe_temp_floor",
-    10: "door_event",
-    11: "at_temp",
-    224: "eta_duration",
-    225: "eta_probe_temp_ceiling",
-    226: "eta_remaining",
-}
+StatusCallback = Callable[[dict[str, Any]], None]
+ErrorCallback = Callable[[str], None]
 
 
 class WeberCloudSocketError(RuntimeError):
@@ -64,6 +35,8 @@ class WeberCloudSocketError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class RoutedMessage:
+    """One decoded companion-routing envelope."""
+
     source_id: str
     target_id: str
     sequence: int
@@ -72,43 +45,8 @@ class RoutedMessage:
     payload: bytes
 
 
-class _Reader:
-    def __init__(self, data: bytes) -> None:
-        self.data = data
-        self.offset = 0
-
-    def take(self, length: int) -> bytes:
-        if length < 0 or self.offset + length > len(self.data):
-            raise WeberCloudSocketError("Cook-program payload ended unexpectedly.")
-        value = self.data[self.offset : self.offset + length]
-        self.offset += length
-        return value
-
-    def u8(self) -> int:
-        return self.take(1)[0]
-
-    def u16(self) -> int:
-        return int(struct.unpack("<H", self.take(2))[0])
-
-    def i16(self) -> int:
-        return int(struct.unpack("<h", self.take(2))[0])
-
-    def i32(self) -> int:
-        return int(struct.unpack("<i", self.take(4))[0])
-
-    def u32(self) -> int:
-        return int(struct.unpack("<I", self.take(4))[0])
-
-    def josl_string(self) -> str:
-        length = self.u8()
-        try:
-            return self.take(length).decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise WeberCloudSocketError("Cook-program text is not valid UTF-8.") from exc
-
-
 def decode_routed_message(data: bytes) -> RoutedMessage:
-    """Decode Weber's routing + transport + appliance headers."""
+    """Decode Weber's routing, transport, and appliance headers."""
 
     minimum = ROUTING_HEADER_LENGTH + TRANSPORT_HEADER_LENGTH + 2
     if len(data) < minimum:
@@ -159,166 +97,50 @@ def encode_routed_message(
     return routing + transport + appliance
 
 
-def _trigger(reader: _Reader) -> dict[str, Any]:
-    target = reader.i32()
-    type_value = reader.u8()
-    if type_value in {2, 3, 8, 9, 225}:
-        target *= 100
-    return {
-        "type_value": type_value,
-        "type": TRIGGER_TYPES.get(type_value, "unknown"),
-        "target": target,
-    }
-
-
-def decode_program_details(payload: bytes, message_version: int) -> dict[str, Any]:
-    """Decode INCOMING_PROGRAM_DETAILS into HA-safe recipe/session fields."""
-
-    reader = _Reader(payload)
-    session_type_value = reader.u8()
-    session_index = reader.u8()
-    program_id = str(uuid.UUID(bytes=reader.take(16)))
-    plan_id = reader.u32() if message_version >= 11 else reader.u8()
-    title = reader.josl_string()
-    eta_curve = reader.u8()
-    step_count = reader.u16() if message_version >= 11 else reader.u8()
-    if step_count > 256:
-        raise WeberCloudSocketError("Cook program contains too many steps.")
-    steps: list[dict[str, Any]] = []
-    for _ in range(step_count):
-        step_id = reader.u16() if message_version >= 11 else reader.u8()
-        duration_ms = reader.u32()
-        temperature_dc = reader.i16()
-        cook_mode_value = reader.u8() if message_version >= 10 else None
-        criteria_count = reader.u8()
-        criteria = [_trigger(reader) for _ in range(criteria_count)]
-        requirement_value = reader.u8()
-        steps.append(
-            {
-                "id": step_id,
-                "base_duration_s": round(duration_ms / 1000),
-                "target_temperature_c": (
-                    None if temperature_dc == -32768 else round(temperature_dc / 10, 1)
-                ),
-                "cook_mode": (
-                    COOK_MODES.get(cook_mode_value, "unknown")
-                    if cook_mode_value is not None
-                    else "unknown"
-                ),
-                "cook_mode_value": cook_mode_value,
-                "exit_criteria": criteria,
-                "requirement": "all" if requirement_value == 1 else "any",
-            }
-        )
-    prompt_count = reader.u16() if message_version >= 11 else reader.u8()
-    if prompt_count > 1024:
-        raise WeberCloudSocketError("Cook program contains too many prompts.")
-    prompts: list[dict[str, Any]] = []
-    for _ in range(prompt_count):
-        prompt_id = reader.u16() if message_version >= 11 else reader.u8()
-        step_id = reader.u16() if message_version >= 11 else reader.u8()
-        prompts.append(
-            {
-                "id": prompt_id,
-                "step_id": step_id,
-                "trigger": _trigger(reader),
-                "short_title": reader.josl_string(),
-                "instruction": reader.josl_string(),
-            }
-        )
-    return {
-        "title": title,
-        "program_id": program_id,
-        "program_id_hex": program_id.replace("-", ""),
-        "plan_id": plan_id,
-        "session_type": SESSION_TYPES.get(session_type_value, "UNKNOWN"),
-        "session_type_value": session_type_value,
-        "session_index": session_index,
-        "eta_curve": eta_curve,
-        "steps": steps,
-        "prompts": prompts,
-        "unparsed_bytes": len(payload) - reader.offset,
-    }
-
-
-def active_cook_from_program(status: dict[str, Any], program: dict[str, Any]) -> dict[str, Any]:
-    """Select the active step and prompt referenced by a status message."""
-
-    matching_probe = next(
-        (
-            probe
-            for probe in status.get("probes", [])
-            if str(probe.get("program_id_hex") or "").replace(":", "").lower()
-            == program.get("program_id_hex")
-            and probe.get("plan_id") == program.get("plan_id")
-        ),
-        None,
-    )
-    if not matching_probe:
-        return {**program, "active": False}
-    step_id = matching_probe.get("step_id")
-    prompt_id = matching_probe.get("prompt_id")
-    step = next((row for row in program["steps"] if row["id"] == step_id), None)
-    prompt = next(
-        (row for row in program["prompts"] if row["id"] == prompt_id and row["step_id"] == step_id),
-        None,
-    )
-    return {
-        **program,
-        "active": True,
-        "probe_number": matching_probe.get("probe_number"),
-        "state": matching_probe.get("state"),
-        "step_id": step_id,
-        "prompt_id": prompt_id,
-        "current_step": step,
-        "current_prompt": prompt,
-        "current_instruction": (prompt or {}).get("instruction"),
-        "time_remaining_s": matching_probe.get("time_remaining_s"),
-        "time_elapsed_s": matching_probe.get("time_elapsed_s"),
-        "prompt_time_remaining_s": matching_probe.get("prompt_time_remaining_s"),
-    }
-
-
-class WeberCloudSocketClient:
-    """Persistent synchronous client; callers invoke it in a worker thread."""
+class WeberCloudSession:
+    """Own one asynchronous companion WebSocket for a config entry."""
 
     def __init__(
         self,
+        hass: HomeAssistant,
         cloud_client: Any,
+        appliance_id: str,
         *,
-        timeout: float = 8.0,
+        timeout: float = STATUS_TIMEOUT,
         subscribe_delay: float = 0.05,
     ) -> None:
+        self.hass = hass
         self.cloud_client = cloud_client
+        self.appliance_id = appliance_id
         self.timeout = timeout
         self.subscribe_delay = subscribe_delay
-        self._connection: Any = None
+        self._connection: ClientConnection | None = None
         self._sequence = 1
-        self._lock = threading.Lock()
+        self._subscribed = False
+        self._closed = False
+        self._wake = asyncio.Event()
         self.received_types: list[int] = []
 
-    def close(self) -> None:
-        with self._lock:
-            self._close_unlocked()
+    def _next_sequence(self) -> int:
+        value = self._sequence
+        self._sequence = 1 if value >= 0xFFFFFFFF else value + 1
+        return value
 
-    def _close_unlocked(self) -> None:
-        connection, self._connection = self._connection, None
+    async def _async_connect(self) -> ClientConnection:
+        connection = self._connection
         if connection is not None:
-            try:
-                connection.close()
-            except Exception:
-                LOGGER.debug("Could not close cloud socket cleanly", exc_info=True)
-
-    def _connect(self) -> Any:
-        if self._connection is not None:
-            return self._connection
+            return connection
+        token = await self.hass.async_add_executor_job(self.cloud_client.token)
         try:
-            from websockets.sync.client import connect
-        except ImportError as exc:
-            raise WeberCloudSocketError("The websockets runtime dependency is missing.") from exc
-        self._connection = connect(
+            await self.hass.async_add_executor_job(
+                self.cloud_client.wake_messaging,
+                self.appliance_id,
+            )
+        except Exception:
+            LOGGER.debug("Cloud messaging wake-up failed", exc_info=True)
+        self._connection = await connect(
             f"wss://{self.cloud_client.messaging_host}{SOCKET_PATH}",
-            additional_headers={"Authorization": f"Bearer {self.cloud_client.token()}"},
+            additional_headers={"Authorization": f"Bearer {token}"},
             user_agent_header=self.cloud_client.user_agent,
             open_timeout=self.timeout,
             ping_interval=40,
@@ -328,48 +150,32 @@ class WeberCloudSocketClient:
             max_size=1024 * 1024,
             proxy=None,
         )
+        self._subscribed = False
         return self._connection
 
-    def _next_sequence(self) -> int:
-        value = self._sequence
-        self._sequence = 1 if value >= 0xFFFFFFFF else value + 1
-        return value
+    async def _async_close_connection(self) -> None:
+        connection, self._connection = self._connection, None
+        self._subscribed = False
+        if connection is not None:
+            try:
+                await connection.close()
+            except Exception:
+                LOGGER.debug("Could not close cloud socket cleanly", exc_info=True)
 
-    def _send(self, appliance_id: str, type_value: int, payload: bytes = b"") -> int:
-        sequence = self._next_sequence()
-        self._connect().send(
+    async def _async_send(self, type_value: int, payload: bytes = b"") -> None:
+        connection = await self._async_connect()
+        await connection.send(
             encode_routed_message(
                 self.cloud_client.config.device_id,
-                appliance_id,
-                sequence,
+                self.appliance_id,
+                self._next_sequence(),
                 type_value,
                 payload,
             )
         )
-        return sequence
 
-    def _receive_until(self, accepted_types: set[int]) -> RoutedMessage:
-        deadline = time.monotonic() + self.timeout
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("Weber cloud did not answer the appliance request.")
-            try:
-                raw = self._connect().recv(timeout=remaining)
-            except Exception:
-                self._close_unlocked()
-                raise
-            if not isinstance(raw, bytes):
-                continue
-            message = decode_routed_message(raw)
-            self.received_types = [*self.received_types[-19:], message.type_value]
-            if message.type_value == 0x87:
-                raise WeberCloudSocketError("The hub rejected the cloud command.")
-            if message.type_value in accepted_types:
-                return message
-
-    def _subscribe(self, appliance_id: str) -> None:
-        """Send the request sequence used by the official companion client."""
+    async def _async_subscribe(self) -> None:
+        """Send the observed initial subscription used by the companion app."""
 
         now = int(time.time())
 
@@ -388,37 +194,86 @@ class WeberCloudSocketClient:
             (0x07, b""),
         )
         for type_value, payload in requests:
-            self._send(appliance_id, type_value, payload)
+            await self._async_send(type_value, payload)
             if self.subscribe_delay:
-                time.sleep(self.subscribe_delay)
+                await asyncio.sleep(self.subscribe_delay)
+        self._subscribed = True
 
-    def live_status(self, appliance_id: str) -> dict[str, Any]:
-        """Fetch live status and the installed program for each active probe."""
+    async def _async_receive_status(self) -> dict[str, Any]:
+        connection = await self._async_connect()
+        async with asyncio.timeout(self.timeout):
+            while True:
+                raw = await connection.recv()
+                if not isinstance(raw, bytes):
+                    continue
+                message = decode_routed_message(raw)
+                self.received_types = [*self.received_types[-19:], message.type_value]
+                if message.type_value == 0x87:
+                    raise WeberCloudSocketError("The hub rejected the cloud request.")
+                if message.type_value == 0x80:
+                    return parse_cook_session_status_payload(message.payload)
 
-        with self._lock:
-            self._subscribe(appliance_id)
-            response = self._receive_until({0x80})
-            status = parse_cook_session_status_payload(response.payload)
-            programs: list[dict[str, Any]] = []
-            requested: set[tuple[int, int]] = set()
-            for probe in status.get("probes", []):
-                slot = probe.get("slot_index")
-                program_id = probe.get("program_id_hex")
-                if not isinstance(slot, int) or not program_id:
-                    continue
-                key = (1, slot)
-                if key in requested:
-                    continue
-                requested.add(key)
-                self._send(appliance_id, 0x0B, bytes(key))
-                details_message = self._receive_until({0x86})
-                details = decode_program_details(
-                    details_message.payload,
-                    details_message.message_version,
-                )
-                programs.append(active_cook_from_program(status, details))
-            status["programs"] = programs
-            status["active_cook"] = next(
-                (program for program in programs if program.get("active")), None
-            )
-            return status
+    async def async_request_status(self) -> dict[str, Any]:
+        """Request one current status without rebuilding the socket."""
+
+        if not self._subscribed:
+            await self._async_subscribe()
+        else:
+            await self._async_send(0x05)
+        try:
+            return await self._async_receive_status()
+        except TimeoutError:
+            # A long-idle relay can forget the subscription while retaining the
+            # TCP socket. Renew it once before treating the connection as lost.
+            self._subscribed = False
+            await self._async_subscribe()
+            return await self._async_receive_status()
+
+    async def async_run(
+        self,
+        status_callback: StatusCallback,
+        error_callback: ErrorCallback,
+    ) -> None:
+        """Keep the socket alive and publish status at the live cadence."""
+
+        delay_index = 0
+        try:
+            while not self._closed:
+                # Preserve a repair-flow wake that arrives while network I/O is
+                # in progress so the next attempt starts immediately.
+                self._wake.clear()
+                started = asyncio.get_running_loop().time()
+                try:
+                    status = await self.async_request_status()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    await self._async_close_connection()
+                    error_callback(f"Weber Cloud connection failed: {exc}")
+                    delay = RECONNECT_DELAYS[min(delay_index, len(RECONNECT_DELAYS) - 1)]
+                    delay_index += 1
+                else:
+                    status_callback(status)
+                    delay_index = 0
+                    delay = max(
+                        1.0,
+                        STATUS_INTERVAL - (asyncio.get_running_loop().time() - started),
+                    )
+                try:
+                    await asyncio.wait_for(self._wake.wait(), timeout=delay)
+                except TimeoutError:
+                    pass
+        finally:
+            await self.async_close()
+
+    def async_wake(self) -> None:
+        """Request an immediate cloud retry from a repair flow."""
+
+        self._wake.set()
+
+    async def async_close(self) -> None:
+        """Close the config-entry-owned companion socket."""
+
+        self._closed = True
+        self._wake.set()
+        await self._async_close_connection()

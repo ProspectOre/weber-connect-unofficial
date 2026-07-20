@@ -10,13 +10,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import WeberCoordinator
 
-ENTITY_IDENTITY_VERSION = "v3"
-
 
 def build_entity_unique_id(identity: str, key: str) -> str:
-    """Build a stable 3.0 identity without inheriting pre-3.0 registry state."""
+    """Build a stable identity from the hub and physical slot."""
 
-    return f"{ENTITY_IDENTITY_VERSION}_{identity}_{key}"
+    return f"{identity}_{key}"
 
 
 class WeberEntity(CoordinatorEntity[WeberCoordinator]):

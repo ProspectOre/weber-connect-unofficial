@@ -15,12 +15,10 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
 from .coordinator import WeberCoordinator
-from .entity import WeberEntity, build_entity_unique_id
+from .entity import WeberEntity
 from .models import WeberRuntimeData
 
 
@@ -51,53 +49,12 @@ SENSORS: tuple[WeberSensorDescription, ...] = (
     ),
 )
 
-OBSOLETE_SENSOR_ENTITY_KEYS: tuple[str, ...] = (
-    *(f"probe_{number}_{suffix}" for number in range(1, 5) for suffix in ("status", "battery")),
-    *(f"cavity_{number}_temperature" for number in range(1, 3)),
-    "active_recipe",
-    "recipe_state",
-    "current_instruction",
-    "cook_mode",
-    "cook_target_temperature",
-    "cook_time_remaining",
-    "cook_time_elapsed",
-    *(f"timer_{number}_remaining" for number in range(1, 5)),
-    "connection_source",
-    "app_access",
-)
-OBSOLETE_ENTITY_KEYS_BY_PLATFORM: dict[str, tuple[str, ...]] = {
-    "sensor": OBSOLETE_SENSOR_ENTITY_KEYS,
-    "binary_sensor": ("connected",),
-    "button": (
-        "confirm_cook",
-        "stop_cook",
-        *(f"reset_timer_{number}" for number in range(1, 5)),
-    ),
-}
-
-
-def _remove_obsolete_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove entities from pre-release builds that exposed more than four slots."""
-
-    registry = er.async_get(hass)
-    identity = entry.unique_id or entry.entry_id
-    for platform, keys in OBSOLETE_ENTITY_KEYS_BY_PLATFORM.items():
-        for key in keys:
-            entity_id = registry.async_get_entity_id(
-                platform,
-                DOMAIN,
-                build_entity_unique_id(identity, key),
-            )
-            if entity_id is not None:
-                registry.async_remove(entity_id)
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    _remove_obsolete_entities(hass, entry)
     runtime: WeberRuntimeData = entry.runtime_data
     coordinator = runtime.coordinator
     async_add_entities(WeberSensor(coordinator, entry, description) for description in SENSORS)

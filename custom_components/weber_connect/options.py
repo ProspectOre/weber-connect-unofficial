@@ -7,15 +7,10 @@ from enum import StrEnum
 from typing import Any, Mapping
 
 from .const import (
-    CONF_ADVANCED,
     CONF_CONNECTION,
     CONF_CONNECTION_MODE,
-    CONF_LOCAL_FALLBACK,
-    CONF_POLL_SECONDS,
     CONF_PROBE_NAME_PREFIX,
     CONF_PROBES,
-    DEFAULT_LOCAL_FALLBACK,
-    DEFAULT_POLL_SECONDS,
 )
 
 
@@ -31,8 +26,6 @@ class WeberOptions:
     """Validated effective options with product defaults."""
 
     connection_mode: ConnectionMode = ConnectionMode.PHONE_AND_HOME_ASSISTANT
-    poll_seconds: int = DEFAULT_POLL_SECONDS
-    local_fallback: bool = DEFAULT_LOCAL_FALLBACK
     probe_names: tuple[str, str, str, str] = ("", "", "", "")
 
     @property
@@ -54,8 +47,6 @@ class WeberOptions:
 
         connection = _mapping(raw.get(CONF_CONNECTION))
         probes = _mapping(raw.get(CONF_PROBES))
-        advanced = _mapping(raw.get(CONF_ADVANCED))
-
         try:
             mode = ConnectionMode(
                 connection.get(
@@ -66,13 +57,6 @@ class WeberOptions:
         except ValueError:
             mode = ConnectionMode.PHONE_AND_HOME_ASSISTANT
 
-        try:
-            poll_seconds = int(advanced.get(CONF_POLL_SECONDS, DEFAULT_POLL_SECONDS))
-        except TypeError, ValueError:
-            poll_seconds = DEFAULT_POLL_SECONDS
-        if poll_seconds not in (10, 30, 60, 120):
-            poll_seconds = DEFAULT_POLL_SECONDS
-
         names = (
             _probe_name(probes, 1),
             _probe_name(probes, 2),
@@ -81,8 +65,6 @@ class WeberOptions:
         )
         return cls(
             connection_mode=mode,
-            poll_seconds=poll_seconds,
-            local_fallback=bool(advanced.get(CONF_LOCAL_FALLBACK, DEFAULT_LOCAL_FALLBACK)),
             probe_names=names,
         )
 
@@ -96,10 +78,6 @@ class WeberOptions:
             CONF_PROBES: {
                 f"{CONF_PROBE_NAME_PREFIX}{number}": self.probe_name(number)
                 for number in range(1, 5)
-            },
-            CONF_ADVANCED: {
-                CONF_POLL_SECONDS: self.poll_seconds,
-                CONF_LOCAL_FALLBACK: self.local_fallback,
             },
         }
 

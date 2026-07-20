@@ -27,8 +27,7 @@ class ConnectionRepairFlow(RepairsFlow):
             if entry is None:
                 return self.async_create_entry(data={})
             runtime: WeberRuntimeData = entry.runtime_data
-            await runtime.coordinator.async_refresh()
-            if runtime.coordinator.data.get("connected"):
+            if await runtime.coordinator.async_retry():
                 return self.async_create_entry(data={})
             errors["base"] = "still_unavailable"
         return self.async_show_form(

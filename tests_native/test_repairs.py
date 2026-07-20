@@ -20,7 +20,7 @@ pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 async def test_connection_repair_recovers_when_data_resumes(hass: object) -> None:
     coordinator = SimpleNamespace(
         data={"connected": True},
-        async_refresh=AsyncMock(),
+        async_retry=AsyncMock(return_value=True),
     )
     entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id="test-hub")
     entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
@@ -37,14 +37,14 @@ async def test_connection_repair_recovers_when_data_resumes(hass: object) -> Non
 
     result = await flow.async_step_confirm({})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    coordinator.async_refresh.assert_awaited_once()
+    coordinator.async_retry.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_connection_repair_stays_open_while_unavailable(hass: object) -> None:
     coordinator = SimpleNamespace(
         data={"connected": False},
-        async_refresh=AsyncMock(),
+        async_retry=AsyncMock(return_value=False),
     )
     entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id="test-hub")
     entry.runtime_data = WeberRuntimeData(coordinator=coordinator)

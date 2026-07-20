@@ -21,17 +21,12 @@ from homeassistant.helpers.selector import (
 
 from .bluetooth import WeberBluetoothError, async_pair, generate_identity
 from .const import (
-    CONF_ADVANCED,
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
-    CONF_COMPANION_PRIVATE_KEY,
-    CONF_COMPANION_PUBLIC_KEY,
     CONF_CONNECTION,
     CONF_CONNECTION_MODE,
-    CONF_LOCAL_FALLBACK,
     CONF_MESSAGE_VERSION,
-    CONF_POLL_SECONDS,
     CONF_PROBE_NAME_PREFIX,
     CONF_PROBES,
     DOMAIN,
@@ -257,8 +252,6 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return {
             CONF_ADDRESS: self._address,
             CONF_COMPANION_ID: self._identity.companion_id,
-            CONF_COMPANION_PRIVATE_KEY: self._identity.private_key,
-            CONF_COMPANION_PUBLIC_KEY: self._identity.public_key,
             CONF_MESSAGE_VERSION: result.message_version,
             CONF_APPLIANCE_ID: result.appliance_id,
             CONF_CLOUD_PASSWORD: self._cloud_config.device_password,
@@ -402,7 +395,6 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
         current = WeberOptions.from_mapping(self.config_entry.options).as_dict()
         connection = current[CONF_CONNECTION]
         probes = current[CONF_PROBES]
-        advanced = current[CONF_ADVANCED]
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -432,27 +424,6 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
                                     default=probes[f"{CONF_PROBE_NAME_PREFIX}{number}"],
                                 ): vol.All(str, vol.Length(max=40))
                                 for number in range(1, 5)
-                            }
-                        ),
-                        {"collapsed": True},
-                    ),
-                    vol.Required(CONF_ADVANCED): section(
-                        vol.Schema(
-                            {
-                                vol.Required(
-                                    CONF_POLL_SECONDS,
-                                    default=str(advanced[CONF_POLL_SECONDS]),
-                                ): SelectSelector(
-                                    SelectSelectorConfig(
-                                        options=["10", "30", "60", "120"],
-                                        mode=SelectSelectorMode.DROPDOWN,
-                                        translation_key="update_speed",
-                                    )
-                                ),
-                                vol.Required(
-                                    CONF_LOCAL_FALLBACK,
-                                    default=advanced[CONF_LOCAL_FALLBACK],
-                                ): bool,
                             }
                         ),
                         {"collapsed": True},

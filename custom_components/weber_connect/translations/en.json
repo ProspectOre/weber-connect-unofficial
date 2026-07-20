@@ -49,7 +49,7 @@
         "sections": {
           "connection": {
             "name": "Connection",
-            "description": "Choose whether the Weber app and Home Assistant share the hub or Home Assistant reads it locally.",
+            "description": "Phone + Home Assistant leaves Bluetooth available to the Weber app and receives temperatures online. Home Assistant only keeps the hub's Bluetooth connection through a local adapter or active proxy, so the app cannot use Bluetooth at the same time. Changing modes closes the current connection before starting the other one.",
             "data": {"connection_mode": "Use with"}
           },
           "probes": {
@@ -61,11 +61,6 @@
               "probe_name_3": "Probe 3 nickname",
               "probe_name_4": "Probe 4 nickname"
             }
-          },
-          "advanced": {
-            "name": "Advanced",
-            "description": "Bluetooth fallback may temporarily take the hub's Bluetooth connection away from the Weber app.",
-            "data": {"poll_seconds": "Update speed", "local_fallback": "Use Bluetooth when online updates fail"}
           }
         }
       }
@@ -77,24 +72,21 @@
         "phone_and_home_assistant": "Phone + Home Assistant — Recommended",
         "home_assistant_only": "Home Assistant only"
       }
-    },
-    "update_speed": {
-      "options": {"10": "Live · 10 seconds", "30": "30 seconds", "60": "1 minute", "120": "2 minutes"}
     }
   },
   "issues": {
     "connection_lost": {
-      "title": "{name} stopped receiving data",
-      "description": "Home Assistant has not received data from this hub for at least one minute.",
+      "title": "{name} lost its online connection",
+      "description": "Home Assistant could not receive new Weber Cloud data after repeated retries.",
       "fix_flow": {
         "step": {
           "confirm": {
             "title": "Retry {name}",
-            "description": "Make sure Home Assistant is online. If Bluetooth fallback is enabled, wake the hub and make sure a local adapter or active proxy is in range. Continue to test the connection."
+            "description": "Make sure Home Assistant can reach the internet, then continue to test the existing private Weber connection."
           }
         },
         "error": {
-          "still_unavailable": "The hub is still unavailable. Check the connection and try again."
+          "still_unavailable": "No new cloud data arrived. Check Home Assistant's internet connection and try again."
         }
       }
     }

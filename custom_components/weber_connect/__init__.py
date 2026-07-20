@@ -8,7 +8,6 @@ from homeassistant.core import HomeAssistant
 from .const import PLATFORMS
 from .coordinator import WeberCoordinator
 from .models import WeberRuntimeData
-from .state import normalize_state
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -19,14 +18,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Assistant startup. Publish a complete, honest initial state immediately;
     # the entry-scoped background loop performs the first transport read after
     # the entity platforms are ready.
-    coordinator.async_set_updated_data(
-        normalize_state(
-            None,
-            source="cloud" if coordinator.cloud_enabled else "bluetooth",
-            connected=False,
-            cloud_ready=False,
-        )
-    )
+    coordinator.async_set_updated_data(coordinator.initial_state())
     entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.async_start()

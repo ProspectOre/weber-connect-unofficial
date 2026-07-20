@@ -9,23 +9,20 @@ Version 3.0 is one native Home Assistant integration:
 - native devices and entities—no MQTT broker or separate control panel;
 - exactly four stable probe temperature entities—one for each physical slot;
 - phone + Home Assistant by default: the Weber app may own Bluetooth while
-  Home Assistant follows the cook through its own Weber Cloud connection;
-- optional local Bluetooth fallback through Home Assistant's native adapter and
-  proxy selection.
+  Home Assistant follows probe temperatures through its own Weber Cloud
+  connection;
+- an optional Home Assistant-only mode that owns one local Bluetooth connection
+  through Home Assistant's adapter or active ESPHome proxy selection.
 
 This project is not affiliated with, endorsed by, or supported by Weber.
 
 > [!IMPORTANT]
 > 3.0 is under active development and has not been released yet. The native
 > code and automated Home Assistant 2026.7 tests are in place. Real-hardware
-> setup and direct local readings through one active ESPHome proxy are
-> verified. Proxy-only startup, proxy restart recovery, and full Home Assistant
-> restart recovery are also verified. A one-hour recommended-mode cloud
-> endurance run completed with zero failed refreshes. Active-cook probe
-> continuity has passed for at least 1 hour 47 minutes, including a full Home
-> Assistant restart; the cook-ending transition is still being observed.
-> Continuously-awake proxy endurance and multi-proxy failover are not yet
-> verified.
+> setup, cloud readings, and direct reads through one ESPHome proxy have been
+> demonstrated. The final 3.0 persistent cloud and Bluetooth transport
+> lifecycles still require production endurance and restart validation before
+> release. Multi-proxy failover is also unverified.
 
 ## Install
 
@@ -51,16 +48,17 @@ Home Assistant creates and stores its own Weber connection automatically.
 
 ## Everyday behavior
 
-The default mode is **phone + Home Assistant**. Home Assistant reads through
-Weber Cloud every 10 seconds, leaving the hub's single Bluetooth connection
-available to the Weber app. Recipes continue to be started and managed in the
-Weber app while Home Assistant monitors the four probe temperature slots.
+The default mode is **Phone + Home Assistant**. Home Assistant keeps one Weber
+Cloud companion socket open and requests fresh status on a 10-second cadence,
+leaving the hub's single Bluetooth connection available to the Weber app.
+Recipes continue to be started and managed in the Weber app while Home
+Assistant monitors the four probe temperature slots.
 
-Home Assistant uses Bluetooth for initial pairing. If **Local Bluetooth
-fallback** is enabled in the integration options, it can also read locally
-when cloud updates fail. Local reads may temporarily take the hub away from the
-phone. Home Assistant chooses the best reachable local adapter or active proxy
-for every connection attempt and can choose a different path on retry.
+**Home Assistant only** instead keeps one local GATT connection open through
+Home Assistant's selected adapter or active ESPHome proxy. It reconnects only
+after a real link loss. This mode cannot share the hub's Bluetooth connection
+with the Weber app. There is no automatic fallback between cloud and Bluetooth:
+changing modes closes one transport before starting the other.
 
 Probe entities retain stable slot IDs such as `probe_2_temperature`. Optional
 nicknames keep the physical number visible—for example, **Brisket · Probe 2**—
@@ -68,9 +66,11 @@ without changing the entity's identity.
 
 The device page has exactly one permanent temperature entity for each physical
 slot: **Probe 1** through **Probe 4**. A connected probe shows its temperature;
-an empty slot reads **Unknown** with the probe-off icon. Battery level, probe
-type, and probe state remain attributes on that same entity instead of creating
-redundant entities.
+an empty slot—or a sleeping hub with no current reading—reads **Unknown** with
+the probe-off icon. That is the normal idle state, not a sign that the
+integration or Home Assistant is offline. Battery level, probe type, and probe
+state remain attributes on that same entity instead of creating redundant
+entities.
 
 3.0 is deliberately read-only. Recipe text, instructions, cook controls,
 cavities, timers, and technical connection-status entities are not exposed.
@@ -89,29 +89,20 @@ integration; Home Assistant owns adapter selection and credentials.
 
 ## Compatibility and validation
 
-The cloud data path was physically tested on a Weber Connect Hub running
-`2.0.3_7398`, Home Assistant Yellow on Home Assistant `2026.7.2`, and Weber app
-`2.10.0.2439` on a Samsung Galaxy Tab A9+ (`SM-X210`, Android 16). Matching
-probe readings continued through Weber Cloud while the phone owned Bluetooth.
-The same hub was also discovered and paired through an active ESPHome Bluetooth
-proxy running ESPHome `2026.7.0`; Home Assistant identified that proxy as the
-connection path during setup. A later local-only production test received live
-probe data over that proxy and then returned cleanly to the default cloud mode.
+Testing uses a Weber Connect Hub running `2.0.3_7398`, Home Assistant Yellow on
+Home Assistant `2026.7.2`, Weber app `2.10.0.2439` on a Samsung Galaxy Tab A9+
+(`SM-X210`, Android 16), and one ESPHome Bluetooth proxy running ESPHome
+`2026.7.0`. This equipment has demonstrated physical-confirmation pairing,
+matching phone and cloud temperatures, proxy discovery, and direct proxy reads.
 
-For 3.0, Home Assistant 2026.7.2 import, config flow, identity generation,
-entity contracts, protocol frames, cloud normalization, and adapter re-selection
-are automated. Proxy discovery, pairing, and direct readings are verified on
-the equipment above. With the host adapter disabled, production validation also
-verified sub-second config-entry setup, live recovery after proxy and Home
-Assistant restarts, stable entity IDs, and exactly four permanent probe
-temperature entities. A 60-minute production cloud run completed 356
-successful refreshes with zero failures at a mean interval of approximately
-10.15 seconds. Active-cook Probe 3 then remained populated for at least 1 hour
-47 minutes and recovered after a full Home Assistant restart while the Weber
-app continued the same cook. The cook-ending transition and continuously-awake
-local-proxy endurance in [Production readiness](PRODUCTION_READINESS.md) remain
-outstanding.
-Multi-proxy failover remains an explicitly unverified compatibility scenario.
+The current greenfield transport implementation has 99 automated tests and
+96.25% combined statement/branch coverage. Import, config flow, transient
+identity generation, entity contracts, protocol frames, persistent-session
+reuse, reconnect behavior, proxy service-cache recovery, diagnostics redaction,
+and transport ownership are covered. The final persistent WebSocket and
+persistent proxy-GATT lifecycles have not yet completed the live endurance and
+restart matrix in [Production readiness](PRODUCTION_READINESS.md). Multi-proxy
+failover is explicitly unverified.
 
 That is a test matrix, not a claim that every Weber model, firmware, account
 region, or proxy has been certified. Compatibility reports and pull requests
@@ -119,10 +110,12 @@ are welcome; see [Contributing](CONTRIBUTING.md) for the safe details to include
 
 ## Privacy
 
-The integration generates a random companion ID, device password, and key
-material. Home Assistant stores them in the config entry; diagnostics redact
-them and all hub/companion identifiers. The integration never asks for the user's Weber account password and
-does not copy secrets from the official app.
+The integration generates a random companion ID, cloud device password, and
+transient pairing key material. Only the approved companion identity and cloud
+credential are stored in the config entry; the pairing keys are discarded.
+Diagnostics redact stored credentials and all hub/companion identifiers. The
+integration never asks for the user's Weber account password and does not copy
+secrets from the official app.
 
 Weber Cloud is private and undocumented. The default mode sends Home
 Assistant's generated identity and cook-session requests to Weber. **Home
