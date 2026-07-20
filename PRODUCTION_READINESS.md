@@ -118,6 +118,34 @@ battery remain attributes of the temperature entity. hci0 was restored after
 the proxy-only window, and the integration was returned successfully to the
 recommended Phone + Home Assistant mode.
 
+On July 20, 2026, the final persistent transports were deployed together to
+Home Assistant 2026.7.2 and exercised against the same hub and proxy. In
+Phone + Home Assistant mode, the companion WebSocket recovered after the
+sleeping hub was woken, produced eight successful live updates with zero
+consecutive failures, and recorded repeated incoming `0x80` and `0x83` frames.
+After the complete proxy test and restoration of the default mode, a fresh
+cloud session produced seven successful updates, zero failures, and a live
+Probe 1 reading of `22.7 °C`.
+
+For the final persistent proxy smoke test, hci0 was disabled and ESPHome proxy
+ee608c was the only active Bluetooth route. Once the Weber app was fully closed
+and Bluetooth was disabled on the tablet, ESPHome opened one connection to hub
+`70:91:8F:21:EA:7B` at 13:55:25 PDT and retained the active slot without a
+disconnect for more than two minutes. Native diagnostics increased from eight
+to fourteen successful updates while the same connection remained open;
+Probe 1 changed from `23.1 °C` to `23.0 °C`, the failure count did not
+increase, and consecutive failures remained zero. A deliberate config-entry
+reload released the earlier proxy slot with `reason=0x00`. Before the tablet's
+Bluetooth was disabled, competing app ownership caused transient reconnects,
+including `reason=0x08`; the integration recovered automatically after the
+phone path was released and the hub was woken. This validates the documented
+setup instruction as well as proxy-only routing, persistent slot ownership,
+fresh status requests, clean unload, and automatic retry on the tested setup.
+
+The test installation was then returned to the recommended state: hci0 enabled,
+Phone + Home Assistant selected, exactly four registered entities, no repair
+attention, and a healthy cloud transport.
+
 Earlier prototype cloud testing completed 60 minutes 14 seconds with 356
 successful updates, zero failures, and a mean interval of approximately 10.15
 seconds. All 72 independent Home Assistant availability samples returned HTTP
@@ -128,9 +156,11 @@ Those runs validated the companion identity, decoded probe data, stable
 entities, and simultaneous app use; they used the retired cook-history polling
 path and therefore do **not** validate the final persistent WebSocket lifecycle.
 
-Before release, the final code must still pass two live endurance rows: one
-hour on its persistent companion WebSocket and one continuously-awake hour on
-its persistent proxy GATT session, each including connection ownership and
-restart recovery. Two-proxy failover is explicitly untested because a second
-proxy is unavailable; it is a documented non-blocking compatibility scenario
-and must not be described as verified.
+Before release, the final code must still pass the one-hour endurance row on
+its persistent companion WebSocket, the continuously-awake one-hour endurance
+row on its persistent proxy GATT session, and the proxy/Home Assistant restart
+row. The shorter live tests above validate both final transport designs and a
+config-entry reload, but are not substitutes for those endurance rows.
+Two-proxy failover is explicitly untested because a second proxy is
+unavailable; it is a documented non-blocking compatibility scenario and must
+not be described as verified.

@@ -19,10 +19,10 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 > [!IMPORTANT]
 > 3.0 is under active development and has not been released yet. The native
 > code and automated Home Assistant 2026.7 tests are in place. Real-hardware
-> setup, cloud readings, and direct reads through one ESPHome proxy have been
-> demonstrated. The final 3.0 persistent cloud and Bluetooth transport
-> lifecycles still require production endurance and restart validation before
-> release. Multi-proxy failover is also unverified.
+> setup, persistent cloud readings, and a persistent direct session through one
+> ESPHome proxy have been demonstrated. The final one-hour endurance rows and
+> the proxy/Home Assistant restart row still require production validation
+> before release. Multi-proxy failover is also unverified.
 
 ## Install
 
@@ -99,9 +99,10 @@ The current greenfield transport implementation has 99 automated tests and
 96.25% combined statement/branch coverage. Import, config flow, transient
 identity generation, entity contracts, protocol frames, persistent-session
 reuse, reconnect behavior, proxy service-cache recovery, diagnostics redaction,
-and transport ownership are covered. The final persistent WebSocket and
-persistent proxy-GATT lifecycles have not yet completed the live endurance and
-restart matrix in [Production readiness](PRODUCTION_READINESS.md). Multi-proxy
+and transport ownership are covered. Live smoke and config-entry reload tests
+now cover both the persistent WebSocket and persistent proxy-GATT lifecycles.
+The one-hour endurance rows and proxy/Home Assistant restart row in
+[Production readiness](PRODUCTION_READINESS.md) remain open. Multi-proxy
 failover is explicitly unverified.
 
 That is a test matrix, not a claim that every Weber model, firmware, account
