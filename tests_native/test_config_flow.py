@@ -27,7 +27,6 @@ from custom_components.weber_connect.const import (
     CONF_LOCAL_FALLBACK,
     CONF_POLL_SECONDS,
     CONF_PROBES,
-    CONF_REMOTE_CONTROLS,
     DOMAIN,
 )
 from custom_components.weber_connect.models import CompanionIdentity, PairingResult
@@ -339,7 +338,6 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
     submitted = {
         CONF_CONNECTION: {
             CONF_CONNECTION_MODE: ConnectionMode.HOME_ASSISTANT_ONLY.value,
-            CONF_REMOTE_CONTROLS: False,
         },
         CONF_PROBES: {},
         CONF_ADVANCED: {

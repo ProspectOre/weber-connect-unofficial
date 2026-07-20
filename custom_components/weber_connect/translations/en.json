@@ -49,8 +49,8 @@
         "sections": {
           "connection": {
             "name": "Connection",
-            "description": "Choose who can use the hub and whether Home Assistant may control an active cook.",
-            "data": {"connection_mode": "Use with", "remote_controls": "Allow active-cook controls"}
+            "description": "Choose whether the Weber app and Home Assistant share the hub or Home Assistant reads it locally.",
+            "data": {"connection_mode": "Use with"}
           },
           "probes": {
             "name": "Probe names",
@@ -102,24 +102,7 @@
   "entity": {
     "sensor": {
       "probe_temperature": {"name": "Probe {number}"},
-      "probe_temperature_named": {"name": "{nickname} · Probe {number}"},
-      "cavity_temperature": {"name": "Cavity {number} temperature"},
-      "active_recipe": {"name": "Active recipe"},
-      "recipe_state": {"name": "Recipe state"},
-      "current_instruction": {"name": "Current instruction"},
-      "cook_mode": {"name": "Cook mode"},
-      "cook_target_temperature": {"name": "Cook target temperature"},
-      "cook_time_remaining": {"name": "Cook time remaining"},
-      "cook_time_elapsed": {"name": "Cook time elapsed"},
-      "timer_remaining": {"name": "Timer {number} remaining"},
-      "connection_source": {"name": "Data source"},
-      "app_access": {"name": "Weber app access"}
-    },
-    "binary_sensor": {"connected": {"name": "Receiving data"}},
-    "button": {
-      "confirm_cook": {"name": "Confirm current cook step"},
-      "stop_cook": {"name": "Stop active cook"},
-      "reset_timer": {"name": "Reset timer {number}"}
+      "probe_temperature_named": {"name": "{nickname} · Probe {number}"}
     }
   }
 }

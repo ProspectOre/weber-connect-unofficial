@@ -18,7 +18,7 @@ Home Assistant config entry
                               ▼
                         Weber Connect Hub
 
-coordinator ──► native sensor, binary_sensor, and button entities
+coordinator ──► four permanent native probe temperature sensors
 ```
 
 There is no MQTT broker, separate web app, copied proxy secret, or
@@ -66,13 +66,12 @@ contacts an ESPHome proxy directly.
 
 Weber Cloud credentials are generated per hub. Diagnostics redact the hub
 address, appliance and companion IDs, cloud password, and companion keys.
-Cloud and GATT operations have bounded timeouts; remote actions are disabled
-by default and limited to an active cook.
+Cloud and GATT operations have bounded timeouts. The integration is read-only.
 
 ## Private protocols
 
 `saber_frames.py` implements Weber's observed null-session transport, pairing,
 and cook-status TLV decoding. `weber_cloud.py` and `weber_cloud_socket.py`
-implement the minimal companion REST/WebSocket surface for association,
-telemetry, program details, and allowlisted commands. These interfaces are
-private and can change without notice.
+implement the minimal read-only companion REST/WebSocket surface for
+association, telemetry, and program details. These interfaces are private and
+can change without notice.

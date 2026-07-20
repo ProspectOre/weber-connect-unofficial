@@ -1,9 +1,9 @@
-"""Weber companion WebSocket protocol for live cook sessions and controls.
+"""Weber companion WebSocket protocol for live cook-session reads.
 
 The official companion API routes the same appliance messages used over BLE
 through a binary WebSocket envelope.  This module intentionally implements a
-small, auditable subset: status/program reads and commands for an already
-active cook.  It never installs a recipe or configures appliance networking.
+small, read-only subset for status and program data. It never sends cook
+controls, installs a recipe, or configures appliance networking.
 """
 
 from __future__ import annotations
@@ -295,6 +295,7 @@ class WeberCloudSocketClient:
         self._connection: Any = None
         self._sequence = 1
         self._lock = threading.Lock()
+        self.received_types: list[int] = []
 
     def close(self) -> None:
         with self._lock:
@@ -361,6 +362,7 @@ class WeberCloudSocketClient:
             if not isinstance(raw, bytes):
                 continue
             message = decode_routed_message(raw)
+            self.received_types = [*self.received_types[-19:], message.type_value]
             if message.type_value == 0x87:
                 raise WeberCloudSocketError("The hub rejected the cloud command.")
             if message.type_value in accepted_types:
@@ -420,47 +422,3 @@ class WeberCloudSocketClient:
                 (program for program in programs if program.get("active")), None
             )
             return status
-
-    def session_command(
-        self,
-        appliance_id: str,
-        active_cook: dict[str, Any],
-        command: str,
-    ) -> None:
-        command_values = {"stop": 3, "remove": 4, "confirm": 7}
-        if command not in command_values:
-            raise ValueError("Unsupported cook-session command.")
-        try:
-            program_id = uuid.UUID(str(active_cook["program_id"])).bytes
-            plan_id = int(active_cook["plan_id"])
-            session_type = int(active_cook["session_type_value"])
-            session_index = int(active_cook["session_index"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise WeberCloudSocketError("No controllable active cook is available.") from exc
-        payload = (
-            bytes([1, 1, command_values[command], 2, 1, session_type, 3, 1, session_index])
-            + bytes([4, 16])
-            + program_id
-            + bytes([5, 4])
-            + struct.pack("<I", plan_id)
-        )
-        current_step = active_cook.get("step_id")
-        if isinstance(current_step, int):
-            payload += bytes([6, 2]) + struct.pack("<H", current_step)
-        with self._lock:
-            self._send(appliance_id, 0x01, payload)
-
-    def timer_command(
-        self, appliance_id: str, timer_index: int, action: str, duration_s: int = 0
-    ) -> None:
-        if timer_index < 0 or timer_index > 3:
-            raise ValueError("Timer index must be between 0 and 3.")
-        if action not in {"start", "reset"}:
-            raise ValueError("Timer action must be start or reset.")
-        if action == "start" and not 1 <= duration_s <= 86_400:
-            raise ValueError("Timer duration must be between 1 second and 24 hours.")
-        payload = bytes([timer_index, 1 if action == "start" else 2]) + struct.pack(
-            "<I", duration_s * 1000 if action == "start" else 0
-        )
-        with self._lock:
-            self._send(appliance_id, 0x02, payload)

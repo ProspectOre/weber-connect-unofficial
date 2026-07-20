@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -49,128 +49,47 @@ SENSORS: tuple[WeberSensorDescription, ...] = (
         )
         for number in range(1, 5)
     ),
-    *tuple(
-        WeberSensorDescription(
-            key=f"cavity_{number}_temperature",
-            translation_key="cavity_temperature",
-            translation_placeholders={"number": str(number)},
-            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-            device_class=SensorDeviceClass.TEMPERATURE,
-            state_class=SensorStateClass.MEASUREMENT,
-            suggested_display_precision=1,
-            value_fn=_value(f"cavity_{number}_temperature"),
-            entity_registry_enabled_default=False,
-        )
-        for number in range(1, 3)
-    ),
-    WeberSensorDescription(
-        key="active_recipe",
-        translation_key="active_recipe",
-        value_fn=lambda data: data.get("active_recipe") or "No active recipe",
-    ),
-    WeberSensorDescription(
-        key="recipe_state",
-        translation_key="recipe_state",
-        value_fn=lambda data: data.get("recipe_state") or "Idle",
-        entity_registry_enabled_default=False,
-    ),
-    WeberSensorDescription(
-        key="current_instruction",
-        translation_key="current_instruction",
-        value_fn=lambda data: (
-            data.get("current_instruction_short")
-            or str(data.get("current_instruction") or "")[:255]
-            or "No active instruction"
-        ),
-    ),
-    WeberSensorDescription(
-        key="cook_mode",
-        translation_key="cook_mode",
-        value_fn=lambda data: data.get("cook_mode") or "Not active",
-        entity_registry_enabled_default=False,
-    ),
-    WeberSensorDescription(
-        key="cook_target_temperature",
-        translation_key="cook_target_temperature",
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        suggested_display_precision=1,
-        value_fn=_value("cook_target_temperature"),
-        entity_registry_enabled_default=False,
-    ),
-    WeberSensorDescription(
-        key="cook_time_remaining",
-        translation_key="cook_time_remaining",
-        native_unit_of_measurement=UnitOfTime.SECONDS,
-        device_class=SensorDeviceClass.DURATION,
-        value_fn=_value("cook_time_remaining"),
-        entity_registry_enabled_default=False,
-    ),
-    WeberSensorDescription(
-        key="cook_time_elapsed",
-        translation_key="cook_time_elapsed",
-        native_unit_of_measurement=UnitOfTime.SECONDS,
-        device_class=SensorDeviceClass.DURATION,
-        value_fn=_value("cook_time_elapsed"),
-        entity_registry_enabled_default=False,
-    ),
-    *tuple(
-        WeberSensorDescription(
-            key=f"timer_{number}_remaining",
-            translation_key="timer_remaining",
-            translation_placeholders={"number": str(number)},
-            native_unit_of_measurement=UnitOfTime.SECONDS,
-            device_class=SensorDeviceClass.DURATION,
-            value_fn=_value(f"timer_{number}_remaining"),
-            entity_registry_enabled_default=False,
-        )
-        for number in range(1, 5)
-    ),
-    WeberSensorDescription(
-        key="connection_source",
-        translation_key="connection_source",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        value_fn=lambda data: (
-            "Weber Cloud"
-            if data.get("connected") and data.get("source") == "cloud"
-            else "Bluetooth"
-            if data.get("connected") and data.get("source") == "bluetooth"
-            else "Not receiving data"
-        ),
-    ),
-    WeberSensorDescription(
-        key="app_access",
-        translation_key="app_access",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: (
-            "Available"
-            if data.get("cloud_ready")
-            else "Paused"
-            if data.get("source") == "bluetooth" and data.get("connected")
-            else "Setup required"
-        ),
-    ),
 )
 
-OBSOLETE_PROBE_ENTITY_KEYS = tuple(
-    f"probe_{number}_{suffix}" for number in range(1, 5) for suffix in ("status", "battery")
+OBSOLETE_SENSOR_ENTITY_KEYS: tuple[str, ...] = (
+    *(f"probe_{number}_{suffix}" for number in range(1, 5) for suffix in ("status", "battery")),
+    *(f"cavity_{number}_temperature" for number in range(1, 3)),
+    "active_recipe",
+    "recipe_state",
+    "current_instruction",
+    "cook_mode",
+    "cook_target_temperature",
+    "cook_time_remaining",
+    "cook_time_elapsed",
+    *(f"timer_{number}_remaining" for number in range(1, 5)),
+    "connection_source",
+    "app_access",
 )
+OBSOLETE_ENTITY_KEYS_BY_PLATFORM: dict[str, tuple[str, ...]] = {
+    "sensor": OBSOLETE_SENSOR_ENTITY_KEYS,
+    "binary_sensor": ("connected",),
+    "button": (
+        "confirm_cook",
+        "stop_cook",
+        *(f"reset_timer_{number}" for number in range(1, 5)),
+    ),
+}
 
 
-def _remove_obsolete_probe_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove redundant probe entities created by early 3.0 test builds."""
+def _remove_obsolete_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove entities from pre-release builds that exposed more than four slots."""
 
     registry = er.async_get(hass)
     identity = entry.unique_id or entry.entry_id
-    for key in OBSOLETE_PROBE_ENTITY_KEYS:
-        entity_id = registry.async_get_entity_id(
-            "sensor",
-            DOMAIN,
-            build_entity_unique_id(identity, key),
-        )
-        if entity_id is not None:
-            registry.async_remove(entity_id)
+    for platform, keys in OBSOLETE_ENTITY_KEYS_BY_PLATFORM.items():
+        for key in keys:
+            entity_id = registry.async_get_entity_id(
+                platform,
+                DOMAIN,
+                build_entity_unique_id(identity, key),
+            )
+            if entity_id is not None:
+                registry.async_remove(entity_id)
 
 
 async def async_setup_entry(
@@ -178,14 +97,14 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    _remove_obsolete_probe_entities(hass, entry)
+    _remove_obsolete_entities(hass, entry)
     runtime: WeberRuntimeData = entry.runtime_data
     coordinator = runtime.coordinator
     async_add_entities(WeberSensor(coordinator, entry, description) for description in SENSORS)
 
 
 class WeberSensor(WeberEntity, SensorEntity):
-    """One native Weber measurement or cook-session field."""
+    """One permanent Weber probe temperature slot."""
 
     entity_description: WeberSensorDescription
 
@@ -239,13 +158,6 @@ class WeberSensor(WeberEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         key = self.entity_description.key
-        if not key.startswith("probe_") or not key.endswith("_temperature"):
-            if key == "current_instruction":
-                return {
-                    "instruction": self.coordinator.data.get("current_instruction"),
-                    "instructions": self.coordinator.data.get("instructions", []),
-                }
-            return None
         number = key.split("_")[1]
         return {
             "probe_number": int(number),

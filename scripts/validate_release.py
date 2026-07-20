@@ -6,7 +6,6 @@ from __future__ import annotations
 import ast
 import json
 import py_compile
-import re
 import sys
 from pathlib import Path
 
@@ -49,8 +48,6 @@ def check_required_files() -> None:
         "custom_components/weber_connect/bluetooth.py",
         "custom_components/weber_connect/coordinator.py",
         "custom_components/weber_connect/sensor.py",
-        "custom_components/weber_connect/binary_sensor.py",
-        "custom_components/weber_connect/button.py",
         "custom_components/weber_connect/diagnostics.py",
         "custom_components/weber_connect/options.py",
         "custom_components/weber_connect/repairs.py",
@@ -142,10 +139,15 @@ def check_privacy_and_scope() -> None:
         fail("Bluetooth retries must re-resolve the best adapter or proxy")
     if "async_ble_device_from_address" in (INTEGRATION / "weber_cloud.py").read_text():
         fail("cloud code must not own Bluetooth adapter selection")
-    controls = (INTEGRATION / "button.py").read_text(encoding="utf-8")
-    for forbidden in ("ignite", "install_recipe", "configure_wifi"):
-        if re.search(rf"\b{forbidden}\b", controls, re.IGNORECASE):
-            fail(f"out-of-scope remote control found: {forbidden}")
+    platforms = ast.literal_eval(
+        next(
+            line.split("=", 1)[1].strip()
+            for line in (INTEGRATION / "const.py").read_text(encoding="utf-8").splitlines()
+            if line.startswith("PLATFORMS:")
+        )
+    )
+    if platforms != ("sensor",):
+        fail("3.0 must expose only the four probe temperature sensors")
 
 
 def check_workflows() -> None:

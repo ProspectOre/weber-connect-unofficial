@@ -19,14 +19,13 @@ from custom_components.weber_connect.const import (
     CONF_POLL_SECONDS,
     CONF_PROBE_NAME_PREFIX,
     CONF_PROBES,
-    CONF_REMOTE_CONTROLS,
     DOMAIN,
     NAME,
 )
 from custom_components.weber_connect.entity import build_entity_unique_id
 from custom_components.weber_connect.options import ConnectionMode, WeberOptions
 from custom_components.weber_connect.sensor import (
-    OBSOLETE_PROBE_ENTITY_KEYS,
+    OBSOLETE_ENTITY_KEYS_BY_PLATFORM,
     SENSORS,
     WeberSensor,
 )
@@ -128,14 +127,9 @@ def test_normalized_state_exposes_full_cook_and_stable_probe_slots() -> None:
     assert state["instructions"][0]["step_id"] == 1
 
 
-def test_idle_text_sensors_explain_that_no_cook_is_active() -> None:
-    """The device page must not imply an offline integration while idle."""
-
+def test_sensor_surface_contains_only_four_permanent_probe_slots() -> None:
     descriptions = {description.key: description for description in SENSORS}
-    assert descriptions["active_recipe"].value_fn({}) == "No active recipe"
-    assert descriptions["current_instruction"].value_fn({}) == "No active instruction"
-    assert descriptions["recipe_state"].value_fn({}) == "Idle"
-    assert descriptions["cook_mode"].value_fn({}) == "Not active"
+    assert set(descriptions) == {f"probe_{number}_temperature" for number in range(1, 5)}
     for number in range(1, 5):
         probe = descriptions[f"probe_{number}_temperature"]
         assert probe.value_fn({}) is None
@@ -174,7 +168,9 @@ async def test_sensor_platform_adds_four_permanent_probe_entities() -> None:
     assert not any(key.endswith("_status") or key.endswith("_battery") for key in initial_keys)
     assert len(batches) == 1
     assert unload_callbacks == []
-    assert registry.async_get_entity_id.call_count == len(OBSOLETE_PROBE_ENTITY_KEYS)
+    assert registry.async_get_entity_id.call_count == sum(
+        len(keys) for keys in OBSOLETE_ENTITY_KEYS_BY_PLATFORM.values()
+    )
 
 
 @pytest.mark.asyncio
@@ -191,7 +187,7 @@ async def test_sensor_platform_removes_redundant_probe_registry_entries() -> Non
     registry.async_get_entity_id.side_effect = [
         "sensor.probe_1_status",
         "sensor.probe_1_battery",
-        *([None] * (len(OBSOLETE_PROBE_ENTITY_KEYS) - 2)),
+        *([None] * (sum(len(keys) for keys in OBSOLETE_ENTITY_KEYS_BY_PLATFORM.values()) - 2)),
     ]
 
     with patch("custom_components.weber_connect.sensor.er.async_get", return_value=registry):
@@ -269,13 +265,7 @@ def test_empty_probe_remains_unknown_when_coordinator_update_fails() -> None:
 def test_entity_unique_keys_are_complete_and_nonduplicated() -> None:
     keys = [description.key for description in SENSORS]
     assert len(keys) == len(set(keys))
-    assert {f"probe_{number}_temperature" for number in range(1, 5)} <= set(keys)
-    assert {
-        "active_recipe",
-        "current_instruction",
-        "cook_target_temperature",
-        "connection_source",
-    } <= set(keys)
+    assert set(keys) == {f"probe_{number}_temperature" for number in range(1, 5)}
 
 
 def test_options_have_simple_recommended_defaults_and_stable_probe_names() -> None:
@@ -284,13 +274,11 @@ def test_options_have_simple_recommended_defaults_and_stable_probe_names() -> No
     assert defaults.cloud_enabled is True
     assert defaults.poll_seconds == 10
     assert defaults.local_fallback is False
-    assert defaults.remote_controls is False
 
     configured = WeberOptions.from_mapping(
         {
             CONF_CONNECTION: {
                 CONF_CONNECTION_MODE: ConnectionMode.HOME_ASSISTANT_ONLY,
-                CONF_REMOTE_CONTROLS: True,
             },
             CONF_PROBES: {f"{CONF_PROBE_NAME_PREFIX}2": " Brisket "},
             CONF_ADVANCED: {
@@ -300,7 +288,6 @@ def test_options_have_simple_recommended_defaults_and_stable_probe_names() -> No
         }
     )
     assert configured.cloud_enabled is False
-    assert configured.remote_controls is True
     assert configured.poll_seconds == 30
     assert configured.local_fallback is True
     assert configured.probe_name(2) == "Brisket"
@@ -327,7 +314,4 @@ def test_default_device_surface_is_focused() -> None:
         "probe_2_temperature",
         "probe_3_temperature",
         "probe_4_temperature",
-        "active_recipe",
-        "current_instruction",
-        "app_access",
     }

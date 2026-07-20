@@ -7,12 +7,11 @@ Version 3.0 is one native Home Assistant integration:
 - automatic Bluetooth discovery through local adapters and active ESPHome proxies;
 - one physically confirmed setup with no Weber email, password, phone secret, or packet capture;
 - native devices and entities—no MQTT broker or separate control panel;
-- four stable probe slots, cavity temperatures, timers, active recipe, current
-  instruction, target, mode, and cook progress;
+- exactly four stable probe temperature entities—one for each physical slot;
 - phone + Home Assistant by default: the Weber app may own Bluetooth while
   Home Assistant follows the cook through its own Weber Cloud connection;
-- optional local Bluetooth fallback and narrowly allowlisted active-cook
-  controls.
+- optional local Bluetooth fallback through Home Assistant's native adapter and
+  proxy selection.
 
 This project is not affiliated with, endorsed by, or supported by Weber.
 
@@ -22,8 +21,10 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 > setup and direct local readings through one active ESPHome proxy are
 > verified. Proxy-only startup, proxy restart recovery, and full Home Assistant
 > restart recovery are also verified. A one-hour recommended-mode cloud
-> endurance run completed with zero failed refreshes. Active-cook continuity,
-> continuously-awake proxy endurance, and multi-proxy failover are not yet
+> endurance run completed with zero failed refreshes. Active-cook probe
+> continuity has passed for at least 1 hour 47 minutes, including a full Home
+> Assistant restart; the cook-ending transition is still being observed.
+> Continuously-awake proxy endurance and multi-proxy failover are not yet
 > verified.
 
 ## Install
@@ -52,9 +53,8 @@ Home Assistant creates and stores its own Weber connection automatically.
 
 The default mode is **phone + Home Assistant**. Home Assistant reads through
 Weber Cloud every 10 seconds, leaving the hub's single Bluetooth connection
-available to the Weber app. A recipe started in the Weber app can populate the
-native recipe, instruction, target, progress, temperature, and timer entities
-when Weber makes that live-session data available to Home Assistant.
+available to the Weber app. Recipes continue to be started and managed in the
+Weber app while Home Assistant monitors the four probe temperature slots.
 
 Home Assistant uses Bluetooth for initial pairing. If **Local Bluetooth
 fallback** is enabled in the integration options, it can also read locally
@@ -68,18 +68,12 @@ without changing the entity's identity.
 
 The device page has exactly one permanent temperature entity for each physical
 slot: **Probe 1** through **Probe 4**. A connected probe shows its temperature;
-an empty slot reads **Unknown**. Battery level, probe type, and probe state remain
-available as attributes on that same entity instead of creating redundant probe
-entities. Cavities, timers, cook details, and diagnostics remain available as
-disabled entities for users who want them.
+an empty slot reads **Unknown** with the probe-off icon. Battery level, probe
+type, and probe state remain attributes on that same entity instead of creating
+redundant entities.
 
-Idle recipe and instruction entities say that no cook is active. The separate
-receiving-data entity shows whether the integration itself is online.
-
-Remote controls are off by default. When enabled, 3.0 can confirm or stop an
-already-active cook and reset an existing timer. It cannot ignite a grill,
-configure Wi-Fi, install or start a recipe, change a target, or change grill
-mode.
+3.0 is deliberately read-only. Recipe text, instructions, cook controls,
+cavities, timers, and technical connection-status entities are not exposed.
 
 ## Requirements
 
@@ -112,8 +106,11 @@ verified sub-second config-entry setup, live recovery after proxy and Home
 Assistant restarts, stable entity IDs, and exactly four permanent probe
 temperature entities. A 60-minute production cloud run completed 356
 successful refreshes with zero failures at a mean interval of approximately
-10.15 seconds. Active-cook continuity and continuously-awake local-proxy
-endurance in [Production readiness](PRODUCTION_READINESS.md) remain outstanding.
+10.15 seconds. Active-cook Probe 3 then remained populated for at least 1 hour
+47 minutes and recovered after a full Home Assistant restart while the Weber
+app continued the same cook. The cook-ending transition and continuously-awake
+local-proxy endurance in [Production readiness](PRODUCTION_READINESS.md) remain
+outstanding.
 Multi-proxy failover remains an explicitly unverified compatibility scenario.
 
 That is a test matrix, not a claim that every Weber model, firmware, account

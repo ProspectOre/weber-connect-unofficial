@@ -21,12 +21,10 @@ CONF_PROBES: Final = "probes"
 CONF_ADVANCED: Final = "advanced"
 CONF_POLL_SECONDS: Final = "poll_seconds"
 CONF_LOCAL_FALLBACK: Final = "local_fallback"
-CONF_REMOTE_CONTROLS: Final = "remote_controls"
 CONF_PROBE_NAME_PREFIX: Final = "probe_name_"
 
 DEFAULT_POLL_SECONDS: Final = 10
 DEFAULT_LOCAL_FALLBACK: Final = False
-DEFAULT_REMOTE_CONTROLS: Final = False
 
 WEBER_COMPANY_IDS: Final = frozenset({0x0DF2, 0x07C5})
-PLATFORMS: Final = ("sensor", "binary_sensor", "button")
+PLATFORMS: Final = ("sensor",)

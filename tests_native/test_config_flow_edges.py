@@ -22,7 +22,6 @@ from custom_components.weber_connect.const import (
     CONF_LOCAL_FALLBACK,
     CONF_POLL_SECONDS,
     CONF_PROBES,
-    CONF_REMOTE_CONTROLS,
 )
 from custom_components.weber_connect.models import CompanionIdentity, PairingResult
 from custom_components.weber_connect.options import ConnectionMode, WeberOptions
@@ -259,7 +258,6 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
     submitted = {
         CONF_CONNECTION: {
             CONF_CONNECTION_MODE: ConnectionMode.PHONE_AND_HOME_ASSISTANT,
-            CONF_REMOTE_CONTROLS: False,
         },
         CONF_PROBES: {},
         CONF_ADVANCED: {CONF_POLL_SECONDS: "10", CONF_LOCAL_FALLBACK: False},

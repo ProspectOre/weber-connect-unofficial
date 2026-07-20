@@ -294,6 +294,8 @@ class WeberCloudClient:
         self._last_snapshot_at = 0.0
         self._socket_client: Any = None
         self.socket_error: str | None = None
+        self.session_schema: dict[str, Any] = {}
+        self.snapshot_schema: dict[str, Any] = {}
 
     @property
     def config_host(self) -> str:
@@ -343,14 +345,6 @@ class WeberCloudClient:
 
             self._socket_client = WeberCloudSocketClient(self)
         return self._socket_client
-
-    def session_command(self, appliance_id: str, active_cook: dict[str, Any], command: str) -> None:
-        self._socket().session_command(appliance_id, active_cook, command)
-
-    def timer_command(
-        self, appliance_id: str, timer_index: int, action: str, duration_s: int = 0
-    ) -> None:
-        self._socket().timer_command(appliance_id, timer_index, action, duration_s)
 
     def _merge_live_status(
         self, appliance_id: str, history_status: dict[str, Any]
@@ -524,6 +518,24 @@ class WeberCloudClient:
                 return (0, 0.0, str(value))
 
         latest = max(rows, key=sort_key)
+        self.session_schema = {
+            "fields": sorted(str(key) for key in latest),
+            "state": {
+                key: latest[key]
+                for key in (
+                    "status",
+                    "state",
+                    "title",
+                    "name",
+                    "recipe_name",
+                    "recipe_title",
+                    "created_at",
+                    "updated_at",
+                    "server_timestamp",
+                )
+                if key in latest
+            },
+        }
         value = latest.get("session_id") or latest.get("id")
         return str(value) if value else None
 
@@ -544,6 +556,16 @@ class WeberCloudClient:
             valid = [row for row in page if isinstance(row, dict)]
             if not valid:
                 break
+            latest_snapshot = valid[-1]
+            snapshot_data = latest_snapshot.get("data")
+            self.snapshot_schema = {
+                "fields": sorted(str(key) for key in latest_snapshot),
+                "data_fields": (
+                    sorted(str(key) for key in snapshot_data)
+                    if isinstance(snapshot_data, dict)
+                    else []
+                ),
+            }
             rows.extend(valid)
             ids = [row.get("snapshot_id") for row in valid]
             numeric_ids = [
@@ -563,15 +585,39 @@ class WeberCloudClient:
         if not session_id:
             self._session_id = None
             self._after_id = 0
-            self._last_status = None
             self._last_snapshot_at = 0.0
-            return None
+            # Cook-history can lag behind a cook that was just started in the
+            # Weber app. The companion socket is authoritative for the live
+            # hub state, so do not wait for a REST session to appear before
+            # publishing probe temperatures and recipe progress.
+            try:
+                live = self.live_status(appliance_id)
+            except Exception as exc:
+                self.socket_error = str(exc)
+                self._last_status = None
+                return None
+            self.socket_error = None
+            live["kind"] = "cloud_live_session"
+            self._last_status = live
+            return CloudPollResult(
+                status=live,
+                session_id="",
+                after_id=0,
+                snapshot_count=0,
+            )
         if session_id != self._session_id:
             self._session_id = session_id
             self._after_id = 0
             self._last_status = None
             self._last_snapshot_at = 0.0
-        snapshots = self.snapshots(appliance_id, session_id, self._after_id)
+        # Weber can update the newest cook-history snapshot in place without
+        # allocating a new snapshot ID. Re-read one row behind the cursor so
+        # the current probe temperature keeps moving during an active cook.
+        snapshots = self.snapshots(
+            appliance_id,
+            session_id,
+            max(0, self._after_id - 1),
+        )
         for snapshot in snapshots:
             snapshot_id = snapshot.get("snapshot_id")
             if isinstance(snapshot_id, int) and not isinstance(snapshot_id, bool):

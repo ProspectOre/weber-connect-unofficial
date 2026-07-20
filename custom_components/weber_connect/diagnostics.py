@@ -35,6 +35,8 @@ async def async_get_config_entry_diagnostics(
     """Return support data with credentials and device identifiers removed."""
 
     runtime: WeberRuntimeData = entry.runtime_data
+    cloud_client = runtime.coordinator.cloud_client
+    socket_client = getattr(cloud_client, "_socket_client", None)
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "stored_options": dict(entry.options),
@@ -47,4 +49,16 @@ async def async_get_config_entry_diagnostics(
         "successful_updates": runtime.coordinator.successful_updates,
         "failed_updates": runtime.coordinator.failed_updates,
         "last_error": runtime.coordinator.last_error,
+        "cloud_live_error": (
+            getattr(cloud_client, "socket_error", None) if cloud_client is not None else None
+        ),
+        "cloud_socket_received_types": getattr(socket_client, "received_types", []),
+        "cloud_history_schema": (
+            {
+                "session": getattr(cloud_client, "session_schema", {}),
+                "snapshot": getattr(cloud_client, "snapshot_schema", {}),
+            }
+            if cloud_client is not None
+            else {}
+        ),
     }

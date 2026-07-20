@@ -34,7 +34,6 @@ from .const import (
     CONF_POLL_SECONDS,
     CONF_PROBE_NAME_PREFIX,
     CONF_PROBES,
-    CONF_REMOTE_CONTROLS,
     DOMAIN,
     WEBER_COMPANY_IDS,
 )
@@ -421,10 +420,6 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
                                         translation_key="connection_mode",
                                     )
                                 ),
-                                vol.Required(
-                                    CONF_REMOTE_CONTROLS,
-                                    default=connection[CONF_REMOTE_CONTROLS],
-                                ): bool,
                             }
                         ),
                         {"collapsed": False},

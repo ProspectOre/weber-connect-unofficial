@@ -12,7 +12,6 @@ from typing import Any
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -49,7 +48,6 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.options = WeberOptions.from_mapping(entry.options)
         self.cloud_enabled = self.options.cloud_enabled
         self.local_fallback = self.options.local_fallback
-        self.remote_controls = self.options.remote_controls
         self.poll_seconds = self.options.poll_seconds
         self._poll_task: asyncio.Task[None] | None = None
         self._advertisement_refresh_task: asyncio.Task[None] | None = None
@@ -265,39 +263,6 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             connected=False,
             cloud_ready=self.cloud_ready,
         )
-
-    async def async_session_command(self, command: str) -> None:
-        """Run an allowlisted command against an already-active cloud cook."""
-
-        if not self.remote_controls:
-            raise HomeAssistantError("Remote cook controls are disabled in integration options.")
-        client = self.cloud_client
-        active_cook = self.data.get("active_cook") if self.data else None
-        if client is None or self.appliance_id is None or not isinstance(active_cook, dict):
-            raise HomeAssistantError("No controllable active cook is available.")
-        await self.hass.async_add_executor_job(
-            client.session_command,
-            self.appliance_id,
-            active_cook,
-            command,
-        )
-        await self.async_request_refresh()
-
-    async def async_reset_timer(self, timer_index: int) -> None:
-        """Reset one existing timer through the cloud companion."""
-
-        if not self.remote_controls:
-            raise HomeAssistantError("Remote cook controls are disabled in integration options.")
-        if self.cloud_client is None or self.appliance_id is None:
-            raise HomeAssistantError("Weber Cloud is not ready.")
-        await self.hass.async_add_executor_job(
-            self.cloud_client.timer_command,
-            self.appliance_id,
-            timer_index,
-            "reset",
-            0,
-        )
-        await self.async_request_refresh()
 
     async def async_close(self) -> None:
         """Close the persistent cloud socket during config-entry unload."""

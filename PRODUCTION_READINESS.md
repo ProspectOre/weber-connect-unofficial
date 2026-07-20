@@ -28,12 +28,12 @@ Every release pull request must pass:
 2. Fully close the Weber app and temporarily turn off Bluetooth on every phone
    or tablet that uses it.
 3. Complete physical-confirmation pairing, then turn Bluetooth back on.
-4. Verify four stable probe slots and accurate probe/cavity temperatures.
+4. Verify four stable probe slots and accurate probe temperatures.
 5. Restart Home Assistant and confirm that no re-pairing is needed.
 6. Reopen the Weber app and verify simultaneous phone plus Home Assistant cloud
    telemetry for at least one hour at the 10-second cadence.
-7. Start a recipe in the app and compare every populated recipe, instruction,
-   target, progress, timer, and temperature entity.
+7. Start a recipe in the app and compare the active probe temperature for the
+   full cook without the Home Assistant entity expiring to `Unknown`.
 8. Delete the config entry and verify local private data is removed.
 
 ### One active ESPHome proxy
@@ -82,8 +82,7 @@ Automated validation passes on Home Assistant 2026.7.2. Matching phone and Home
 Assistant cloud readings were observed on a Weber Connect Hub `2.0.3_7398`
 with the Weber Android app `2.10.0.2439`. After a full Home Assistant restart,
 the native integration resumed cloud telemetry, reported the active probe at
-the same temperature, displayed idle recipe fields explicitly, and produced no
-Weber log issue.
+the same temperature and produced no Weber log issue.
 
 Discovery and physical-confirmation pairing passed through one active ESPHome
 Bluetooth proxy running ESPHome 2026.7.0. Home Assistant identified that proxy
@@ -127,10 +126,18 @@ Home Assistant HTTP availability samples returned 200. Home Assistant recorded
 no Weber warning or error during the run; a separate unclosed LAN channel error
 identified another host, not the Weber hub or ESPHome proxy.
 
-That endurance run validates idle cloud polling, but it does not validate that
-probe, recipe, instruction, target, progress, and timer data stay populated for
-the full duration of an active cook. The active-cook continuity row above still
-requires a cook started from the Weber app. The one-hour proxy-only cadence row
-also remains unverified with the hub continuously awake. Two-proxy failover is
-explicitly untested because a second proxy is not available; it does not block
-3.0 and must not be described as verified.
+An active recipe started in the Weber app then exposed an in-place snapshot
+behavior in Weber's cook-history API: the service updated the newest snapshot
+without assigning a new snapshot ID. The client now deliberately overlaps the
+latest snapshot on every poll. After that correction, Probe 3 remained populated
+for at least 1 hour 47 minutes of the same active cook, including recovery after
+a full Home Assistant restart. The app displayed 76°F and Home Assistant 76.1°F,
+consistent with their different display precision. Production also confirmed
+that the integration and device pages contain exactly four entities after the
+restart. The cook's ending transition is still under observation and must pass
+before release.
+
+The one-hour proxy-only cadence row also remains unverified with the hub
+continuously awake. Two-proxy failover is explicitly untested because a second
+proxy is not available; it does not block 3.0 and must not be described as
+verified.

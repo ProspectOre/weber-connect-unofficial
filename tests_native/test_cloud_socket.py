@@ -199,6 +199,7 @@ class ClientTests(unittest.TestCase):
         status = client.live_status(APPLIANCE_ID)
 
         self.assertEqual(status["active_cook"]["title"], "Weeknight Steak")
+        self.assertEqual(client.received_types, [0x80, 0x86])
         sent = [socket.decode_routed_message(row) for row in connection.sent]
         self.assertEqual(
             [row.type_value for row in sent],
@@ -206,42 +207,6 @@ class ClientTests(unittest.TestCase):
         )
         self.assertEqual(sent[2].payload[:2], b"\x15\x04")
         self.assertEqual(sent[-1].payload, b"\x01\x00")
-
-    def test_session_and_timer_commands_match_official_payloads(self) -> None:
-        connection = FakeConnection()
-        client = socket.WeberCloudSocketClient(cloud_client(), subscribe_delay=0)
-        client._connection = connection
-        active = {
-            "program_id": str(PROGRAM_ID),
-            "plan_id": 42,
-            "session_type_value": 1,
-            "session_index": 0,
-            "step_id": 7,
-        }
-
-        client.session_command(APPLIANCE_ID, active, "confirm")
-        client.timer_command(APPLIANCE_ID, 2, "start", 30)
-        client.timer_command(APPLIANCE_ID, 2, "reset")
-
-        messages = [socket.decode_routed_message(row) for row in connection.sent]
-        self.assertEqual(messages[0].type_value, 0x01)
-        self.assertEqual(messages[0].payload[:9], b"\x01\x01\x07\x02\x01\x01\x03\x01\x00")
-        self.assertEqual(messages[0].payload[-4:], b"\x06\x02\x07\x00")
-        self.assertEqual(messages[1].payload, b"\x02\x01" + struct.pack("<I", 30_000))
-        self.assertEqual(messages[2].payload, b"\x02\x02\x00\x00\x00\x00")
-
-    def test_control_validation(self) -> None:
-        client = socket.WeberCloudSocketClient(cloud_client(), subscribe_delay=0)
-        with self.assertRaises(ValueError):
-            client.timer_command(APPLIANCE_ID, 4, "reset")
-        with self.assertRaises(ValueError):
-            client.timer_command(APPLIANCE_ID, 0, "start", 0)
-        with self.assertRaises(ValueError):
-            client.session_command(APPLIANCE_ID, {}, "start")
-        with self.assertRaises(socket.WeberCloudSocketError):
-            client.session_command(APPLIANCE_ID, {}, "stop")
-        with self.assertRaises(ValueError):
-            client.timer_command(APPLIANCE_ID, 0, "pause")
 
     def test_connect_and_close_use_authenticated_runtime(self) -> None:
         connection = FakeConnection()

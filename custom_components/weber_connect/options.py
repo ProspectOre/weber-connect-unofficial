@@ -14,10 +14,8 @@ from .const import (
     CONF_POLL_SECONDS,
     CONF_PROBE_NAME_PREFIX,
     CONF_PROBES,
-    CONF_REMOTE_CONTROLS,
     DEFAULT_LOCAL_FALLBACK,
     DEFAULT_POLL_SECONDS,
-    DEFAULT_REMOTE_CONTROLS,
 )
 
 
@@ -33,7 +31,6 @@ class WeberOptions:
     """Validated effective options with product defaults."""
 
     connection_mode: ConnectionMode = ConnectionMode.PHONE_AND_HOME_ASSISTANT
-    remote_controls: bool = DEFAULT_REMOTE_CONTROLS
     poll_seconds: int = DEFAULT_POLL_SECONDS
     local_fallback: bool = DEFAULT_LOCAL_FALLBACK
     probe_names: tuple[str, str, str, str] = ("", "", "", "")
@@ -84,7 +81,6 @@ class WeberOptions:
         )
         return cls(
             connection_mode=mode,
-            remote_controls=bool(connection.get(CONF_REMOTE_CONTROLS, DEFAULT_REMOTE_CONTROLS)),
             poll_seconds=poll_seconds,
             local_fallback=bool(advanced.get(CONF_LOCAL_FALLBACK, DEFAULT_LOCAL_FALLBACK)),
             probe_names=names,
@@ -96,7 +92,6 @@ class WeberOptions:
         return {
             CONF_CONNECTION: {
                 CONF_CONNECTION_MODE: self.connection_mode.value,
-                CONF_REMOTE_CONTROLS: self.remote_controls,
             },
             CONF_PROBES: {
                 f"{CONF_PROBE_NAME_PREFIX}{number}": self.probe_name(number)

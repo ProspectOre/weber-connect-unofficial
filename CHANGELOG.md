@@ -11,20 +11,18 @@
   cannot inherit legacy enabled/disabled choices.
 - Added automatic Weber Cloud setup for simultaneous Weber app and Home
   Assistant telemetry by default.
-- Added native probe, battery, cavity, timer, recipe, instruction, cook target,
-  progress, connection, and source entities.
+- Added exactly four permanent native probe temperature entities; each keeps
+  its physical slot number and exposes probe state, type, and battery as
+  attributes.
 - Added optional probe nicknames that remain visibly tied to permanent probe
   slots and stable unique IDs.
-- Focused the default device page on probe temperatures, the active recipe,
-  current instruction, and connection health; detailed entities remain
-  available but disabled by default.
-- Replaced ambiguous idle `Unknown` states with explicit no-active-cook text.
-- Kept all four probe slots visible with a clear `Not connected` state while
-  adding numeric measurement entities only after a probe is detected.
-- Made remote-control entities absent unless controls are explicitly enabled.
+- Kept all four probe slots visible: connected slots show temperature and empty
+  slots show `Unknown` with the probe-off icon.
+- Removed unvalidated recipe, instruction, status, cavity, timer, and remote
+  control entities from the 3.0 release surface.
 - Added sequential setup progress, task-specific recovery actions, and grouped
   native settings.
-- Added opt-in local Bluetooth fallback and opt-in active-cook controls.
+- Added opt-in local Bluetooth fallback.
 - Added actionable data-loss repairs, last-success tracking, effective-option
   diagnostics, and start-to-start 10-second polling.
 - Added privacy-safe diagnostics, HACS validation, Hassfest, strict typing,

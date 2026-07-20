@@ -1,4 +1,4 @@
-"""Coordinator and diagnostics tests for transport failover and controls."""
+"""Coordinator and diagnostics tests for transport failover."""
 
 from __future__ import annotations
 
@@ -8,12 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_ADDRESS
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 
 from custom_components.weber_connect import coordinator as coordinator_module
 from custom_components.weber_connect.bluetooth import WeberBluetoothError
-from custom_components.weber_connect.button import async_setup_entry as async_setup_buttons
 from custom_components.weber_connect.const import (
     CONF_ADVANCED,
     CONF_APPLIANCE_ID,
@@ -24,7 +22,6 @@ from custom_components.weber_connect.const import (
     CONF_CONNECTION,
     CONF_CONNECTION_MODE,
     CONF_LOCAL_FALLBACK,
-    CONF_REMOTE_CONTROLS,
 )
 from custom_components.weber_connect.coordinator import WeberCoordinator
 from custom_components.weber_connect.diagnostics import async_get_config_entry_diagnostics
@@ -51,7 +48,6 @@ def _entry(*, cloud: bool = True, local_fallback: bool = False) -> SimpleNamespa
                     if cloud
                     else ConnectionMode.HOME_ASSISTANT_ONLY
                 ),
-                CONF_REMOTE_CONTROLS: True,
             },
             CONF_ADVANCED: {CONF_LOCAL_FALLBACK: local_fallback},
         },
@@ -69,8 +65,6 @@ class FakeCloudClient:
     def __init__(self, config: object) -> None:
         self.config = config
         self.closed = False
-        self.session_calls: list[tuple[object, ...]] = []
-        self.timer_calls: list[tuple[object, ...]] = []
 
     def associated_appliances(self) -> list[dict[str, str]]:
         return [{"oven_id": "22" * 16}]
@@ -90,18 +84,12 @@ class FakeCloudClient:
             }
         )
 
-    def session_command(self, *args: object) -> None:
-        self.session_calls.append(args)
-
-    def timer_command(self, *args: object) -> None:
-        self.timer_calls.append(args)
-
     def close(self) -> None:
         self.closed = True
 
 
 @pytest.mark.asyncio
-async def test_cloud_update_controls_and_close(hass: object) -> None:
+async def test_cloud_update_and_close(hass: object) -> None:
     with patch.object(coordinator_module, "WeberCloudClient", FakeCloudClient):
         coordinator = WeberCoordinator(hass, _entry())  # type: ignore[arg-type]
 
@@ -111,16 +99,8 @@ async def test_cloud_update_controls_and_close(hass: object) -> None:
     assert state["probe_1_temperature"] == 63.5
     assert coordinator.appliance_id == "22" * 16
 
-    coordinator.data = {"active_cook": {"session_id": "cook-1"}}
-    coordinator.async_request_refresh = AsyncMock()
-    await coordinator.async_session_command("confirm")
-    await coordinator.async_reset_timer(2)
-
     client = coordinator.cloud_client
     assert isinstance(client, FakeCloudClient)
-    assert client.session_calls[0][-1] == "confirm"
-    assert client.timer_calls[0][-3:] == (2, "reset", 0)
-    assert coordinator.async_request_refresh.await_count == 2
 
     await coordinator.async_close()
     assert client.closed is True
@@ -364,36 +344,6 @@ async def test_sustained_failures_mark_preserved_readings_offline(hass: object) 
 
 
 @pytest.mark.asyncio
-async def test_remote_controls_require_an_active_cloud_session(hass: object) -> None:
-    coordinator = WeberCoordinator(
-        hass,
-        _entry(cloud=False),  # type: ignore[arg-type]
-    )
-    coordinator.remote_controls = False
-    with pytest.raises(HomeAssistantError, match="disabled"):
-        await coordinator.async_session_command("confirm")
-    with pytest.raises(HomeAssistantError, match="disabled"):
-        await coordinator.async_reset_timer(1)
-
-
-@pytest.mark.asyncio
-async def test_control_entities_do_not_exist_until_enabled(hass: object) -> None:
-    entry = _entry(cloud=False)
-    coordinator = WeberCoordinator(hass, entry)  # type: ignore[arg-type]
-    entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
-    add_entities = MagicMock()
-
-    coordinator.remote_controls = False
-    await async_setup_buttons(hass, entry, add_entities)  # type: ignore[arg-type]
-    add_entities.assert_not_called()
-
-    coordinator.remote_controls = True
-    await async_setup_buttons(hass, entry, add_entities)  # type: ignore[arg-type]
-    entities = tuple(add_entities.call_args.args[0])
-    assert len(entities) == 6
-
-
-@pytest.mark.asyncio
 async def test_sustained_outage_creates_and_recovery_clears_repair(hass: object) -> None:
     with patch.object(coordinator_module, "WeberCloudClient", FakeCloudClient):
         coordinator = WeberCoordinator(hass, _entry())  # type: ignore[arg-type]
@@ -409,12 +359,6 @@ async def test_sustained_outage_creates_and_recovery_clears_repair(hass: object)
     await coordinator._async_update_data()
     assert ir.async_get(hass).async_get_issue("weber_connect", issue_id) is None
 
-    coordinator.remote_controls = True
-    with pytest.raises(HomeAssistantError, match="No controllable"):
-        await coordinator.async_session_command("confirm")
-    with pytest.raises(HomeAssistantError, match="not ready"):
-        await coordinator.async_reset_timer(1)
-
 
 @pytest.mark.asyncio
 async def test_diagnostics_redact_all_private_material(hass: object) -> None:
@@ -427,6 +371,12 @@ async def test_diagnostics_redact_all_private_material(hass: object) -> None:
         successful_updates=12,
         failed_updates=1,
         last_error="temporary failure",
+        cloud_client=SimpleNamespace(
+            socket_error="live session unavailable",
+            _socket_client=SimpleNamespace(received_types=[0x83]),
+            session_schema={"fields": ["session_id", "status"]},
+            snapshot_schema={"fields": ["data", "snapshot_id"]},
+        ),
     )
     entry = _entry()
     entry.data[CONF_APPLIANCE_ID] = "22" * 16
@@ -448,3 +398,9 @@ async def test_diagnostics_redact_all_private_material(hass: object) -> None:
     assert diagnostics["successful_updates"] == 12
     assert diagnostics["failed_updates"] == 1
     assert diagnostics["last_error"] == "temporary failure"
+    assert diagnostics["cloud_live_error"] == "live session unavailable"
+    assert diagnostics["cloud_socket_received_types"] == [0x83]
+    assert diagnostics["cloud_history_schema"]["session"]["fields"] == [
+        "session_id",
+        "status",
+    ]

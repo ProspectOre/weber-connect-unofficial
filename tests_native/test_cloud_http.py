@@ -232,15 +232,10 @@ def test_authentication_cache_association_and_wake_contracts() -> None:
         assert wake_request.get_header("Authorization") == "Bearer access"
 
 
-def test_socket_lifecycle_commands_and_live_merge_fallbacks() -> None:
+def test_socket_lifecycle_and_live_merge_fallbacks() -> None:
     client = cloud.WeberCloudClient(config())
     socket = MagicMock()
     client._socket_client = socket
-    client.session_command(APPLIANCE_ID, {"active": True}, "confirm")
-    client.timer_command(APPLIANCE_ID, 1, "reset", 0)
-    socket.session_command.assert_called_once()
-    socket.timer_command.assert_called_once()
-
     socket.live_status.return_value = {"probes": [{"probe_number": 1}]}
     with patch.object(client, "wake_messaging", side_effect=RuntimeError("best effort")):
         assert client.live_status(APPLIANCE_ID)["probes"]
@@ -276,6 +271,8 @@ def test_latest_session_accepts_supported_shapes(payload: object, expected: str 
     client = cloud.WeberCloudClient(config())
     with patch.object(client, "_request_payload", return_value=payload):
         assert client.latest_session_id(APPLIANCE_ID) == expected
+    if expected is not None:
+        assert "fields" in client.session_schema
 
 
 def test_snapshot_pagination_filters_rows_and_stops_safely() -> None:
@@ -290,6 +287,7 @@ def test_snapshot_pagination_filters_rows_and_stops_safely() -> None:
         rows = client.snapshots(APPLIANCE_ID, "session/id", -1)
     assert len(rows) == 1001
     assert "after_id=1000" in request.call_args_list[1].args[1]
+    assert client.snapshot_schema["fields"] == ["snapshot_id"]
 
     with patch.object(client, "_request_json", return_value={"snapshots": "bad"}):
         with pytest.raises(cloud.WeberCloudError, match="snapshot page"):
@@ -308,9 +306,27 @@ def test_snapshot_pagination_filters_rows_and_stops_safely() -> None:
 
 def test_poll_covers_session_reset_live_stale_and_snapshot_paths() -> None:
     client = cloud.WeberCloudClient(config())
-    with patch.object(client, "latest_session_id", return_value=None):
+    with (
+        patch.object(client, "latest_session_id", return_value=None),
+        patch.object(
+            client,
+            "live_status",
+            return_value={"probes": [{"probe_number": 3}]},
+        ),
+    ):
+        live_without_history = client.poll(APPLIANCE_ID)
+    assert live_without_history is not None
+    assert live_without_history.session_id == ""
+    assert live_without_history.status["probes"][0]["probe_number"] == 3
+    assert live_without_history.status["kind"] == "cloud_live_session"
+    assert client._session_id is None
+
+    with (
+        patch.object(client, "latest_session_id", return_value=None),
+        patch.object(client, "live_status", side_effect=RuntimeError("offline")),
+    ):
         assert client.poll(APPLIANCE_ID) is None
-        assert client._session_id is None
+        assert client.socket_error == "offline"
 
     client._session_id = "old"
     client._after_id = 99
@@ -361,3 +377,16 @@ def test_poll_covers_session_reset_live_stale_and_snapshot_paths() -> None:
     assert result.after_id == 12
     assert result.snapshot_count == 2
     assert result.status["probe_count"] == 1
+
+
+def test_poll_overlaps_latest_snapshot_for_in_place_cloud_updates() -> None:
+    client = cloud.WeberCloudClient(config())
+    client._session_id = "active"
+    client._after_id = 2080
+    with (
+        patch.object(client, "latest_session_id", return_value="active"),
+        patch.object(client, "snapshots", return_value=[]) as snapshots,
+        patch.object(client, "live_status", side_effect=RuntimeError("offline")),
+    ):
+        client.poll(APPLIANCE_ID)
+    snapshots.assert_called_once_with(APPLIANCE_ID, "active", 2079)
