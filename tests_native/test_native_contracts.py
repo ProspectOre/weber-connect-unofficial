@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -25,9 +26,9 @@ from custom_components.weber_connect.const import (
 from custom_components.weber_connect.entity import build_entity_unique_id
 from custom_components.weber_connect.options import ConnectionMode, WeberOptions
 from custom_components.weber_connect.sensor import (
+    OBSOLETE_PROBE_ENTITY_KEYS,
     SENSORS,
     WeberSensor,
-    connected_probe_descriptions,
 )
 from custom_components.weber_connect.sensor import (
     async_setup_entry as async_setup_sensor_entry,
@@ -136,42 +137,19 @@ def test_idle_text_sensors_explain_that_no_cook_is_active() -> None:
     assert descriptions["recipe_state"].value_fn({}) == "Idle"
     assert descriptions["cook_mode"].value_fn({}) == "Not active"
     for number in range(1, 5):
-        probe = descriptions[f"probe_{number}_status"]
-        assert probe.value_fn({}) == "Not connected"
-        assert probe.icon == "mdi:thermometer-probe-off"
-
-
-def test_only_connected_probe_slots_are_added_to_the_device_page() -> None:
-    """Unused slots should not look like failed entities."""
-
-    descriptions = connected_probe_descriptions({"probe_3_temperature": 25.0}, set())
-    assert {description.key for description in descriptions} == {
-        "probe_3_temperature",
-        "probe_3_battery",
-    }
-    assert (
-        connected_probe_descriptions(
-            {"probe_3_temperature": 25.0},
-            {"probe_3_temperature", "probe_3_battery"},
-        )
-        == []
-    )
+        probe = descriptions[f"probe_{number}_temperature"]
+        assert probe.value_fn({}) is None
 
 
 @pytest.mark.asyncio
-async def test_sensor_platform_adds_probe_entities_only_when_detected() -> None:
-    """Probe status stays visible while numeric entities wait for real data."""
+async def test_sensor_platform_adds_four_permanent_probe_entities() -> None:
+    """Every physical slot has one temperature entity, even while empty."""
 
     class Coordinator:
         def __init__(self) -> None:
             self.data: dict[str, object] = {}
             self.options = WeberOptions.from_mapping({})
             self.last_update_success = True
-            self.listeners: list[object] = []
-
-        def async_add_listener(self, listener: object) -> object:
-            self.listeners.append(listener)
-            return object()
 
     coordinator = Coordinator()
     unload_callbacks: list[object] = []
@@ -185,21 +163,44 @@ async def test_sensor_platform_adds_probe_entities_only_when_detected() -> None:
     )
     batches: list[list[WeberSensor]] = []
 
-    await async_setup_sensor_entry(None, entry, lambda entities: batches.append(list(entities)))
+    registry = MagicMock()
+    registry.async_get_entity_id.return_value = None
+    with patch("custom_components.weber_connect.sensor.er.async_get", return_value=registry):
+        await async_setup_sensor_entry(
+            SimpleNamespace(), entry, lambda entities: batches.append(list(entities))
+        )
     initial_keys = {entity.entity_description.key for entity in batches[0]}
-    assert {f"probe_{number}_status" for number in range(1, 5)} <= initial_keys
-    assert "probe_3_temperature" not in initial_keys
+    assert {f"probe_{number}_temperature" for number in range(1, 5)} <= initial_keys
+    assert not any(key.endswith("_status") or key.endswith("_battery") for key in initial_keys)
+    assert len(batches) == 1
+    assert unload_callbacks == []
+    assert registry.async_get_entity_id.call_count == len(OBSOLETE_PROBE_ENTITY_KEYS)
 
-    coordinator.data["probe_3_temperature"] = 25.0
-    coordinator.listeners[0]()
-    assert {entity.entity_description.key for entity in batches[1]} == {
-        "probe_3_temperature",
-        "probe_3_battery",
-    }
 
-    coordinator.listeners[0]()
-    assert len(batches) == 2
-    assert len(unload_callbacks) == 1
+@pytest.mark.asyncio
+async def test_sensor_platform_removes_redundant_probe_registry_entries() -> None:
+    coordinator = SimpleNamespace(data={}, options=WeberOptions.from_mapping({}))
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        unique_id="AA:BB:CC:DD:EE:FF",
+        entry_id="entry",
+        title="Weber Connect Hub",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+    )
+    registry = MagicMock()
+    registry.async_get_entity_id.side_effect = [
+        "sensor.probe_1_status",
+        "sensor.probe_1_battery",
+        *([None] * (len(OBSOLETE_PROBE_ENTITY_KEYS) - 2)),
+    ]
+
+    with patch("custom_components.weber_connect.sensor.er.async_get", return_value=registry):
+        await async_setup_sensor_entry(SimpleNamespace(), entry, lambda _entities: None)
+
+    assert registry.async_remove.call_args_list == [
+        call("sensor.probe_1_status"),
+        call("sensor.probe_1_battery"),
+    ]
 
 
 def test_named_probe_entity_preserves_slot_and_explains_state() -> None:
@@ -208,6 +209,7 @@ def test_named_probe_entity_preserves_slot_and_explains_state() -> None:
     coordinator = SimpleNamespace(
         data={
             "probe_2_temperature": 25.0,
+            "probe_2_battery": 87,
             "probe_2_state": "CONNECTED",
             "probe_2_type": "MEAT",
         },
@@ -233,15 +235,35 @@ def test_named_probe_entity_preserves_slot_and_explains_state() -> None:
         "probe_number": 2,
         "probe_state": "CONNECTED",
         "probe_type": "MEAT",
+        "battery_level": 87,
     }
-
-    status_description = next(row for row in SENSORS if row.key == "probe_2_status")
-    status_entity = WeberSensor(coordinator, entry, status_description)
-    assert status_entity.native_value == "Connected"
-    assert status_entity.entity_description.translation_key == "probe_status_named"
-    assert status_entity.icon == "mdi:thermometer-probe"
+    assert entity.icon == "mdi:thermometer-probe"
     coordinator.data["probe_2_temperature"] = None
-    assert status_entity.icon == "mdi:thermometer-probe-off"
+    assert entity.native_value is None
+    assert entity.available is True
+    assert entity.icon == "mdi:thermometer-probe-off"
+
+
+def test_empty_probe_remains_unknown_when_coordinator_update_fails() -> None:
+    """An idle hub must not make permanent probe slots look broken."""
+
+    coordinator = SimpleNamespace(
+        data={},
+        options=WeberOptions.from_mapping({}),
+        last_update_success=False,
+    )
+    entry = SimpleNamespace(
+        unique_id="AA:BB:CC:DD:EE:FF",
+        entry_id="entry",
+        title="Weber Connect Hub",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+    )
+    description = next(row for row in SENSORS if row.key == "probe_1_temperature")
+    entity = WeberSensor(coordinator, entry, description)
+
+    assert entity.available is True
+    assert entity.native_value is None
+    assert entity.icon == "mdi:thermometer-probe-off"
 
 
 def test_entity_unique_keys_are_complete_and_nonduplicated() -> None:
@@ -301,10 +323,6 @@ def test_default_device_surface_is_focused() -> None:
         description.key for description in SENSORS if description.entity_registry_enabled_default
     }
     assert enabled == {
-        "probe_1_status",
-        "probe_2_status",
-        "probe_3_status",
-        "probe_4_status",
         "probe_1_temperature",
         "probe_2_temperature",
         "probe_3_temperature",

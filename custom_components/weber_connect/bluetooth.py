@@ -68,8 +68,14 @@ async def _connect(
 ) -> BleakClient:
     device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
     if device is None:
+        reason = bluetooth.async_address_reachability_diagnostics(
+            hass,
+            address,
+            bluetooth.BluetoothReachabilityIntent.CONNECTION,
+        )
         raise WeberBluetoothError(
-            "The hub is not reachable from any active Home Assistant Bluetooth adapter or proxy."
+            "The hub is not reachable from an active Home Assistant Bluetooth adapter or proxy. "
+            f"{reason}"
         )
     try:
         return await establish_connection(
@@ -236,6 +242,7 @@ async def async_pair(
         # Disconnecting a Bleak client also removes its notification callbacks.
         # Avoid extra GATT stop-notify traffic after a link has already dropped.
         await _safe_disconnect(client)
+        bluetooth.async_clear_advertisement_history(hass, address)
 
 
 async def _async_read_status_once(
@@ -317,16 +324,6 @@ async def async_read_status(
     """
 
     try:
-        return await _async_read_status_once(
-            hass,
-            address,
-            companion_id,
-            message_version,
-            timeout=timeout,
-            use_services_cache=True,
-        )
-    except BleakCharacteristicNotFoundError:
-        _LOGGER.debug("Refreshing the Weber hub GATT service cache", exc_info=True)
         try:
             return await _async_read_status_once(
                 hass,
@@ -334,9 +331,25 @@ async def async_read_status(
                 companion_id,
                 message_version,
                 timeout=timeout,
-                use_services_cache=False,
+                use_services_cache=True,
             )
-        except BleakCharacteristicNotFoundError as exc:
-            raise WeberBluetoothError(
-                "The hub's Bluetooth services could not be discovered. Home Assistant will retry automatically."
-            ) from exc
+        except BleakCharacteristicNotFoundError:
+            _LOGGER.debug("Refreshing the Weber hub GATT service cache", exc_info=True)
+            try:
+                return await _async_read_status_once(
+                    hass,
+                    address,
+                    companion_id,
+                    message_version,
+                    timeout=timeout,
+                    use_services_cache=False,
+                )
+            except BleakCharacteristicNotFoundError as exc:
+                raise WeberBluetoothError(
+                    "The hub's Bluetooth services could not be discovered. Home Assistant will retry automatically."
+                ) from exc
+    finally:
+        # Home Assistant deduplicates unchanged advertisements. Clearing that
+        # cache after every attempt guarantees the next short wake broadcast is
+        # delivered to our callback instead of waiting for the polling cadence.
+        bluetooth.async_clear_advertisement_history(hass, address)

@@ -170,12 +170,64 @@ def test_async_start_is_idempotent_and_entry_scoped(hass: object) -> None:
     entry.async_create_background_task.return_value = task
     coordinator = WeberCoordinator(hass, entry)  # type: ignore[arg-type]
 
-    coordinator.async_start()
-    coordinator.async_start()
+    cancel_callback = MagicMock()
+    with patch.object(
+        coordinator_module.bluetooth,
+        "async_register_callback",
+        return_value=cancel_callback,
+    ) as register:
+        coordinator.async_start()
+        coordinator.async_start()
 
     entry.async_create_background_task.assert_called_once()
+    register.assert_called_once_with(
+        hass,
+        coordinator._async_bluetooth_advertisement,
+        {"address": coordinator.address, "connectable": True},
+        coordinator_module.bluetooth.BluetoothScanningMode.ACTIVE,
+    )
+    assert coordinator._cancel_bluetooth_callback is cancel_callback
     assert coordinator._poll_task is task
     entry.async_create_background_task.call_args.args[1].close()
+
+
+def test_bluetooth_advertisement_schedules_one_immediate_refresh(hass: object) -> None:
+    entry = _entry(cloud=False)
+    poll_task = MagicMock()
+    refresh_task = MagicMock()
+    refresh_task.done.return_value = False
+    entry.async_create_background_task.side_effect = [poll_task, refresh_task]
+    coordinator = WeberCoordinator(hass, entry)  # type: ignore[arg-type]
+
+    with patch.object(coordinator_module.bluetooth, "async_register_callback") as register:
+        coordinator.async_start()
+    advertisement_callback = register.call_args.args[1]
+    advertisement_callback(MagicMock(), MagicMock())
+    advertisement_callback(MagicMock(), MagicMock())
+
+    assert entry.async_create_background_task.call_count == 2
+    assert coordinator._advertisement_refresh_task is refresh_task
+    refresh_task.add_done_callback.assert_called_once_with(
+        coordinator._async_bluetooth_advertisement_refresh_done
+    )
+    for call in entry.async_create_background_task.call_args_list:
+        call.args[1].close()
+
+
+@pytest.mark.asyncio
+async def test_async_close_cancels_bluetooth_wake_work(hass: object) -> None:
+    entry = _entry(cloud=False)
+    coordinator = WeberCoordinator(hass, entry)  # type: ignore[arg-type]
+    cancel_callback = MagicMock()
+    wake_task = asyncio.create_task(asyncio.sleep(60))
+    coordinator._cancel_bluetooth_callback = cancel_callback
+    coordinator._advertisement_refresh_task = wake_task
+
+    await coordinator.async_close()
+
+    cancel_callback.assert_called_once_with()
+    assert wake_task.cancelled()
+    assert coordinator._advertisement_refresh_task is None
 
 
 @pytest.mark.asyncio
@@ -222,24 +274,31 @@ async def test_transport_failures_return_stable_offline_state(hass: object) -> N
 
 
 @pytest.mark.asyncio
-async def test_bluetooth_update_has_a_hard_deadline(hass: object) -> None:
-    """A wedged proxy operation must never stop the polling loop forever."""
+async def test_bluetooth_update_leaves_proxy_deadline_to_connector(hass: object) -> None:
+    """Do not cancel Home Assistant while a proxy is allocating its GATT slot."""
 
     coordinator = WeberCoordinator(
         hass,
         _entry(cloud=False),  # type: ignore[arg-type]
     )
 
-    async def never_returns(*_args: object, **_kwargs: object) -> dict[str, object]:
-        await asyncio.Event().wait()
-        return {}
+    status = {
+        "kind": "cook_session_status",
+        "probes": [{"probe_number": 1, "probe_temp_c": 25.0, "state": "Probed"}],
+    }
 
     with (
-        patch.object(coordinator_module, "BLUETOOTH_UPDATE_TIMEOUT", 0.01),
-        patch.object(coordinator_module, "async_read_status", never_returns),
+        patch.object(
+            coordinator_module.asyncio,
+            "timeout",
+            side_effect=AssertionError("coordinator must not wrap the connector timeout"),
+        ),
+        patch.object(coordinator_module, "async_read_status", AsyncMock(return_value=status)),
     ):
-        with pytest.raises(WeberBluetoothError, match="timed out"):
-            await coordinator._async_bluetooth_update()
+        result = await coordinator._async_bluetooth_update()
+
+    assert result["connected"] is True
+    assert result["probe_1_temperature"] == 25.0
 
 
 @pytest.mark.asyncio
@@ -264,11 +323,38 @@ async def test_transient_failure_preserves_last_valid_readings(hass: object) -> 
 
     state = await coordinator._async_update_data()
 
-    assert state["connected"] is False
+    assert state["connected"] is True
     assert state["probe_4_temperature"] == 25.0
     assert state["probe_4_state"] == "Probed"
     assert state["updated_at"] == previous["updated_at"]
     assert coordinator.last_error == "temporary proxy interruption"
+
+
+@pytest.mark.asyncio
+async def test_sustained_failures_mark_preserved_readings_offline(hass: object) -> None:
+    coordinator = WeberCoordinator(
+        hass,
+        _entry(cloud=False),  # type: ignore[arg-type]
+    )
+    coordinator.data = {
+        "updated_at": "2026-07-19T20:00:00+00:00",
+        "connected": True,
+        "cloud_ready": False,
+        "source": "bluetooth",
+        "probe_4_temperature": 25.0,
+        "probe_4_state": "Probed",
+    }
+    coordinator.last_successful_update = "2026-07-19T20:00:00+00:00"
+    coordinator._async_bluetooth_update = AsyncMock(
+        side_effect=WeberBluetoothError("sustained proxy interruption")
+    )
+
+    for _ in range(coordinator_module.OFFLINE_FAILURE_THRESHOLD):
+        state = await coordinator._async_update_data()
+
+    assert state["connected"] is False
+    assert state["probe_4_temperature"] == 25.0
+    assert coordinator.consecutive_failures == coordinator_module.OFFLINE_FAILURE_THRESHOLD
 
 
 @pytest.mark.asyncio

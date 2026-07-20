@@ -126,12 +126,8 @@
   },
   "entity": {
     "sensor": {
-      "probe_status": {"name": "Probe {number}"},
-      "probe_status_named": {"name": "{nickname} · Probe {number}"},
-      "probe_temperature": {"name": "Probe {number} temperature"},
-      "probe_temperature_named": {"name": "{nickname} · Probe {number} temperature"},
-      "probe_battery": {"name": "Probe {number} battery"},
-      "probe_battery_named": {"name": "{nickname} · Probe {number} battery"},
+      "probe_temperature": {"name": "Probe {number}"},
+      "probe_temperature_named": {"name": "{nickname} · Probe {number}"},
       "cavity_temperature": {"name": "Cavity {number} temperature"},
       "active_recipe": {"name": "Active recipe"},
       "recipe_state": {"name": "Recipe state"},

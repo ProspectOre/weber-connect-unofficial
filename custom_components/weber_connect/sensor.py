@@ -13,12 +13,14 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import WeberCoordinator
-from .entity import WeberEntity
+from .entity import WeberEntity, build_entity_unique_id
 from .models import WeberRuntimeData
 
 
@@ -33,29 +35,7 @@ def _value(key: str) -> Callable[[dict[str, Any]], Any]:
     return lambda data: data.get(key)
 
 
-def _probe_status(number: int) -> Callable[[dict[str, Any]], str]:
-    """Return a plain-language state for a physical probe slot."""
-
-    def value(data: dict[str, Any]) -> str:
-        if data.get(f"probe_{number}_temperature") is None:
-            return "Not connected"
-        raw = str(data.get(f"probe_{number}_state") or "Connected")
-        return raw.replace("_", " ").title()
-
-    return value
-
-
 SENSORS: tuple[WeberSensorDescription, ...] = (
-    *tuple(
-        WeberSensorDescription(
-            key=f"probe_{number}_status",
-            translation_key="probe_status",
-            translation_placeholders={"number": str(number)},
-            icon="mdi:thermometer-probe-off",
-            value_fn=_probe_status(number),
-        )
-        for number in range(1, 5)
-    ),
     *tuple(
         WeberSensorDescription(
             key=f"probe_{number}_temperature",
@@ -66,20 +46,6 @@ SENSORS: tuple[WeberSensorDescription, ...] = (
             state_class=SensorStateClass.MEASUREMENT,
             suggested_display_precision=1,
             value_fn=_value(f"probe_{number}_temperature"),
-        )
-        for number in range(1, 5)
-    ),
-    *tuple(
-        WeberSensorDescription(
-            key=f"probe_{number}_battery",
-            translation_key="probe_battery",
-            translation_placeholders={"number": str(number)},
-            native_unit_of_measurement=PERCENTAGE,
-            device_class=SensorDeviceClass.BATTERY,
-            state_class=SensorStateClass.MEASUREMENT,
-            entity_category=EntityCategory.DIAGNOSTIC,
-            value_fn=_value(f"probe_{number}_battery"),
-            entity_registry_enabled_default=False,
         )
         for number in range(1, 5)
     ),
@@ -187,31 +153,24 @@ SENSORS: tuple[WeberSensorDescription, ...] = (
     ),
 )
 
-PROBE_MEASUREMENT_SENSORS = tuple(
-    description
-    for description in SENSORS
-    if description.key.startswith("probe_")
-    and (description.key.endswith("_temperature") or description.key.endswith("_battery"))
-)
-STATIC_SENSORS = tuple(
-    description for description in SENSORS if description not in PROBE_MEASUREMENT_SENSORS
+OBSOLETE_PROBE_ENTITY_KEYS = tuple(
+    f"probe_{number}_{suffix}" for number in range(1, 5) for suffix in ("status", "battery")
 )
 
 
-def connected_probe_descriptions(
-    data: dict[str, Any], already_added: set[str]
-) -> list[WeberSensorDescription]:
-    """Return new probe entities only for slots that currently contain a probe."""
+def _remove_obsolete_probe_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove redundant probe entities created by early 3.0 test builds."""
 
-    connected_numbers = {
-        number for number in range(1, 5) if data.get(f"probe_{number}_temperature") is not None
-    }
-    return [
-        description
-        for description in PROBE_MEASUREMENT_SENSORS
-        if description.key not in already_added
-        and int(description.key.split("_")[1]) in connected_numbers
-    ]
+    registry = er.async_get(hass)
+    identity = entry.unique_id or entry.entry_id
+    for key in OBSOLETE_PROBE_ENTITY_KEYS:
+        entity_id = registry.async_get_entity_id(
+            "sensor",
+            DOMAIN,
+            build_entity_unique_id(identity, key),
+        )
+        if entity_id is not None:
+            registry.async_remove(entity_id)
 
 
 async def async_setup_entry(
@@ -219,24 +178,10 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    _remove_obsolete_probe_entities(hass, entry)
     runtime: WeberRuntimeData = entry.runtime_data
     coordinator = runtime.coordinator
-    added_probe_keys: set[str] = set()
-
-    def add_connected_probes() -> None:
-        descriptions = connected_probe_descriptions(coordinator.data, added_probe_keys)
-        if not descriptions:
-            return
-        added_probe_keys.update(description.key for description in descriptions)
-        async_add_entities(
-            WeberSensor(coordinator, entry, description) for description in descriptions
-        )
-
-    async_add_entities(
-        WeberSensor(coordinator, entry, description) for description in STATIC_SENSORS
-    )
-    add_connected_probes()
-    entry.async_on_unload(coordinator.async_add_listener(add_connected_probes))
+    async_add_entities(WeberSensor(coordinator, entry, description) for description in SENSORS)
 
 
 class WeberSensor(WeberEntity, SensorEntity):
@@ -256,16 +201,9 @@ class WeberSensor(WeberEntity, SensorEntity):
             number = int(key.split("_")[1])
             nickname = coordinator.options.probe_name(number)
             if nickname:
-                suffix = (
-                    "temperature"
-                    if key.endswith("_temperature")
-                    else "battery"
-                    if key.endswith("_battery")
-                    else "status"
-                )
                 description = replace(
                     description,
-                    translation_key=f"probe_{suffix}_named",
+                    translation_key="probe_temperature_named",
                     translation_placeholders={
                         "nickname": nickname,
                         "number": str(number),
@@ -282,7 +220,7 @@ class WeberSensor(WeberEntity, SensorEntity):
         """Show whether a physical probe is currently connected."""
 
         key = self.entity_description.key
-        if key.startswith("probe_") and key.endswith("_status"):
+        if key.startswith("probe_") and key.endswith("_temperature"):
             number = key.split("_")[1]
             if self.coordinator.data.get(f"probe_{number}_temperature") is not None:
                 return "mdi:thermometer-probe"
@@ -291,9 +229,12 @@ class WeberSensor(WeberEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Keep missing numeric measurements out of the active device surface."""
+        """Keep permanent probe slots visible while an empty slot is unknown."""
 
-        return bool(super().available and self.native_value is not None)
+        key = self.entity_description.key
+        if key.startswith("probe_") and key.endswith("_temperature"):
+            return True
+        return super().available
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -310,4 +251,5 @@ class WeberSensor(WeberEntity, SensorEntity):
             "probe_number": int(number),
             "probe_state": self.coordinator.data.get(f"probe_{number}_state"),
             "probe_type": self.coordinator.data.get(f"probe_{number}_type"),
+            "battery_level": self.coordinator.data.get(f"probe_{number}_battery"),
         }

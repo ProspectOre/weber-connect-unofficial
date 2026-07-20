@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 from bleak.exc import BleakCharacteristicNotFoundError
@@ -15,6 +15,14 @@ from custom_components.weber_connect.saber_frames import build_command_frame
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
 IDENTITY = CompanionIdentity("11" * 16, "22" * 64, "33" * 64)
+
+
+@pytest.fixture(autouse=True)
+def clear_advertisement_history() -> object:
+    """Isolate Home Assistant's Bluetooth manager and expose cache clearing."""
+
+    with patch.object(transport.bluetooth, "async_clear_advertisement_history") as clear:
+        yield clear
 
 
 def _pairing_required() -> bytes:
@@ -60,7 +68,9 @@ class FakeClient:
 
 
 @pytest.mark.asyncio
-async def test_pairing_confirms_and_releases_proxy_connection() -> None:
+async def test_pairing_confirms_and_releases_proxy_connection(
+    clear_advertisement_history: object,
+) -> None:
     client = FakeClient([_pairing_required(), _pairing_confirmed()])
     with patch.object(transport, "_connect", AsyncMock(return_value=client)):
         result = await transport.async_pair(
@@ -74,10 +84,16 @@ async def test_pairing_confirms_and_releases_proxy_connection() -> None:
     assert len(result.appliance_public_key.replace(":", "")) == 128
     assert client.disconnected
     assert any(uuid == transport.COMMAND_UUID for uuid, _data, _response in client.writes)
+    clear_advertisement_history.assert_called_once_with(  # type: ignore[attr-defined]
+        ANY,
+        ADDRESS,
+    )
 
 
 @pytest.mark.asyncio
-async def test_status_read_decodes_and_releases_proxy_connection() -> None:
+async def test_status_read_decodes_and_releases_proxy_connection(
+    clear_advertisement_history: object,
+) -> None:
     client = FakeClient()
     with patch.object(transport, "_connect", AsyncMock(return_value=client)):
         status = await transport.async_read_status(
@@ -90,6 +106,10 @@ async def test_status_read_decodes_and_releases_proxy_connection() -> None:
     assert status["kind"] == "cook_session_status"
     assert status["probe_count"] == 0
     assert client.disconnected
+    clear_advertisement_history.assert_called_once_with(  # type: ignore[attr-defined]
+        ANY,
+        ADDRESS,
+    )
 
 
 @pytest.mark.asyncio
@@ -154,6 +174,30 @@ async def test_connect_normalizes_busy_proxy_slots() -> None:
     ):
         with pytest.raises(transport.WeberBluetoothError, match="slot"):
             await transport._connect(SimpleNamespace(), ADDRESS)
+
+
+@pytest.mark.asyncio
+async def test_connect_explains_why_no_proxy_can_reach_the_hub() -> None:
+    with (
+        patch.object(
+            transport.bluetooth,
+            "async_ble_device_from_address",
+            return_value=None,
+        ),
+        patch.object(
+            transport.bluetooth,
+            "async_address_reachability_diagnostics",
+            return_value="The active proxy last saw it five minutes ago.",
+        ) as diagnostics,
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="five minutes ago"):
+            await transport._connect(SimpleNamespace(), ADDRESS)
+
+    diagnostics.assert_called_once_with(
+        ANY,
+        ADDRESS,
+        transport.bluetooth.BluetoothReachabilityIntent.CONNECTION,
+    )
 
 
 @pytest.mark.asyncio

@@ -20,8 +20,9 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 > 3.0 is under active development and has not been released yet. The native
 > code and automated Home Assistant 2026.7 tests are in place. Real-hardware
 > setup and direct local readings through one active ESPHome proxy are
-> verified. Proxy-only startup and bounded failure recovery are also verified;
-> the final post-fix live recovery and endurance run remains a release blocker.
+> verified. Proxy-only startup, proxy restart recovery, and full Home Assistant
+> restart recovery are also verified. The continuous one-hour endurance run has
+> not yet been completed.
 > Multi-proxy failover is not tested and is not claimed.
 
 ## Install
@@ -64,13 +65,12 @@ Probe entities retain stable slot IDs such as `probe_2_temperature`. Optional
 nicknames keep the physical number visible—for example, **Brisket · Probe 2**—
 without changing the entity's identity.
 
-The device page starts with the entities most people need: four permanent probe
-slots, detected probe temperatures, the active recipe, the current instruction,
-and connection status. An empty slot reads **Not connected**. Numeric temperature
-and battery entities are added automatically after a probe's first reading so
-Home Assistant never presents a missing value as a live measurement. Batteries,
-cavities, timers, cook details, and diagnostics remain available as disabled
-entities for users who want them.
+The device page has exactly one permanent temperature entity for each physical
+slot: **Probe 1** through **Probe 4**. A connected probe shows its temperature;
+an empty slot reads **Unknown**. Battery level, probe type, and probe state remain
+available as attributes on that same entity instead of creating redundant probe
+entities. Cavities, timers, cook details, and diagnostics remain available as
+disabled entities for users who want them.
 
 Idle recipe and instruction entities say that no cook is active. The separate
 receiving-data entity shows whether the integration itself is online.
@@ -107,9 +107,10 @@ For 3.0, Home Assistant 2026.7.2 import, config flow, identity generation,
 entity contracts, protocol frames, cloud normalization, and adapter re-selection
 are automated. Proxy discovery, pairing, and direct readings are verified on
 the equipment above. With the host adapter disabled, production validation also
-verified sub-second config-entry setup and bounded retries when a proxy
-transaction stalls. The remaining post-fix live recovery and endurance cases
-in [Production readiness](PRODUCTION_READINESS.md) must pass before release.
+verified sub-second config-entry setup, live recovery after proxy and Home
+Assistant restarts, stable entity IDs, and exactly four permanent probe
+temperature entities. The continuous one-hour cadence case in
+[Production readiness](PRODUCTION_READINESS.md) remains outstanding.
 Multi-proxy failover remains an explicitly unverified compatibility scenario.
 
 That is a test matrix, not a claim that every Weber model, firmware, account

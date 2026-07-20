@@ -95,17 +95,30 @@ the default phone-and-cloud mode.
 
 The host adapter was then disabled for a proxy-only endurance run. That run
 exposed slow uncached GATT discovery, an incomplete service-cache failure, and
-an operation that could remain pending. The corrected implementation now uses
-the Home Assistant service cache on the normal path, retries a missing
-characteristic once with fresh discovery, preserves the last valid readings
-during a transient failure, completes config-entry setup without waiting for a
-physical transport, and enforces a 20-second deadline on every local update.
-On Home Assistant 2026.7.2, a production restart completed the integration's
-config-entry setup in 0.45 seconds; timed-out proxy transactions were recorded
-and retried, and no Weber warning or error appeared in the Home Assistant log.
+an operation that could be cancelled while the proxy was still allocating its
+GATT slot. The corrected implementation uses Home Assistant's service cache on
+the normal path, retries a missing characteristic once with fresh discovery,
+lets `bleak-retry-connector` own the connection deadline, and clears stale
+advertisement history after each attempt. An address-scoped Home Assistant
+Bluetooth callback now starts a read immediately when the briefly awake hub is
+seen instead of waiting for the next polling interval.
 
-The post-fix one-hour cadence, a proxy restart, and a successful live read after
-a Home Assistant restart still need to pass with the hub awake. Those
-single-proxy rows remain release blockers. Two-proxy failover is explicitly
-untested because a second proxy is not available; it does not block 3.0 and
-must not be described as verified.
+Production then received repeated live reads through the ESPHome proxy with the
+host adapter disabled. A proxy restart recovered automatically. A full Home
+Assistant restart preserved the config entry and entity IDs, reconnected
+through the same proxy without pairing again, and returned a live Probe 3
+reading. One or two missed polls retain the last good connection state so the
+device does not flicker offline; three consecutive failures mark the transport
+offline, and six create the actionable repair.
+
+The final production entity check showed exactly four permanent probe entities:
+Probe 3 reported `76.1 °F`, while the three empty slots reported `Unknown` with
+the probe-off icon. The early 3.0 per-probe status and battery entities were
+removed from the registry; probe state, type, and battery remain attributes of
+the temperature entity. No new Weber warning or error appeared in the Home
+Assistant log during reload or restart.
+
+The continuous one-hour 10-second-cadence run has not yet been completed and
+remains the only single-proxy endurance row without evidence. Two-proxy failover
+is explicitly untested because a second proxy is not available; it does not
+block 3.0 and must not be described as verified.

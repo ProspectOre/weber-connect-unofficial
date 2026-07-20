@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
 
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -32,7 +34,8 @@ from .weber_cloud import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-BLUETOOTH_UPDATE_TIMEOUT = 20.0
+OFFLINE_FAILURE_THRESHOLD = 3
+REPAIR_FAILURE_THRESHOLD = 6
 
 
 class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -49,6 +52,8 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.remote_controls = self.options.remote_controls
         self.poll_seconds = self.options.poll_seconds
         self._poll_task: asyncio.Task[None] | None = None
+        self._advertisement_refresh_task: asyncio.Task[None] | None = None
+        self._cancel_bluetooth_callback: Callable[[], None] | None = None
         self.cloud_client: WeberCloudClient | None = None
         self.appliance_id = str(entry.data.get(CONF_APPLIANCE_ID) or "") or None
         self.cloud_ready = False
@@ -79,11 +84,46 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if self._poll_task is not None:
             return
+        if not self.cloud_enabled or self.local_fallback:
+            self._cancel_bluetooth_callback = bluetooth.async_register_callback(
+                self.hass,
+                self._async_bluetooth_advertisement,
+                {"address": self.address, "connectable": True},
+                bluetooth.BluetoothScanningMode.ACTIVE,
+            )
         self._poll_task = self.entry.async_create_background_task(
             self.hass,
             self._async_poll_loop(),
             name=f"{DOMAIN} live updates",
         )
+
+    @callback
+    def _async_bluetooth_advertisement(
+        self,
+        _service_info: bluetooth.BluetoothServiceInfoBleak,
+        _change: bluetooth.BluetoothChange,
+    ) -> None:
+        """Read immediately while a briefly awake hub is still connectable."""
+
+        if (
+            self._advertisement_refresh_task is not None
+            and not self._advertisement_refresh_task.done()
+        ):
+            return
+        task = self.entry.async_create_background_task(
+            self.hass,
+            self.async_refresh(),
+            name=f"{DOMAIN} Bluetooth wake update",
+        )
+        self._advertisement_refresh_task = task
+        task.add_done_callback(self._async_bluetooth_advertisement_refresh_done)
+
+    @callback
+    def _async_bluetooth_advertisement_refresh_done(self, task: asyncio.Task[None]) -> None:
+        """Allow the next wake advertisement to trigger another immediate read."""
+
+        if self._advertisement_refresh_task is task:
+            self._advertisement_refresh_task = None
 
     async def _async_poll_loop(self) -> None:
         """Refresh start-to-start so request time is not added to the interval."""
@@ -127,18 +167,15 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_bluetooth_update(self) -> dict[str, Any]:
-        try:
-            async with asyncio.timeout(BLUETOOTH_UPDATE_TIMEOUT):
-                status = await async_read_status(
-                    self.hass,
-                    self.address,
-                    self.companion_id,
-                    self.message_version,
-                )
-        except TimeoutError as exc:
-            raise WeberBluetoothError(
-                "The Bluetooth update timed out. Home Assistant will retry automatically."
-            ) from exc
+        # bleak-retry-connector owns the connection deadline. An additional
+        # coordinator timeout can cancel Home Assistant while a proxy is still
+        # allocating its GATT slot, leaving that proxy with a stale connection.
+        status = await async_read_status(
+            self.hass,
+            self.address,
+            self.companion_id,
+            self.message_version,
+        )
         return normalize_state(
             status,
             source="bluetooth",
@@ -188,7 +225,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Raise one actionable repair only after a sustained outage."""
 
         self.consecutive_failures += 1
-        if self.consecutive_failures < 6:
+        if self.consecutive_failures < REPAIR_FAILURE_THRESHOLD:
             return
         ir.async_create_issue(
             self.hass,
@@ -207,11 +244,16 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if self.last_successful_update is not None and self.data:
             state = dict(self.data)
-            state.update(
-                connected=False,
-                cloud_ready=self.cloud_ready,
-                source=source,
-            )
+            # A sleeping hub or brief proxy scheduling delay can miss one or
+            # two polls between valid wake advertisements. Keep the last good
+            # connection state during that short grace window so entities do
+            # not flicker offline while fresh readings continue to arrive.
+            if self.consecutive_failures >= OFFLINE_FAILURE_THRESHOLD:
+                state.update(
+                    connected=False,
+                    cloud_ready=self.cloud_ready,
+                    source=source,
+                )
             return state
         return normalize_state(
             None,
@@ -256,6 +298,15 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_close(self) -> None:
         """Close the persistent cloud socket during config-entry unload."""
 
+        if self._cancel_bluetooth_callback is not None:
+            self._cancel_bluetooth_callback()
+            self._cancel_bluetooth_callback = None
+        if self._advertisement_refresh_task is not None:
+            task = self._advertisement_refresh_task
+            self._advertisement_refresh_task = None
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         if self._poll_task is not None:
             task = self._poll_task
             self._poll_task = None
