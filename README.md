@@ -18,11 +18,11 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 
 > [!IMPORTANT]
 > 3.0 is under active development and has not been released yet. The native
-> code and automated Home Assistant 2026.7 tests are in place. Real-hardware
-> setup, persistent cloud readings, and a persistent direct session through one
-> ESPHome proxy have been demonstrated. The final one-hour endurance rows and
-> the proxy/Home Assistant restart row still require production validation
-> before release. Multi-proxy failover is also unverified.
+> code and automated Home Assistant 2026.7 tests are in place. On the equipment
+> listed below, real-hardware setup, a 70-minute simultaneous app/cloud session,
+> a one-hour proxy-only session, and a Home Assistant restart while using only
+> that proxy have passed. A second proxy was not available, so multi-proxy
+> failover is explicitly unverified.
 
 ## Install
 
@@ -101,9 +101,11 @@ identity generation, entity contracts, protocol frames, persistent-session
 reuse, reconnect behavior, proxy service-cache recovery, diagnostics redaction,
 and transport ownership are covered. Live smoke and config-entry reload tests
 now cover both the persistent WebSocket and persistent proxy-GATT lifecycles.
-The one-hour endurance rows and proxy/Home Assistant restart row in
-[Production readiness](PRODUCTION_READINESS.md) remain open. Multi-proxy
-failover is explicitly unverified.
+The final persistent cloud test ran for more than 70 minutes with the Weber app
+open and an active cook. The proxy-only test ran for more than one hour and was
+followed by a successful Home Assistant restart without re-pairing. See
+[Production readiness](PRODUCTION_READINESS.md) for the measurements and
+remaining unverified scenarios. Multi-proxy failover is explicitly unverified.
 
 That is a test matrix, not a claim that every Weber model, firmware, account
 region, or proxy has been certified. Compatibility reports and pull requests

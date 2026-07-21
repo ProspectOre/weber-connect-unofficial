@@ -102,14 +102,13 @@ hub's advertisement source at -48 dBm. The integration then returned
 successfully to the default phone-and-cloud mode.
 
 On July 19, 2026, the host hci0 entry was disabled and proxy ee608c was the only
-active Bluetooth route for an hour-long observation window. ESPHome recorded a
+active Bluetooth route for an initial observation window. ESPHome recorded a
 connection to hub `70:91:8F:21:EA:7B`, a successful status read, a normal
 `reason=0x00` disconnect, and release of the proxy slot. One transient GATT
-`status=133` attempt then recovered automatically on retry. This proves proxy-
-only routing, direct protocol compatibility, clean slot release in the tested
-prototype, and recovery from that transient controller failure. The hub later
-slept, so the window does **not** prove a continuously active 10-second local
-cadence.
+`status=133` attempt then recovered automatically on retry. This established
+proxy-only routing, direct protocol compatibility, clean slot release, and
+recovery from that transient controller failure before the final endurance
+run.
 
 The production entity check showed exactly four permanent probe-temperature
 entities. During an active sample Probe 3 reported `76.1 °F`; after the hub
@@ -142,9 +141,41 @@ phone path was released and the hub was woken. This validates the documented
 setup instruction as well as proxy-only routing, persistent slot ownership,
 fresh status requests, clean unload, and automatic retry on the tested setup.
 
+The final proxy-only endurance run started at approximately 16:20 PDT on July
+20 with the Weber app closed, tablet Bluetooth off, and hci0 disabled. ESPHome
+proxy ee608c was the sole active Bluetooth path. Over 61 minutes, native
+diagnostics advanced by 350 successful updates and 16 transient failed
+attempts. The final sample had zero consecutive failures, no current error, and
+a live Probe 2 reading of `23.8 °C`. The proxy's Wi-Fi response time varied and
+occasionally missed a ping, but the transport recovered without manual action.
+
+Home Assistant was then restarted while hci0 remained disabled. Its HTTP UI
+returned in approximately 26 seconds. After restart, the integration had
+already completed nine successful updates, recovered from four transient
+attempts, reported zero consecutive failures, and exposed a live Probe 2
+reading of `23.2 °C`. No repair, re-pairing, config-entry reload, or manual
+transport recovery was required. Home Assistant's Bluetooth page continued to
+show proxy ee608c as the sole advertisement path.
+
 The test installation was then returned to the recommended state: hci0 enabled,
 Phone + Home Assistant selected, exactly four registered entities, no repair
 attention, and a healthy cloud transport.
+
+All four app/cook combinations were exercised after restoration: app closed
+with no cook, app open with no cook, app open with an active cook, and app
+closed while the cook remained active. Cloud updates continued in every case.
+During the active-cook checks, the app and Home Assistant matched after unit
+rounding.
+
+The final persistent companion-WebSocket endurance run started at approximately
+17:56 PDT with the Weber app open and a recipe active. More than 70 minutes
+later, the app still showed the same active cook at `75 °F`; Home Assistant
+reported Probe 2 at `23.7 °C` (`74.7 °F`). Final diagnostics showed the socket
+connected, 554 successful updates, 15 failed attempts accumulated since the
+session began, zero consecutive failures, no current error, and a successful
+update less than ten seconds before capture. This validates simultaneous app
+use, active-cook temperature continuity, automatic transient recovery, and the
+final persistent WebSocket lifecycle on the documented equipment.
 
 Earlier prototype cloud testing completed 60 minutes 14 seconds with 356
 successful updates, zero failures, and a mean interval of approximately 10.15
@@ -156,11 +187,10 @@ Those runs validated the companion identity, decoded probe data, stable
 entities, and simultaneous app use; they used the retired cook-history polling
 path and therefore do **not** validate the final persistent WebSocket lifecycle.
 
-Before release, the final code must still pass the one-hour endurance row on
-its persistent companion WebSocket, the continuously-awake one-hour endurance
-row on its persistent proxy GATT session, and the proxy/Home Assistant restart
-row. The shorter live tests above validate both final transport designs and a
-config-entry reload, but are not substitutes for those endurance rows.
-Two-proxy failover is explicitly untested because a second proxy is
-unavailable; it is a documented non-blocking compatibility scenario and must
-not be described as verified.
+The final persistent companion-WebSocket endurance row, proxy-only endurance
+row, and proxy-only Home Assistant restart row have passed on the documented
+equipment. A deliberate ESPHome device reboot during an owned GATT session has
+not been run; the observed proxy Wi-Fi interruptions and transient controller
+failure did recover automatically. Two-proxy failover is explicitly untested
+because a second proxy is unavailable. Neither scenario may be described as
+verified.
