@@ -294,7 +294,8 @@ async def test_persistent_session_reuses_one_proxy_connection() -> None:
         connect.assert_awaited_once_with(
             session.hass,
             ADDRESS,
-            use_services_cache=False,
+            max_attempts=transport.SESSION_CONNECT_ATTEMPTS,
+            use_services_cache=True,
             disconnected_callback=ANY,
         )
         assert client.disconnected is False
@@ -327,6 +328,23 @@ async def test_persistent_session_reconnects_after_link_loss() -> None:
     assert status["kind"] == "cook_session_status"
     assert first_client.disconnected is True
     assert connect.await_args_list[1].kwargs == {
+        "max_attempts": transport.SESSION_CONNECT_ATTEMPTS,
+        "use_services_cache": True,
+        "disconnected_callback": ANY,
+    }
+
+
+@pytest.mark.asyncio
+async def test_persistent_session_prefers_cached_services_on_first_connect() -> None:
+    client = FakeClient()
+    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
+
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)) as connect:
+        status = await session.async_read_status(timeout=0.5)
+
+    assert status["kind"] == "cook_session_status"
+    assert connect.await_args.kwargs == {
+        "max_attempts": transport.SESSION_CONNECT_ATTEMPTS,
         "use_services_cache": True,
         "disconnected_callback": ANY,
     }
@@ -340,7 +358,6 @@ async def test_persistent_session_refreshes_stale_proxy_services() -> None:
     )
     fresh_client = FakeClient()
     session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-    session._services_ready = True
 
     with patch.object(
         transport,
@@ -368,7 +385,6 @@ async def test_persistent_session_explains_missing_fresh_services() -> None:
             await session.async_read_status(timeout=0.5)
 
     assert client.disconnected is True
-    assert session._services_ready is False
 
 
 @pytest.mark.asyncio
@@ -424,7 +440,6 @@ async def test_persistent_session_normalizes_timeout_and_interruption() -> None:
 
     assert timeout_client.disconnected is True
     assert interrupted_client.disconnected is True
-    assert session._services_ready is False
 
 
 @pytest.mark.asyncio

@@ -124,6 +124,13 @@ A host-adapter-only pairing and endurance run has not been completed, so direct
 adapter compatibility is implemented through Home Assistant's standard
 Bluetooth manager but is not claimed as physically verified for this release.
 
+The final candidate was also restarted into **Home Assistant only** with the
+ESPHome proxy as the sole Bluetooth source. After a deliberate proxy power
+cycle, native diagnostics advanced from 10 to 17 successful updates without
+another failed update, retained the live `23.1 °C` probe reading, and reported
+no current error. Returning to **Phone + Home Assistant** then produced six
+cloud updates with zero failures while the official app was open.
+
 The current greenfield transport implementation is held to at least 95%
 combined statement/branch coverage. Import, config flow, transient
 identity generation, entity contracts, protocol frames, persistent-session

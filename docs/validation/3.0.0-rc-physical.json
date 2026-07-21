@@ -18,13 +18,48 @@
     "cloud_active_cook_endurance_minutes": 70,
     "proxy_only_endurance_minutes": 61,
     "proxy_reboot_recovery": true,
-    "home_assistant_restart_without_repair": true
+    "proxy_first_session_cache_recovery": true,
+    "home_assistant_restart_without_repair": true,
+    "post_validation_host_reboot_recovery": true
   },
   "final_cloud_sample": {
     "successful_updates": 9,
     "failed_updates": 0,
     "consecutive_failures": 0,
     "probe_3_celsius": 23.3
+  },
+  "post_fix_proxy_only_sample": {
+    "advertisement_source_count": 1,
+    "advertisement_source": "ESPHome proxy",
+    "rssi_dbm": -50,
+    "successful_updates_start": 10,
+    "successful_updates_end": 17,
+    "failed_updates_start": 4,
+    "failed_updates_end": 4,
+    "last_error": null,
+    "probe_slot": 4,
+    "probe_celsius": 23.1
+  },
+  "post_restore_cloud_sample": {
+    "official_app_open": true,
+    "tablet_bluetooth_enabled": true,
+    "successful_updates": 6,
+    "failed_updates": 0,
+    "last_error": null,
+    "probe_slot": 4,
+    "probe_celsius": 23.1
+  },
+  "post_host_reboot_cloud_sample": {
+    "local_adapter_restored": true,
+    "proxy_active_scanning": true,
+    "proxy_slots_in_use": 0,
+    "proxy_slots_available": 3,
+    "successful_updates": 4,
+    "failed_updates": 0,
+    "consecutive_failures": 0,
+    "last_error": null,
+    "probe_slot": 4,
+    "probe_celsius": 22.3
   },
   "not_verified": [
     "host-adapter-only physical matrix",

@@ -30,6 +30,7 @@ from .saber_frames import (
 
 _LOGGER = logging.getLogger(__name__)
 CONNECTION_TIMEOUT = 30.0
+SESSION_CONNECT_ATTEMPTS = 2
 STATUS_INTERVAL = 10.0
 RECONNECT_DELAYS = (1.0, 2.0, 5.0, 10.0, 30.0)
 
@@ -65,7 +66,6 @@ class WeberBluetoothSession:
         self._received = asyncio.Event()
         self._wake = asyncio.Event()
         self._latest: dict[str, Any] | None = None
-        self._services_ready = False
         self._status_callback: StatusCallback | None = None
         self._sequence = 1
         self._session_started = False
@@ -101,11 +101,18 @@ class WeberBluetoothSession:
     async def _async_connect_locked(self) -> BleakClient:
         """Connect once, refreshing GATT services when the proxy needs it."""
 
-        strategies = (True, False) if self._services_ready else (False,)
+        # Home Assistant and ESPHome retain the hub's GATT table between
+        # sessions. Prefer that cache even for the first connection after an
+        # integration reload: forcing rediscovery can consume the proxy's
+        # entire connection timeout before notifications are subscribed.
+        # A stale cache is still repaired immediately below with one fresh
+        # discovery attempt.
+        strategies = (True, False)
         for use_services_cache in strategies:
             client = await _connect(
                 self.hass,
                 self.address,
+                max_attempts=SESSION_CONNECT_ATTEMPTS,
                 use_services_cache=use_services_cache,
                 disconnected_callback=self._handle_disconnect,
             )
@@ -134,7 +141,6 @@ class WeberBluetoothSession:
                     )
             except BleakCharacteristicNotFoundError as exc:
                 await _safe_disconnect(client)
-                self._services_ready = False
                 if not use_services_cache:
                     raise WeberBluetoothError(
                         "The hub's Bluetooth services could not be discovered. "
@@ -142,7 +148,6 @@ class WeberBluetoothSession:
                     ) from exc
                 continue
             self._client = client
-            self._services_ready = True
             self._sequence = 1
             self._session_started = False
             return client
@@ -189,7 +194,6 @@ class WeberBluetoothSession:
                 ) from exc
             except BleakError as exc:
                 await self._async_disconnect_locked()
-                self._services_ready = False
                 raise WeberBluetoothError(
                     "The Bluetooth session was interrupted. Home Assistant will retry automatically."
                 ) from exc

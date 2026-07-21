@@ -4,9 +4,9 @@
   "home_assistant_test_framework": "2026.7.2",
   "python": "3.14.4",
   "tests": {
-    "passed": 111,
+    "passed": 112,
     "failed": 0,
-    "combined_statement_branch_coverage_percent": 95.89,
+    "combined_statement_branch_coverage_percent": 95.88,
     "required_coverage_percent": 95
   },
   "local_gates": {

@@ -98,7 +98,7 @@ Run with the host adapter disabled:
 
 ## Current evidence
 
-The local release candidate gate passes 111 tests with 95.89% combined
+The local release candidate gate passes 112 tests with 95.88% combined
 statement/branch coverage against the Home Assistant 2026.7.2 test framework.
 Ruff, formatting, strict mypy, Bandit, dependency audit, Actionlint, release
 contract validation, and Home Assistant 2026.7.2 Hassfest all pass locally.
@@ -280,6 +280,36 @@ error, and Probe 3 at `23.3 °C`. The device page contained exactly four stable
 probe-temperature entities. This closes the clean-install cloud-association
 release blocker on the documented equipment and validates the intended default
 setup end to end.
+
+The exact post-audit candidate was then installed and restarted for one final
+proxy-only regression check. With hci0 disabled, the Weber app fully closed,
+and tablet Bluetooth off, Home Assistant showed the ESPHome proxy as the hub's
+only advertisement source at `-50 dBm`. This exposed a slow-proxy startup case:
+forcing a fresh GATT discovery on the first session could consume the proxy's
+connection window before notification setup completed. The transport now
+prefers Home Assistant's cached GATT table on that first session, retries each
+connection attempt once, and still falls back to fresh discovery when the cache
+is stale.
+
+After the deliberately power-cycled proxy returned, native diagnostics advanced
+from 10 to 17 successful updates while the accumulated failed-update count
+remained at four. The persistent local session stayed connected, retained the
+live Probe 4 reading at `23.1 °C`, and reported no current error. The only new
+integration warning was timestamped during the intentional proxy outage; none
+appeared after recovery. The installation was then returned to **Phone + Home
+Assistant**, tablet Bluetooth was restored, and the official app was brought
+to the foreground. Fresh diagnostics reported a connected cloud transport,
+six successful updates, zero failures, no current error, and the same `23.1 °C`
+reading. This closes the first-session proxy-cache and bounded-retry regression
+on the documented equipment.
+
+Re-enabling the Yellow's local Bluetooth entry after that isolation test
+required the full host reboot requested by Home Assistant. After reboot, hci0
+returned in automatic passive-scanning mode and the ESPHome proxy returned to
+active scanning with all three connection slots free. The recommended cloud
+transport also recovered without intervention: final diagnostics recorded four
+successful updates, zero failed or consecutive failed updates, no current
+error, and a fresh Probe 4 reading of `22.3 °C`.
 
 Two-proxy failover remains explicitly untested because a second proxy is not
 available. It may not be described as verified.

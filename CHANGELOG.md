@@ -22,6 +22,8 @@
   native settings.
 - Added an explicit Home Assistant-only mode with one persistent GATT session
   through Home Assistant's selected local adapter or active ESPHome proxy.
+- Made first-session proxy connections prefer Home Assistant's cached GATT
+  table, with bounded retry and fresh-discovery recovery for stale caches.
 - Added one persistent companion WebSocket for the default Phone + Home
   Assistant mode, with no automatic cross-transport fallback.
 - Added actionable cloud-connection repairs, last-success tracking,
