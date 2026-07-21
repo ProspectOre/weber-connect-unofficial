@@ -172,6 +172,8 @@ credential.
 ## Project documents
 
 - [Architecture](ARCHITECTURE.md)
+- [ADR 0001: superseded proxy relay](docs/adr/0001-home-assistant-bluetooth-proxy-transport.md)
+- [ADR 0002: native transport lifecycle](docs/adr/0002-native-transport-lifecycle.md)
 - [Production readiness](PRODUCTION_READINESS.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)

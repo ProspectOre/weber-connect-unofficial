@@ -3,10 +3,11 @@
 - Status: Superseded by the 3.0 native integration
 - Date: 2026-07-18
 
-## Context
+## Historical context
 
-The add-on currently uses Bleak through the Home Assistant host's BlueZ D-Bus.
-That reaches local Bluetooth adapters, but not ESPHome Bluetooth proxies.
+The retired 2.1 add-on used Bleak through the Home Assistant host's BlueZ
+D-Bus. That reached local Bluetooth adapters, but not ESPHome Bluetooth
+proxies.
 Home Assistant Core owns the Bluetooth manager that aggregates local adapters
 and remote proxies, chooses the best connection path, allocates proxy slots,
 and fails over between scanners.
@@ -15,7 +16,8 @@ ESPHome proxies support active GATT connections when `bluetooth_proxy.active`
 is enabled. Home Assistant exposes proxy advertisements over its authenticated
 WebSocket API, but it does not expose a generic public WebSocket API for GATT
 connect, read, write, and notification operations. A container permission or
-BlueZ configuration change therefore cannot add proxy support to this add-on.
+BlueZ configuration change therefore could not add proxy support to that
+add-on.
 
 Relevant upstream interfaces:
 
@@ -25,8 +27,9 @@ Relevant upstream interfaces:
 
 ## Original decision
 
-Proxy support was planned around an optional Home Assistant companion integration. The
-integration will run inside Home Assistant Core and use only documented
+Proxy support was initially planned around an optional Home Assistant
+companion integration. That integration would run inside Home Assistant Core
+and use only documented
 Bluetooth APIs:
 
 - depend on `bluetooth_adapters` so remote scanners are ready before setup;
@@ -37,12 +40,12 @@ Bluetooth APIs:
 - bind every BLE session to the authenticated WebSocket connection and close it
   when that connection ends.
 
-The add-on will connect to Home Assistant's WebSocket API through Supervisor
+The add-on would connect to Home Assistant's WebSocket API through Supervisor
 using its injected `SUPERVISOR_TOKEN`. No user token, ESPHome encryption key,
 Home Assistant storage file, or proxy credential will be copied into the
 add-on.
 
-The transport protocol will allow only the Weber service and characteristic
+The proposed transport protocol would allow only the Weber service and characteristic
 UUIDs already implemented by this project. Requests and notifications will
 have bounded sizes, operation deadlines, one active session per hub, and
 explicit disconnect semantics. It will not be a general-purpose Bluetooth
@@ -72,19 +75,20 @@ entities. No add-on-to-Core WebSocket GATT transport is needed.
 The physical acceptance criteria remain valid and are now maintained in
 `PRODUCTION_READINESS.md`.
 
-## Original release acceptance criteria
+## Archived acceptance criteria
 
-Proxy support must not be advertised until all of the following pass on real
+The relay design would have required all of the following to pass on real
 hardware with the host Bluetooth adapter disabled:
 
 1. Discover a Weber hub through an active ESPHome proxy.
 2. Complete physical-confirmation pairing through that proxy.
-3. Receive probe notifications and publish all retained MQTT discovery/state.
+3. Receive probe notifications and publish the add-on's retained MQTT state.
 4. Sustain the configured 10-second cadence for at least one hour.
 5. Recover after proxy restart, Home Assistant restart, and add-on restart.
 6. Fail over between two active proxies without changing entity unique IDs.
 7. Release the GATT connection promptly for the official Weber app.
 8. Preserve the existing direct-BlueZ and cloud-coexistence paths.
 
-Until that matrix is complete, the released add-on continues to require the
-hub near the Home Assistant host for initial pairing and direct local reads.
+These criteria describe the abandoned relay architecture and are not the 3.0
+release matrix. The native integration's current, physically exercised matrix
+is maintained in [`PRODUCTION_READINESS.md`](../../PRODUCTION_READINESS.md).

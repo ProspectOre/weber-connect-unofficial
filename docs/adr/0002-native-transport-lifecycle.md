@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted for 3.0 implementation. Production validation is required before
-release.
+Accepted, implemented, and production-validated for 3.0 on the documented
+Home Assistant Yellow, Weber hub, and single ESPHome proxy setup. Direct
+host-adapter operation and two-proxy failover remain explicitly unverified.
 
 ## Context
 
@@ -69,4 +70,3 @@ history requests. Users who change connection mode reload the config entry so
 the old transport is closed before the new one starts. Automatic Bluetooth
 fallback is deliberately omitted because transparent failover would violate
 the phone-access guarantee of the recommended mode.
-
