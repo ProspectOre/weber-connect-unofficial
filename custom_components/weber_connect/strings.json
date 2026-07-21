@@ -2,8 +2,9 @@
   "title": "Weber Connect Unofficial",
   "config": {
     "progress": {
+      "preparing_companion": "**Preparing a private Weber connection.** Home Assistant is registering its new companion with Weber before Bluetooth pairing. This usually takes only a few seconds and ensures the hub can link it during approval.",
       "approve_hub": "**Connecting to {name} through {path}.** A Bluetooth proxy may need up to 90 seconds to open the connection. When the hub asks, approve **Home Assistant** within 60 seconds. This screen advances automatically after approval.",
-      "finishing_setup": "**The hub approved Home Assistant.** Home Assistant is checking Weber Cloud so the Weber app and Home Assistant can work at the same time. This check can take up to five minutes and updates automatically. No action is needed."
+      "finishing_setup": "**Checking Weber Cloud · {remaining} remaining.** The hub approved Home Assistant. Home Assistant is waiting for Weber to make the new connection available so the Weber app and Home Assistant can work at the same time. This screen updates automatically; no action is needed."
     },
     "step": {
       "user": {
@@ -25,11 +26,19 @@
         "description": "Fully close the Weber app and temporarily turn off Bluetooth on every phone or tablet that uses it. Wake {name}, then continue. Home Assistant will connect through **{path}**; a Bluetooth proxy may need up to 90 seconds. When the hub asks, approve **Home Assistant** within 60 seconds. Home Assistant will then check Weber Cloud for up to five minutes."
       },
       "pairing_failed": {
-        "title": "The hub did not approve Home Assistant",
-        "description": "Home Assistant did not receive approval from the hub, so no setup was saved. Keep the Weber app closed and phone or tablet Bluetooth off, wake the hub, and try again.",
+        "title": "Pairing did not finish",
+        "description": "**What happened:** {reason}\n\nNothing was saved and you do not need to start over. Keep the Weber app closed and phone or tablet Bluetooth off, wake the hub, then try pairing again.",
         "menu_options": {
           "retry_pairing": "Try pairing again",
           "choose_hub": "Choose another hub"
+        }
+      },
+      "cloud_preparation_failed": {
+        "title": "The private Weber connection could not be prepared",
+        "description": "Home Assistant stopped before contacting the hub, so no approval is needed yet. Confirm Home Assistant can reach the internet, then try again. The same private identity will be reused.",
+        "menu_options": {
+          "retry_preparation": "Try preparing the connection again",
+          "start_over": "Start over"
         }
       },
       "cloud_not_linked": {
@@ -118,8 +127,12 @@
   },
   "entity": {
     "sensor": {
-      "probe_temperature": {"name": "Probe {number}"},
-      "probe_temperature_named": {"name": "{nickname} · Probe {number}"}
+      "probe_temperature": {
+        "name": "Probe {number}"
+      },
+      "probe_temperature_named": {
+        "name": "{nickname} · Probe {number}"
+      }
     }
   }
 }

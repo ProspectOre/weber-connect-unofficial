@@ -28,6 +28,7 @@ from custom_components.weber_connect.const import (
 )
 from custom_components.weber_connect.models import CompanionIdentity, PairingResult
 from custom_components.weber_connect.options import ConnectionMode, WeberOptions
+from custom_components.weber_connect.weber_cloud import CloudConfig
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
@@ -60,6 +61,8 @@ class FakeCloudClient:
     """Cloud registration double with no network access."""
 
     association_codes: ClassVar[list[str]] = []
+    associated_appliance_id: ClassVar[str | None] = None
+    events: ClassVar[list[str]] = []
     timeouts: ClassVar[list[float]] = []
 
     def __init__(self, config: object, *, timeout: float = 20.0) -> None:
@@ -70,13 +73,16 @@ class FakeCloudClient:
 
     def authenticate(self) -> str:
         self.authenticated = True
+        self.events.append("cloud_registered")
         return "token"
 
     def close(self) -> None:
         return None
 
     def associated_appliances(self) -> list[dict[str, object]]:
-        return []
+        if self.associated_appliance_id is None:
+            return []
+        return [{"appliance_id": self.associated_appliance_id}]
 
     def associate(self, verification_code: str) -> dict[str, object]:
         self.association_codes.append(verification_code)
@@ -118,8 +124,10 @@ async def test_user_flow_creates_private_companion_entry(hass: object) -> None:
     allow_pairing = asyncio.Event()
 
     async def delayed_pairing(*_args: object, **_kwargs: object) -> PairingResult:
+        FakeCloudClient.events.append("bluetooth_pairing")
         pairing_started.set()
         await allow_pairing.wait()
+        FakeCloudClient.associated_appliance_id = pairing.appliance_id
         return pairing
 
     with (
@@ -141,6 +149,8 @@ async def test_user_flow_creates_private_companion_entry(hass: object) -> None:
         ),
     ):
         FakeCloudClient.association_codes.clear()
+        FakeCloudClient.associated_appliance_id = None
+        FakeCloudClient.events.clear()
         FakeCloudClient.timeouts.clear()
         result = await hass.config_entries.flow.async_init(  # type: ignore[attr-defined]
             DOMAIN,
@@ -162,7 +172,10 @@ async def test_user_flow_creates_private_companion_entry(hass: object) -> None:
         )
         assert result["type"] is FlowResultType.SHOW_PROGRESS
 
-        await pairing_started.wait()
+        await asyncio.sleep(0.05)
+        if not pairing_started.is_set():
+            result = await hass.config_entries.flow.async_configure(result["flow_id"])  # type: ignore[attr-defined]
+        await asyncio.wait_for(pairing_started.wait(), timeout=1.0)
         allow_pairing.set()
         result = await _finish_progress(hass, result)
 
@@ -171,8 +184,9 @@ async def test_user_flow_creates_private_companion_entry(hass: object) -> None:
     assert result["data"][CONF_COMPANION_ID] == identity.companion_id
     assert result["data"][CONF_APPLIANCE_ID] == pairing.appliance_id
     assert result["data"][CONF_CLOUD_PASSWORD]
-    assert FakeCloudClient.association_codes == ["123456"]
-    assert FakeCloudClient.timeouts == [5.0]
+    assert FakeCloudClient.association_codes == []
+    assert FakeCloudClient.events[:2] == ["cloud_registered", "bluetooth_pairing"]
+    assert FakeCloudClient.timeouts == [5.0, 5.0]
 
 
 @pytest.mark.asyncio
@@ -219,6 +233,7 @@ async def test_user_flow_waits_for_delayed_cloud_association() -> None:
     flow._address = ADDRESS
     flow._identity = identity
     flow._pairing_result = pairing
+    flow._cloud_config = CloudConfig.generate(identity.companion_id)
 
     with (
         patch(
@@ -229,6 +244,10 @@ async def test_user_flow_waits_for_delayed_cloud_association() -> None:
             "custom_components.weber_connect.config_flow.asyncio.sleep",
             new=AsyncMock(),
         ) as sleep,
+        patch(
+            "custom_components.weber_connect.config_flow._monotonic_time",
+            side_effect=[0.0, 0.0, 10.0],
+        ),
     ):
         result = await flow._async_cloud_setup()
 
@@ -266,9 +285,11 @@ async def test_pairing_timeout_has_clear_retry_without_new_identity(hass: object
             pairing_started.set()
             await finish_first_attempt.wait()
             raise WeberBluetoothError("The hub returned TIMED_OUT for pairing.")
+        FakeCloudClient.associated_appliance_id = pairing.appliance_id
         return pairing
 
     pair = AsyncMock(side_effect=controlled_pairing)
+    FakeCloudClient.associated_appliance_id = None
     with (
         patch(
             "custom_components.weber_connect.config_flow.bluetooth.async_discovered_service_info",
@@ -301,7 +322,10 @@ async def test_pairing_timeout_has_clear_retry_without_new_identity(hass: object
         )
         assert result["type"] is FlowResultType.SHOW_PROGRESS
 
-        await pairing_started.wait()
+        await asyncio.sleep(0.05)
+        if not pairing_started.is_set():
+            result = await hass.config_entries.flow.async_configure(result["flow_id"])  # type: ignore[attr-defined]
+        await asyncio.wait_for(pairing_started.wait(), timeout=1.0)
         finish_first_attempt.set()
         await hass.async_block_till_done()  # type: ignore[attr-defined]
         result = await hass.config_entries.flow.async_configure(  # type: ignore[attr-defined]

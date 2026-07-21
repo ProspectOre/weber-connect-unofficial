@@ -17,15 +17,13 @@ Version 3.0 is one native Home Assistant integration:
 This project is not affiliated with, endorsed by, or supported by Weber.
 
 > [!IMPORTANT]
-> 3.0 is under active development and has not been released yet. The native
-> code and automated Home Assistant 2026.7 tests are in place. Local pairing,
-> a 70-minute simultaneous app/cloud session using an already provisioned
-> companion, a one-hour proxy-only session, a proxy reboot, and a Home Assistant
-> restart using only that proxy have passed on the equipment below. A clean
-> install did **not** receive access to the hub in Weber Cloud after local
-> pairing and repeated checks beyond five minutes. Universal Phone + Home
-> Assistant setup is therefore not yet proven and blocks release. A second proxy
-> was not available, so multi-proxy failover is also unverified.
+> 3.0 is an unreleased release candidate. On the equipment below, a clean
+> installation generated its own private companion, paired through an ESPHome
+> proxy, appeared in Weber Cloud in about 12 seconds, and immediately delivered
+> native probe entities while the Weber app was open. The 70-minute app/cloud
+> session, one-hour proxy-only session, proxy reboot, and proxy-only Home
+> Assistant restart also passed. A second proxy was not available, so
+> multi-proxy failover remains explicitly unverified.
 
 ## Install
 
@@ -49,8 +47,8 @@ This project is not affiliated with, endorsed by, or supported by Weber.
    completes, turn Bluetooth back on and reopen the Weber app.
 
 The intended setup creates and stores a private Home Assistant companion
-without asking for a Weber account password. Clean-install cloud association is
-still under validation and 3.0 will not be released until that path is proven.
+without asking for a Weber account password. The documented clean-install path
+has been validated end to end on the equipment below.
 
 ## Everyday behavior
 
@@ -100,13 +98,12 @@ Testing uses a Weber Connect Hub running `2.0.3_7398`, Home Assistant Yellow on
 Home Assistant `2026.7.2`, Weber app `2.10.0.2439` on a Samsung Galaxy Tab A9+
 (`SM-X210`, Android 16), and one ESPHome Bluetooth proxy running ESPHome
 `2026.7.0`. This equipment has demonstrated physical-confirmation pairing,
-matching phone and cloud temperatures with an already provisioned companion,
-proxy discovery, direct proxy reads, and recovery after a deliberate proxy
-reboot. It has not yet demonstrated clean-install cloud association for a newly
-generated companion.
+clean-install cloud association for a newly generated companion, matching phone
+and Home Assistant temperatures, proxy discovery, direct proxy reads, and
+recovery after a deliberate proxy reboot.
 
-The current greenfield transport implementation has 100 automated tests and
-96.27% combined statement/branch coverage. Import, config flow, transient
+The current greenfield transport implementation has 104 automated tests and
+95.90% combined statement/branch coverage. Import, config flow, transient
 identity generation, entity contracts, protocol frames, persistent-session
 reuse, reconnect behavior, proxy service-cache recovery, diagnostics redaction,
 and transport ownership are covered. Live smoke and config-entry reload tests

@@ -2,43 +2,67 @@
   "title": "Weber Connect Unofficial",
   "config": {
     "progress": {
+      "preparing_companion": "**Preparing a private Weber connection.** Home Assistant is registering its new companion with Weber before Bluetooth pairing. This usually takes only a few seconds and ensures the hub can link it during approval.",
       "approve_hub": "**Connecting to {name} through {path}.** A Bluetooth proxy may need up to 90 seconds to open the connection. When the hub asks, approve **Home Assistant** within 60 seconds. This screen advances automatically after approval.",
-      "finishing_setup": "**The hub approved Home Assistant.** Home Assistant is checking Weber Cloud so the Weber app and Home Assistant can work at the same time. This check can take up to five minutes and updates automatically. No action is needed."
+      "finishing_setup": "**Checking Weber Cloud · {remaining} remaining.** The hub approved Home Assistant. Home Assistant is waiting for Weber to make the new connection available so the Weber app and Home Assistant can work at the same time. This screen updates automatically; no action is needed."
     },
     "step": {
       "user": {
         "title": "Choose your Weber hub",
         "description": "Select the hub you want to add. The route shown beside it tells you which local Bluetooth adapter or active ESPHome proxy currently sees it.",
-        "data": {"address": "Weber hub"}
+        "data": {
+          "address": "Weber hub"
+        }
       },
       "no_devices": {
         "title": "No Weber hub found",
         "description": "Home Assistant cannot currently see a connectable Weber hub. Wake the hub, keep it near Home Assistant or an active ESPHome Bluetooth proxy, and search again.",
-        "menu_options": {"search_again": "Search again"}
+        "menu_options": {
+          "search_again": "Search again"
+        }
       },
       "confirm": {
         "title": "Connect {name}",
         "description": "Fully close the Weber app and temporarily turn off Bluetooth on every phone or tablet that uses it. Wake {name}, then continue. Home Assistant will connect through **{path}**; a Bluetooth proxy may need up to 90 seconds. When the hub asks, approve **Home Assistant** within 60 seconds. Home Assistant will then check Weber Cloud for up to five minutes."
       },
       "pairing_failed": {
-        "title": "The hub did not approve Home Assistant",
-        "description": "Home Assistant did not receive approval from the hub, so no setup was saved. Keep the Weber app closed and phone or tablet Bluetooth off, wake the hub, and try again.",
-        "menu_options": {"retry_pairing": "Try pairing again", "choose_hub": "Choose another hub"}
+        "title": "Pairing did not finish",
+        "description": "**What happened:** {reason}\n\nNothing was saved and you do not need to start over. Keep the Weber app closed and phone or tablet Bluetooth off, wake the hub, then try pairing again.",
+        "menu_options": {
+          "retry_pairing": "Try pairing again",
+          "choose_hub": "Choose another hub"
+        }
+      },
+      "cloud_preparation_failed": {
+        "title": "The private Weber connection could not be prepared",
+        "description": "Home Assistant stopped before contacting the hub, so no approval is needed yet. Confirm Home Assistant can reach the internet, then try again. The same private identity will be reused.",
+        "menu_options": {
+          "retry_preparation": "Try preparing the connection again",
+          "start_over": "Start over"
+        }
       },
       "cloud_not_linked": {
         "title": "The hub is paired, but Weber Cloud has not linked it",
         "description": "Local pairing succeeded. Home Assistant reached Weber Cloud and checked automatically for up to five minutes, but the new connection was not given access to this hub. You do not need to approve the hub again. If the hub was just set up again in the Weber app, check once more.",
-        "menu_options": {"retry_cloud": "Check Weber Cloud again — up to 5 minutes", "start_over": "Start over"}
+        "menu_options": {
+          "retry_cloud": "Check Weber Cloud again — up to 5 minutes",
+          "start_over": "Start over"
+        }
       },
       "cloud_unavailable": {
         "title": "Weber Cloud could not be reached",
         "description": "Local pairing succeeded, but Home Assistant could not complete the online check. The hub does not need approval again. Confirm Home Assistant has internet access and try again. If Weber Cloud is reachable, Home Assistant will wait up to five minutes for the hub.",
-        "menu_options": {"retry_cloud": "Try the online check again — up to 5 minutes", "start_over": "Start over"}
+        "menu_options": {
+          "retry_cloud": "Try the online check again — up to 5 minutes",
+          "start_over": "Start over"
+        }
       },
       "setup_failed": {
         "title": "Setup did not finish",
         "description": "Home Assistant encountered an unexpected problem and did not create the integration entry. Check the Home Assistant logs for the exact cause before starting over.",
-        "menu_options": {"start_over": "Start over"}
+        "menu_options": {
+          "start_over": "Start over"
+        }
       }
     },
     "create_entry": {
@@ -58,7 +82,9 @@
           "connection": {
             "name": "Connection",
             "description": "Phone + Home Assistant leaves Bluetooth available to the Weber app and receives temperatures online. Home Assistant only keeps the hub's Bluetooth connection through a local adapter or active proxy, so the app cannot use Bluetooth at the same time. Changing modes closes the current connection before starting the other one.",
-            "data": {"connection_mode": "Use with"}
+            "data": {
+              "connection_mode": "Use with"
+            }
           },
           "probes": {
             "name": "Probe names",
@@ -101,8 +127,12 @@
   },
   "entity": {
     "sensor": {
-      "probe_temperature": {"name": "Probe {number}"},
-      "probe_temperature_named": {"name": "{nickname} · Probe {number}"}
+      "probe_temperature": {
+        "name": "Probe {number}"
+      },
+      "probe_temperature_named": {
+        "name": "{nickname} · Probe {number}"
+      }
     }
   }
 }

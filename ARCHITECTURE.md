@@ -28,18 +28,21 @@ general-purpose remote GATT service.
    the Weber local name through any connectable scanner.
 2. The config flow generates an independent 16-byte companion ID, cloud device
    password, and transient pairing key material.
-3. Home Assistant resolves the hub through `async_ble_device_from_address`.
-4. `bleak-retry-connector` establishes GATT through the best local adapter or
+3. Home Assistant registers that private companion with Weber Cloud before it
+   presents the companion ID to the hub. This ordering lets the hub publish the
+   cloud association during the one-time Bluetooth approval session.
+4. Home Assistant resolves the hub through `async_ble_device_from_address`.
+5. `bleak-retry-connector` establishes GATT through the best local adapter or
    active proxy and re-resolves that path on every retry.
-5. The integration claims the Weber session characteristic, negotiates the
+6. The integration claims the Weber session characteristic, negotiates the
    message version, submits the companion identity, and requires confirmation
    on the physical hub.
-6. The integration registers the approved identity with Weber Cloud and waits
-   for Weber to associate it with the appliance.
-7. Home Assistant stores the companion ID, cloud device password, appliance ID,
+7. The integration waits for Weber's association list to contain the exact hub;
+   it never treats local approval alone as proof of cloud access.
+8. Home Assistant stores the companion ID, cloud device password, appliance ID,
    hub address, and negotiated message version. Transient pairing keys are
    discarded.
-8. Normal updates use Weber Cloud by default so the app retains Bluetooth.
+9. Normal updates use Weber Cloud by default so the app retains Bluetooth.
 
 ## Update policy
 

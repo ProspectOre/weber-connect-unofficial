@@ -141,6 +141,56 @@ async def test_pairing_allows_additional_connection_attempts() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pairing_reconnects_when_restarted_hub_services_are_incomplete(
+    clear_advertisement_history: object,
+) -> None:
+    stale_client = FakeClient()
+    stale_client.start_notify = AsyncMock(
+        side_effect=BleakCharacteristicNotFoundError(transport.RESPONSE_UUID)
+    )
+    fresh_client = FakeClient([_pairing_required(), _pairing_confirmed(), _pairing_required()])
+
+    with (
+        patch.object(
+            transport,
+            "_connect",
+            AsyncMock(side_effect=[stale_client, fresh_client]),
+        ) as connect,
+        patch.object(transport.asyncio, "sleep", AsyncMock()) as sleep,
+    ):
+        result = await transport.async_pair(
+            SimpleNamespace(),
+            ADDRESS,
+            IDENTITY,
+            confirmation_timeout=0.5,
+        )
+
+    assert result.appliance_id == bytes(range(16)).hex()
+    assert connect.await_count == 2
+    assert stale_client.disconnected is True
+    sleep.assert_awaited_once_with(1.0)
+    clear_advertisement_history.assert_any_call(ANY, ADDRESS)  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_pairing_explains_services_that_never_become_ready() -> None:
+    clients = [FakeClient() for _ in range(3)]
+    for client in clients:
+        client.start_notify = AsyncMock(
+            side_effect=BleakCharacteristicNotFoundError(transport.RESPONSE_UUID)
+        )
+
+    with (
+        patch.object(transport, "_connect", AsyncMock(side_effect=clients)),
+        patch.object(transport.asyncio, "sleep", AsyncMock()),
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="services were not ready"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+
+    assert all(client.disconnected for client in clients)
+
+
+@pytest.mark.asyncio
 async def test_connect_normalizes_busy_proxy_slots() -> None:
     device = SimpleNamespace(address=ADDRESS, name="Hub via proxy")
     with (

@@ -335,19 +335,58 @@ async def async_pair(
 ) -> PairingResult:
     """Pair Home Assistant after the user confirms on the physical hub."""
 
-    # Pairing is an explicit user action, so give the proxy additional chances
-    # while the hub is waiting for its physical confirmation.
-    client = await _connect(
-        hass,
-        address,
-        max_attempts=3,
-        use_services_cache=False,
-    )
     replies: asyncio.Queue[bytes] = asyncio.Queue()
     last_polled_response = b""
 
     def notify(_sender: Any, data: bytearray) -> None:
         replies.put_nowait(bytes(data))
+
+    # A hub that has just restarted can advertise before its complete GATT
+    # table is available through a proxy. Reconnect before asking the user for
+    # approval; no pairing request has reached the hub at this point.
+    client: BleakClient | None = None
+    for service_attempt in range(3):
+        pairing_client = await _connect(
+            hass,
+            address,
+            max_attempts=3,
+            use_services_cache=False,
+        )
+        try:
+            for uuid in (RESPONSE_UUID, STATUS_UUID, NOTIFICATION_UUID):
+                try:
+                    await pairing_client.start_notify(uuid, notify)
+                except BleakCharacteristicNotFoundError:
+                    raise
+                except Exception:
+                    _LOGGER.debug(
+                        "Hub characteristic %s does not notify",
+                        uuid,
+                        exc_info=True,
+                    )
+            await pairing_client.write_gatt_char(SESSION_UUID, b"\x01", response=True)
+        except BleakCharacteristicNotFoundError as exc:
+            await _safe_disconnect(pairing_client)
+            bluetooth.async_clear_advertisement_history(hass, address)
+            if service_attempt == 2:
+                raise WeberBluetoothError(
+                    "The hub connected, but its Bluetooth services were not ready. "
+                    "Wake the hub and try pairing again."
+                ) from exc
+            _LOGGER.debug(
+                "Weber pairing services were incomplete; reconnecting (%s/3)",
+                service_attempt + 1,
+            )
+            await asyncio.sleep(float(service_attempt + 1))
+            continue
+        client = pairing_client
+        break
+
+    if client is None:
+        raise WeberBluetoothError(
+            "The hub connected, but its Bluetooth services were not ready. "
+            "Wake the hub and try pairing again."
+        )
 
     async def poll_response(timeout: float) -> bytes | None:
         nonlocal last_polled_response
@@ -370,13 +409,6 @@ async def async_pair(
         return None
 
     try:
-        for uuid in (RESPONSE_UUID, STATUS_UUID, NOTIFICATION_UUID):
-            try:
-                await client.start_notify(uuid, notify)
-            except Exception:
-                _LOGGER.debug("Hub characteristic %s does not notify", uuid, exc_info=True)
-        await client.write_gatt_char(SESSION_UUID, b"\x01", response=True)
-
         version = initial_version
         sequence = 1
         for _attempt in range(3):
@@ -452,6 +484,11 @@ async def async_pair(
             appliance_public_key=appliance_public_key,
             verification_code=verification_code,
         )
+    except BleakCharacteristicNotFoundError as exc:
+        raise WeberBluetoothError(
+            "The hub's Bluetooth services changed during pairing. "
+            "Wake the hub and try pairing again."
+        ) from exc
     finally:
         # Disconnecting a Bleak client also removes its notification callbacks.
         # Avoid extra GATT stop-notify traffic after a link has already dropped.

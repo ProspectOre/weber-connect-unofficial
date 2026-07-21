@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from typing import Any
 
 import voluptuous as vol
@@ -43,15 +44,20 @@ from .weber_cloud import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Weber can take several minutes to expose a newly paired companion. The delays
-# plus ten five-second HTTP budgets (authentication, the first lookup, and eight
-# follow-up lookups) keep the complete online step within five minutes.
-_CLOUD_ASSOCIATION_RETRY_DELAYS = (5.0, 10.0, 15.0, 30.0, 40.0, 50.0, 50.0, 50.0)
+_CLOUD_ASSOCIATION_MAX_WAIT = 300.0
+_CLOUD_ASSOCIATION_POLL_INTERVAL = 10.0
+_CLOUD_PROGRESS_REFRESH_INTERVAL = 1.0
 _CLOUD_REQUEST_TIMEOUT = 5.0
 
 
 class WeberCloudAssociationPending(WeberCloudError):
     """The generated companion is valid but the hub is not associated with it."""
+
+
+def _monotonic_time() -> float:
+    """Return event-loop time through one testable boundary."""
+
+    return asyncio.get_running_loop().time()
 
 
 def _is_weber(info: Any) -> bool:
@@ -75,8 +81,12 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._identity: CompanionIdentity | None = None
         self._cloud_config: CloudConfig | None = None
         self._pairing_result: PairingResult | None = None
+        self._pairing_failure_reason = "The pairing connection ended before setup finished."
+        self._cloud_prepare_task: asyncio.Task[None] | None = None
         self._pairing_task: asyncio.Task[PairingResult] | None = None
         self._cloud_task: asyncio.Task[dict[str, Any]] | None = None
+        self._cloud_progress_task: asyncio.Task[None] | None = None
+        self._cloud_deadline: float | None = None
         self._entry_data: dict[str, Any] | None = None
 
     async def async_step_bluetooth(
@@ -167,7 +177,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._address is None:
             return await self.async_step_no_devices()
         if user_input is not None:
-            return await self.async_step_pairing()
+            return await self.async_step_preparing()
         return self.async_show_form(
             step_id="confirm",
             description_placeholders={
@@ -176,6 +186,61 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
+    def _start_cloud_preparation(self) -> None:
+        """Register the private companion before presenting it to the hub."""
+
+        if self._cloud_prepare_task is not None:
+            return
+        if self._identity is None:
+            self._identity = generate_identity()
+        if self._cloud_config is None:
+            self._cloud_config = CloudConfig.generate(self._identity.companion_id)
+        self._cloud_prepare_task = self.hass.async_create_task(
+            self._async_prepare_cloud_companion()
+        )
+
+    async def _async_prepare_cloud_companion(self) -> None:
+        """Create the cloud device before the hub publishes its association."""
+
+        if self._cloud_config is None:
+            raise WeberCloudError("The private cloud companion was not generated.")
+        cloud_client = WeberCloudClient(
+            self._cloud_config,
+            timeout=_CLOUD_REQUEST_TIMEOUT,
+        )
+        try:
+            await self.hass.async_add_executor_job(cloud_client.authenticate)
+        finally:
+            await self.hass.async_add_executor_job(cloud_client.close)
+
+    async def async_step_preparing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Register the private companion before starting Bluetooth pairing."""
+
+        self._start_cloud_preparation()
+        task = self._cloud_prepare_task
+        if task is None:
+            return self.async_show_progress_done(next_step_id="setup_failed")
+        if not task.done():
+            return self.async_show_progress(
+                step_id="preparing",
+                progress_action="preparing_companion",
+                progress_task=task,
+            )
+        try:
+            await task
+        except WeberCloudError as err:
+            _LOGGER.warning("Could not prepare the Weber cloud companion: %s", err)
+            self._cloud_prepare_task = None
+            return self.async_show_progress_done(next_step_id="cloud_preparation_failed")
+        except Exception:
+            _LOGGER.exception("Unexpected Weber companion preparation failure")
+            self._cloud_prepare_task = None
+            return self.async_show_progress_done(next_step_id="setup_failed")
+        self._cloud_prepare_task = None
+        return self.async_show_progress_done(next_step_id="pairing")
+
     def _start_pairing(self) -> None:
         """Start one pairing attempt while preserving the generated identity."""
 
@@ -183,8 +248,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return
         if self._address is None:
             raise WeberBluetoothError("The Weber hub is no longer visible.")
-        if self._identity is None:
-            self._identity = generate_identity()
+        if self._identity is None or self._cloud_config is None:
+            raise WeberBluetoothError("The private Weber companion is not ready.")
         self._pairing_task = self.hass.async_create_task(
             async_pair(self.hass, self._address, self._identity)
         )
@@ -196,10 +261,12 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             self._start_pairing()
-        except WeberBluetoothError:
+        except WeberBluetoothError as err:
+            self._pairing_failure_reason = str(err)
             return self.async_show_progress_done(next_step_id="pairing_failed")
         task = self._pairing_task
         if task is None:
+            self._pairing_failure_reason = "Home Assistant could not start the pairing connection."
             return self.async_show_progress_done(next_step_id="pairing_failed")
         if not task.done():
             return self.async_show_progress(
@@ -215,6 +282,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._pairing_result = await task
         except WeberBluetoothError as err:
             _LOGGER.warning("Weber hub pairing was not completed: %s", err)
+            self._pairing_failure_reason = str(err)
             self._pairing_task = None
             return self.async_show_progress_done(next_step_id="pairing_failed")
         except Exception:
@@ -228,7 +296,39 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Start cloud association after physical pairing has completed."""
 
         if self._cloud_task is None:
+            self._cloud_deadline = _monotonic_time() + _CLOUD_ASSOCIATION_MAX_WAIT
             self._cloud_task = self.hass.async_create_task(self._async_cloud_setup())
+
+    def _cloud_time_remaining(self) -> str:
+        """Format the cloud deadline for the progress screen."""
+
+        deadline = self._cloud_deadline
+        if deadline is None:
+            seconds = int(_CLOUD_ASSOCIATION_MAX_WAIT)
+        else:
+            seconds = max(0, math.ceil(deadline - _monotonic_time()))
+        minutes, remainder = divmod(seconds, 60)
+        return f"{minutes}:{remainder:02d}"
+
+    async def _async_wait_for_cloud_progress(self, delay: float) -> None:
+        """Wait for either cloud completion or the next countdown redraw."""
+
+        cloud_task = self._cloud_task
+        if cloud_task is None:
+            return
+        await asyncio.wait({cloud_task}, timeout=delay)
+
+    def _cloud_progress_tick(self) -> asyncio.Task[None]:
+        """Return a short task that makes Home Assistant redraw the countdown."""
+
+        task = self._cloud_progress_task
+        if task is None or task.done():
+            delay = _CLOUD_PROGRESS_REFRESH_INTERVAL
+            if self._cloud_deadline is not None:
+                delay = min(delay, max(0.0, self._cloud_deadline - _monotonic_time()))
+            task = self.hass.async_create_task(self._async_wait_for_cloud_progress(delay))
+            self._cloud_progress_task = task
+        return task
 
     async def _async_cloud_setup(self) -> dict[str, Any]:
         """Register the generated companion and return durable entry data."""
@@ -236,7 +336,10 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._address is None or self._identity is None or self._pairing_result is None:
             raise WeberCloudError("Physical pairing did not finish.")
         if self._cloud_config is None:
-            self._cloud_config = CloudConfig.generate(self._identity.companion_id)
+            raise WeberCloudError("The private cloud companion was not prepared.")
+        deadline = self._cloud_deadline
+        if deadline is None:
+            deadline = _monotonic_time() + _CLOUD_ASSOCIATION_MAX_WAIT
 
         result = self._pairing_result
         cloud_client = WeberCloudClient(
@@ -247,15 +350,11 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.hass.async_add_executor_job(cloud_client.authenticate)
             appliances = await self.hass.async_add_executor_job(cloud_client.associated_appliances)
             associated = resolve_associated_appliance_id(appliances, result.appliance_id)
-            if associated is None and result.verification_code is not None:
-                await self.hass.async_add_executor_job(
-                    cloud_client.associate,
-                    str(result.verification_code),
-                )
-                associated = result.appliance_id
             if associated is None:
                 associated = await self._async_wait_for_cloud_association(
-                    cloud_client, result.appliance_id
+                    cloud_client,
+                    result.appliance_id,
+                    deadline=deadline,
                 )
             if associated is None:
                 raise WeberCloudAssociationPending(
@@ -273,11 +372,19 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
     async def _async_wait_for_cloud_association(
-        self, cloud_client: WeberCloudClient, appliance_id: str
+        self,
+        cloud_client: WeberCloudClient,
+        appliance_id: str,
+        *,
+        deadline: float,
     ) -> str | None:
-        """Wait for Weber's eventually consistent association list."""
+        """Poll Weber without exceeding the setup's wall-clock deadline."""
 
-        for delay in _CLOUD_ASSOCIATION_RETRY_DELAYS:
+        while (remaining := deadline - _monotonic_time()) > _CLOUD_REQUEST_TIMEOUT:
+            delay = min(
+                _CLOUD_ASSOCIATION_POLL_INTERVAL,
+                remaining - _CLOUD_REQUEST_TIMEOUT,
+            )
             await asyncio.sleep(delay)
             appliances = await self.hass.async_add_executor_job(cloud_client.associated_appliances)
             associated = resolve_associated_appliance_id(appliances, appliance_id)
@@ -296,23 +403,34 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_progress(
                 step_id="cloud",
                 progress_action="finishing_setup",
-                progress_task=task,
+                description_placeholders={
+                    "remaining": self._cloud_time_remaining(),
+                },
+                progress_task=self._cloud_progress_tick(),
             )
+        self._cloud_progress_task = None
         try:
             self._entry_data = await task
         except WeberCloudAssociationPending as err:
             _LOGGER.warning("Weber setup is waiting for hub association: %s", err)
             self._cloud_task = None
+            self._cloud_progress_task = None
+            self._cloud_deadline = None
             return self.async_show_progress_done(next_step_id="cloud_not_linked")
         except WeberCloudError as err:
             _LOGGER.warning("Weber setup could not finish: %s", err)
             self._cloud_task = None
+            self._cloud_progress_task = None
+            self._cloud_deadline = None
             return self.async_show_progress_done(next_step_id="cloud_unavailable")
         except Exception:
             _LOGGER.exception("Unexpected Weber setup failure")
             self._cloud_task = None
+            self._cloud_progress_task = None
+            self._cloud_deadline = None
             return self.async_show_progress_done(next_step_id="setup_failed")
         self._cloud_task = None
+        self._cloud_deadline = None
         return self.async_show_progress_done(next_step_id="complete")
 
     async def async_step_pairing_failed(
@@ -323,7 +441,26 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_menu(
             step_id="pairing_failed",
             menu_options=["retry_pairing", "choose_hub"],
+            description_placeholders={"reason": self._pairing_failure_reason},
         )
+
+    async def async_step_cloud_preparation_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Explain that setup stopped before contacting the hub."""
+
+        return self.async_show_menu(
+            step_id="cloud_preparation_failed",
+            menu_options=["retry_preparation", "start_over"],
+        )
+
+    async def async_step_retry_preparation(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Retry cloud registration without changing the private identity."""
+
+        self._cloud_prepare_task = None
+        return await self.async_step_preparing()
 
     async def async_step_retry_pairing(
         self, user_input: dict[str, Any] | None = None
@@ -331,6 +468,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Retry physical pairing with the same generated identity."""
 
         self._pairing_task = None
+        self._pairing_failure_reason = "The pairing connection ended before setup finished."
         return await self.async_step_pairing()
 
     async def async_step_cloud_not_linked(
@@ -359,6 +497,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Retry only the final online setup phase."""
 
         self._cloud_task = None
+        self._cloud_progress_task = None
+        self._cloud_deadline = None
         return await self.async_step_cloud()
 
     async def async_step_setup_failed(
@@ -390,6 +530,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def _reset_setup(self) -> None:
         """Reset transient flow state without touching configured entries."""
 
+        self._cancel_pending_tasks()
         self._address = None
         self._name = "Weber Connect Hub"
         self._connection_path = "Home Assistant Bluetooth"
@@ -397,8 +538,28 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._cloud_config = None
         self._pairing_result = None
         self._pairing_task = None
+        self._cloud_prepare_task = None
         self._cloud_task = None
+        self._cloud_progress_task = None
+        self._cloud_deadline = None
         self._entry_data = None
+
+    def _cancel_pending_tasks(self) -> None:
+        """Cancel every task privately owned by this config flow."""
+
+        for task in (
+            self._cloud_prepare_task,
+            self._pairing_task,
+            self._cloud_task,
+            self._cloud_progress_task,
+        ):
+            if task is not None and not task.done():
+                task.cancel()
+
+    def async_remove(self) -> None:
+        """Cancel private work when Home Assistant removes an unfinished flow."""
+
+        self._cancel_pending_tasks()
 
     async def async_step_complete(
         self, user_input: dict[str, Any] | None = None

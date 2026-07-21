@@ -11,7 +11,9 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.weber_connect.bluetooth import WeberBluetoothError
 from custom_components.weber_connect.config_flow import (
-    _CLOUD_ASSOCIATION_RETRY_DELAYS,
+    _CLOUD_ASSOCIATION_MAX_WAIT,
+    _CLOUD_ASSOCIATION_POLL_INTERVAL,
+    _CLOUD_PROGRESS_REFRESH_INTERVAL,
     _CLOUD_REQUEST_TIMEOUT,
     OptionsFlow,
     WeberCloudAssociationPending,
@@ -25,7 +27,7 @@ from custom_components.weber_connect.const import (
 )
 from custom_components.weber_connect.models import CompanionIdentity, PairingResult
 from custom_components.weber_connect.options import ConnectionMode, WeberOptions
-from custom_components.weber_connect.weber_cloud import WeberCloudError
+from custom_components.weber_connect.weber_cloud import CloudConfig, WeberCloudError
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
@@ -37,8 +39,23 @@ PAIRING = PairingResult(10, "44" * 16, "55" * 64, None)
 def test_cloud_association_retry_budget_is_five_minutes() -> None:
     """Keep setup's user-facing maximum aligned with its request budget."""
 
-    request_count = len(_CLOUD_ASSOCIATION_RETRY_DELAYS) + 2
-    assert sum(_CLOUD_ASSOCIATION_RETRY_DELAYS) + request_count * _CLOUD_REQUEST_TIMEOUT == 300.0
+    assert _CLOUD_ASSOCIATION_MAX_WAIT == 300.0
+    assert _CLOUD_ASSOCIATION_POLL_INTERVAL < _CLOUD_ASSOCIATION_MAX_WAIT
+    assert _CLOUD_PROGRESS_REFRESH_INTERVAL == 1.0
+    assert _CLOUD_REQUEST_TIMEOUT < _CLOUD_ASSOCIATION_POLL_INTERVAL
+
+
+def test_cloud_countdown_formats_the_shared_deadline(hass: object) -> None:
+    instance = flow(hass)
+    assert instance._cloud_time_remaining() == "5:00"
+    instance._cloud_deadline = 400.0
+    with patch(
+        "custom_components.weber_connect.config_flow._monotonic_time",
+        side_effect=[100.0, 339.0, 401.0],
+    ):
+        assert instance._cloud_time_remaining() == "5:00"
+        assert instance._cloud_time_remaining() == "1:01"
+        assert instance._cloud_time_remaining() == "0:00"
 
 
 def flow(hass: object) -> WeberConnectConfigFlow:
@@ -125,6 +142,9 @@ async def test_confirm_and_pairing_recovery_impossible_states_are_safe(hass: obj
     assert instance._pairing_task is sentinel
 
     instance._pairing_task = None
+    with pytest.raises(WeberBluetoothError, match="not ready"):
+        instance._start_pairing()
+
     with patch.object(instance, "_start_pairing", side_effect=WeberBluetoothError("gone")):
         result = await instance.async_step_pairing()
     assert result["step_id"] == "pairing_failed"
@@ -161,6 +181,75 @@ async def test_pairing_and_cloud_unexpected_failures_choose_recoverable_steps(ha
 
 
 @pytest.mark.asyncio
+async def test_cloud_companion_is_registered_before_pairing_and_can_retry(hass: object) -> None:
+    instance = flow(hass)
+    instance._address = ADDRESS
+
+    client = MagicMock()
+    with patch(
+        "custom_components.weber_connect.config_flow.WeberCloudClient",
+        return_value=client,
+    ):
+        instance._start_cloud_preparation()
+        task = instance._cloud_prepare_task
+        assert task is not None
+        instance._start_cloud_preparation()
+        assert instance._cloud_prepare_task is task
+        await task
+
+    assert instance._identity is not None
+    assert instance._cloud_config is not None
+    client.authenticate.assert_called_once()
+    client.close.assert_called_once()
+
+    missing = flow(hass)
+    with pytest.raises(WeberCloudError, match="not generated"):
+        await missing._async_prepare_cloud_companion()
+
+    pending = hass.async_create_task(asyncio.sleep(3600))  # type: ignore[attr-defined]
+    instance._cloud_prepare_task = pending
+    with patch.object(instance, "_start_cloud_preparation"):
+        result = await instance.async_step_preparing()
+    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    assert result["progress_task"] is pending
+    pending.cancel()
+    await asyncio.gather(pending, return_exceptions=True)
+
+    instance._cloud_prepare_task = None
+
+    async def fail_preparation() -> None:
+        raise WeberCloudError("offline")
+
+    failed = hass.async_create_task(fail_preparation())  # type: ignore[attr-defined]
+    await asyncio.sleep(0)
+    instance._cloud_prepare_task = failed
+    with patch.object(instance, "_start_cloud_preparation"):
+        result = await instance.async_step_preparing()
+    assert result["step_id"] == "cloud_preparation_failed"
+
+    async def fail_unexpectedly() -> None:
+        raise RuntimeError("boom")
+
+    unexpected = hass.async_create_task(fail_unexpectedly())  # type: ignore[attr-defined]
+    await asyncio.sleep(0)
+    instance._cloud_prepare_task = unexpected
+    with patch.object(instance, "_start_cloud_preparation"):
+        result = await instance.async_step_preparing()
+    assert result["step_id"] == "setup_failed"
+
+    with patch.object(
+        instance,
+        "async_step_preparing",
+        AsyncMock(return_value={"type": "retrying"}),
+    ) as retry:
+        assert await instance.async_step_retry_preparation() == {"type": "retrying"}
+        retry.assert_awaited_once()
+
+    instance._cloud_task = None
+    await instance._async_wait_for_cloud_progress(0)
+
+
+@pytest.mark.asyncio
 async def test_cloud_setup_missing_state_eventual_timeout_and_close(hass: object) -> None:
     instance = flow(hass)
     with pytest.raises(WeberCloudError, match="Physical pairing"):
@@ -169,6 +258,7 @@ async def test_cloud_setup_missing_state_eventual_timeout_and_close(hass: object
     instance._address = ADDRESS
     instance._identity = IDENTITY
     instance._pairing_result = PAIRING
+    instance._cloud_config = CloudConfig.generate(IDENTITY.companion_id)
     client = MagicMock()
     client.authenticate.return_value = "token"
     client.associated_appliances.return_value = []
@@ -184,11 +274,22 @@ async def test_cloud_setup_missing_state_eventual_timeout_and_close(hass: object
         async_add_executor_job=AsyncMock(side_effect=lambda target, *args: target(*args))
     )
     instance.hass = immediate_hass  # type: ignore[assignment]
-    with patch("custom_components.weber_connect.config_flow.asyncio.sleep", AsyncMock()) as sleep:
+    with (
+        patch("custom_components.weber_connect.config_flow.asyncio.sleep", AsyncMock()) as sleep,
+        patch(
+            "custom_components.weber_connect.config_flow._monotonic_time",
+            side_effect=[0.0, 5.0],
+        ),
+    ):
         assert (
-            await instance._async_wait_for_cloud_association(client, PAIRING.appliance_id) is None
+            await instance._async_wait_for_cloud_association(
+                client,
+                PAIRING.appliance_id,
+                deadline=10.0,
+            )
+            is None
         )
-    assert sleep.await_count == 8
+    assert sleep.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -223,13 +324,50 @@ async def test_cloud_progress_missing_task_known_error_and_idempotent_start(hass
     instance._start_cloud_setup()
     assert instance._cloud_task is sentinel
 
+    pending = hass.async_create_task(asyncio.sleep(3600))  # type: ignore[attr-defined]
+    instance._cloud_task = pending
+    instance._cloud_deadline = 400.0
+    with (
+        patch.object(instance, "_start_cloud_setup"),
+        patch(
+            "custom_components.weber_connect.config_flow._monotonic_time",
+            return_value=339.0,
+        ),
+    ):
+        result = await instance.async_step_cloud()
+    assert result["description_placeholders"] == {"remaining": "1:01"}
+    progress_task = result["progress_task"]
+    assert progress_task is not pending
+    await progress_task
+
+    with (
+        patch.object(instance, "_start_cloud_setup"),
+        patch(
+            "custom_components.weber_connect.config_flow._monotonic_time",
+            return_value=340.0,
+        ),
+    ):
+        result = await instance.async_step_cloud()
+    assert result["description_placeholders"] == {"remaining": "1:00"}
+    assert result["progress_task"] is not progress_task
+    pending.cancel()
+    await asyncio.gather(pending, result["progress_task"], return_exceptions=True)
+
 
 @pytest.mark.asyncio
 async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
     instance = flow(hass)
-    assert (await instance.async_step_pairing_failed())["menu_options"] == [
+    pairing_failed = await instance.async_step_pairing_failed()
+    assert pairing_failed["menu_options"] == [
         "retry_pairing",
         "choose_hub",
+    ]
+    assert pairing_failed["description_placeholders"] == {
+        "reason": "The pairing connection ended before setup finished."
+    }
+    assert (await instance.async_step_cloud_preparation_failed())["menu_options"] == [
+        "retry_preparation",
+        "start_over",
     ]
     assert (await instance.async_step_cloud_not_linked())["menu_options"] == [
         "retry_cloud",
@@ -265,6 +403,21 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
     with patch.object(instance, "async_create_entry", return_value={"type": "created"}) as create:
         assert await instance.async_step_complete() == {"type": "created"}
         create.assert_called_once_with(title="Hub", data={"ready": True})
+
+    cancellable = flow(hass)
+    tasks = [
+        hass.async_create_task(asyncio.sleep(3600))  # type: ignore[attr-defined]
+        for _index in range(4)
+    ]
+    (
+        cancellable._cloud_prepare_task,
+        cancellable._pairing_task,
+        cancellable._cloud_task,
+        cancellable._cloud_progress_task,
+    ) = tasks  # type: ignore[assignment]
+    cancellable.async_remove()
+    assert all(task.cancelling() for task in tasks)
+    await asyncio.gather(*tasks, return_exceptions=True)
 
     options = OptionsFlow()
     options.hass = hass  # type: ignore[assignment]
