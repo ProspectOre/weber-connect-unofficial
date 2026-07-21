@@ -60,9 +60,12 @@ class FakeCloudClient:
     """Cloud registration double with no network access."""
 
     association_codes: ClassVar[list[str]] = []
+    timeouts: ClassVar[list[float]] = []
 
-    def __init__(self, config: object) -> None:
+    def __init__(self, config: object, *, timeout: float = 20.0) -> None:
         self.config = config
+        self.timeout = timeout
+        self.timeouts.append(timeout)
         self.authenticated = False
 
     def authenticate(self) -> str:
@@ -138,6 +141,7 @@ async def test_user_flow_creates_private_companion_entry(hass: object) -> None:
         ),
     ):
         FakeCloudClient.association_codes.clear()
+        FakeCloudClient.timeouts.clear()
         result = await hass.config_entries.flow.async_init(  # type: ignore[attr-defined]
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
@@ -168,6 +172,7 @@ async def test_user_flow_creates_private_companion_entry(hass: object) -> None:
     assert result["data"][CONF_APPLIANCE_ID] == pairing.appliance_id
     assert result["data"][CONF_CLOUD_PASSWORD]
     assert FakeCloudClient.association_codes == ["123456"]
+    assert FakeCloudClient.timeouts == [5.0]
 
 
 @pytest.mark.asyncio

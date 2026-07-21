@@ -84,9 +84,10 @@ Run with the host adapter disabled:
 
 ## Current evidence
 
-The greenfield implementation currently has 99 passing automated tests and
-96.25% combined statement/branch coverage against the Home Assistant 2026.7
-test framework. Ruff, strict mypy, and whitespace validation pass locally.
+The greenfield implementation currently has 100 passing automated tests and
+96.27% combined statement/branch coverage against the Home Assistant 2026.7
+test framework. Ruff, strict mypy, Bandit, release-contract validation, and
+whitespace validation pass locally.
 
 Physical testing uses Home Assistant Yellow on Home Assistant 2026.7.2, a Weber
 Connect Hub `2.0.3_7398`, the Weber Android app `2.10.0.2439` on a Samsung Galaxy
@@ -189,8 +190,27 @@ path and therefore do **not** validate the final persistent WebSocket lifecycle.
 
 The final persistent companion-WebSocket endurance row, proxy-only endurance
 row, and proxy-only Home Assistant restart row have passed on the documented
-equipment. A deliberate ESPHome device reboot during an owned GATT session has
-not been run; the observed proxy Wi-Fi interruptions and transient controller
-failure did recover automatically. Two-proxy failover is explicitly untested
-because a second proxy is unavailable. Neither scenario may be described as
-verified.
+equipment. During the proxy-only run, ESPHome proxy ee608c was also deliberately
+rebooted while the integration owned its GATT session. The integration
+reconnected without a reload or repair; diagnostics advanced from nine
+successful updates and zero failures before the reboot to 31 successful
+updates, five transient failures, zero consecutive failures, and no current
+error afterward. Probe 2 resumed at `23.8 °C`. This verifies recovery from one
+proxy reboot on the documented equipment.
+
+The production config entry was then deleted. Home Assistant removed the entry,
+device, all four entities, and stored private configuration. A clean re-add
+found the hub through proxy ee608c and completed physical approval, but Weber's
+association list never granted the newly generated companion access to the hub,
+including after repeated checks beyond five minutes. This is not a polling
+timeout: local pairing succeeded and Weber Cloud remained reachable, but the
+association itself was absent. Protocol analysis indicates that the pairing PIN
+used by Weber's companion-association endpoint belongs to the hub's Wi-Fi/SoftAP
+provisioning flow and is not normally returned by BLE companion pairing. The
+clean, universal Phone + Home Assistant setup path is therefore **not verified
+and currently blocks the 3.0 release**. Completing and validating that
+provisioning/claim flow, or an equally safe universal association path, is
+required before release.
+
+Two-proxy failover remains explicitly untested because a second proxy is not
+available. It may not be described as verified.

@@ -2,8 +2,8 @@
   "title": "Weber Connect Unofficial",
   "config": {
     "progress": {
-      "approve_hub": "**Step 1 of 2 — Pairing locally.** Home Assistant is connected to the hub and is waiting for your approval on its display. Keep the Weber app closed and Bluetooth turned off on your phone or tablet.",
-      "finishing_setup": "**Step 2 of 2 — Enabling Phone + Home Assistant.** Local pairing is complete. Home Assistant is waiting for Weber to list its new private connection; no action is needed. Keep phone or tablet Bluetooth off until setup completes."
+      "approve_hub": "**Connecting to {name} through {path}.** A Bluetooth proxy may need up to 90 seconds to open the connection. When the hub asks, approve **Home Assistant** within 60 seconds. This screen advances automatically after approval.",
+      "finishing_setup": "**The hub approved Home Assistant.** Home Assistant is checking Weber Cloud so the Weber app and Home Assistant can work at the same time. This check can take up to five minutes and updates automatically. No action is needed."
     },
     "step": {
       "user": {
@@ -18,17 +18,22 @@
       },
       "confirm": {
         "title": "Connect {name}",
-        "description": "**Step 1 of 2 — Pair locally through {path}.** Fully close the Weber app and temporarily turn off Bluetooth on every phone or tablet that uses it. Wake {name}, continue, and approve **Home Assistant** on the hub display. Step 2 will enable simultaneous phone and Home Assistant access."
+        "description": "Fully close the Weber app and temporarily turn off Bluetooth on every phone or tablet that uses it. Wake {name}, then continue. Home Assistant will connect through **{path}**; a Bluetooth proxy may need up to 90 seconds. When the hub asks, approve **Home Assistant** within 60 seconds. Home Assistant will then check Weber Cloud for up to five minutes."
       },
       "pairing_failed": {
         "title": "The hub did not approve Home Assistant",
         "description": "Home Assistant did not receive approval from the hub, so no setup was saved. Keep the Weber app closed and phone or tablet Bluetooth off, wake the hub, and try again.",
         "menu_options": {"retry_pairing": "Try pairing again", "choose_hub": "Choose another hub"}
       },
-      "cloud_failed": {
-        "title": "Online setup did not finish",
-        "description": "**Step 1 is complete and safely saved for this setup session.** Weber's online service did not finish listing Home Assistant's private connection. Wait a moment and retry; the hub does not need to be approved again.",
-        "menu_options": {"retry_cloud": "Try online setup again", "start_over": "Start over"}
+      "cloud_not_linked": {
+        "title": "The hub is paired, but Weber Cloud has not linked it",
+        "description": "Local pairing succeeded. Home Assistant reached Weber Cloud and checked automatically for up to five minutes, but the new connection was not given access to this hub. You do not need to approve the hub again. If the hub was just set up again in the Weber app, check once more.",
+        "menu_options": {"retry_cloud": "Check Weber Cloud again — up to 5 minutes", "start_over": "Start over"}
+      },
+      "cloud_unavailable": {
+        "title": "Weber Cloud could not be reached",
+        "description": "Local pairing succeeded, but Home Assistant could not complete the online check. The hub does not need approval again. Confirm Home Assistant has internet access and try again. If Weber Cloud is reachable, Home Assistant will wait up to five minutes for the hub.",
+        "menu_options": {"retry_cloud": "Try the online check again — up to 5 minutes", "start_over": "Start over"}
       },
       "setup_failed": {
         "title": "Setup did not finish",
@@ -39,7 +44,10 @@
     "create_entry": {
       "default": "**Both setup steps are complete.** Turn Bluetooth back on and reopen the Weber app. The phone may use the hub's Bluetooth connection while Home Assistant continues receiving cook data online."
     },
-    "abort": {"already_configured": "This Weber hub is already configured."}
+    "abort": {
+      "already_configured": "This Weber hub is already configured.",
+      "already_in_progress": "Setup is already open for this Weber hub. Close this window and continue the existing setup."
+    }
   },
   "options": {
     "step": {

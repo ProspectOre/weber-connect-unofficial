@@ -18,11 +18,14 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 
 > [!IMPORTANT]
 > 3.0 is under active development and has not been released yet. The native
-> code and automated Home Assistant 2026.7 tests are in place. On the equipment
-> listed below, real-hardware setup, a 70-minute simultaneous app/cloud session,
-> a one-hour proxy-only session, and a Home Assistant restart while using only
-> that proxy have passed. A second proxy was not available, so multi-proxy
-> failover is explicitly unverified.
+> code and automated Home Assistant 2026.7 tests are in place. Local pairing,
+> a 70-minute simultaneous app/cloud session using an already provisioned
+> companion, a one-hour proxy-only session, a proxy reboot, and a Home Assistant
+> restart using only that proxy have passed on the equipment below. A clean
+> install did **not** receive access to the hub in Weber Cloud after local
+> pairing and repeated checks beyond five minutes. Universal Phone + Home
+> Assistant setup is therefore not yet proven and blocks release. A second proxy
+> was not available, so multi-proxy failover is also unverified.
 
 ## Install
 
@@ -42,17 +45,21 @@ This project is not affiliated with, endorsed by, or supported by Weber.
    temporarily turn off Bluetooth on those devices. This prevents a phone from
    reclaiming the hub while Home Assistant pairs.
 6. Wake the hub, continue setup, and approve Home Assistant on the hub display.
-7. After setup completes, turn Bluetooth back on and reopen the Weber app.
+7. Home Assistant checks Weber Cloud for up to five minutes. After setup
+   completes, turn Bluetooth back on and reopen the Weber app.
 
-Home Assistant creates and stores its own Weber connection automatically.
+The intended setup creates and stores a private Home Assistant companion
+without asking for a Weber account password. Clean-install cloud association is
+still under validation and 3.0 will not be released until that path is proven.
 
 ## Everyday behavior
 
-The default mode is **Phone + Home Assistant**. Home Assistant keeps one Weber
-Cloud companion socket open and requests fresh status on a 10-second cadence,
-leaving the hub's single Bluetooth connection available to the Weber app.
-Recipes continue to be started and managed in the Weber app while Home
-Assistant monitors the four probe temperature slots.
+After cloud association succeeds, the default mode is **Phone + Home
+Assistant**. Home Assistant keeps one Weber Cloud companion socket open and
+requests fresh status on a 10-second cadence, leaving the hub's single
+Bluetooth connection available to the Weber app. Recipes continue to be
+started and managed in the Weber app while Home Assistant monitors the four
+probe temperature slots.
 
 **Home Assistant only** instead keeps one local GATT connection open through
 Home Assistant's selected adapter or active ESPHome proxy. It reconnects only
@@ -93,10 +100,13 @@ Testing uses a Weber Connect Hub running `2.0.3_7398`, Home Assistant Yellow on
 Home Assistant `2026.7.2`, Weber app `2.10.0.2439` on a Samsung Galaxy Tab A9+
 (`SM-X210`, Android 16), and one ESPHome Bluetooth proxy running ESPHome
 `2026.7.0`. This equipment has demonstrated physical-confirmation pairing,
-matching phone and cloud temperatures, proxy discovery, and direct proxy reads.
+matching phone and cloud temperatures with an already provisioned companion,
+proxy discovery, direct proxy reads, and recovery after a deliberate proxy
+reboot. It has not yet demonstrated clean-install cloud association for a newly
+generated companion.
 
-The current greenfield transport implementation has 99 automated tests and
-96.25% combined statement/branch coverage. Import, config flow, transient
+The current greenfield transport implementation has 100 automated tests and
+96.27% combined statement/branch coverage. Import, config flow, transient
 identity generation, entity contracts, protocol frames, persistent-session
 reuse, reconnect behavior, proxy service-cache recovery, diagnostics redaction,
 and transport ownership are covered. Live smoke and config-entry reload tests

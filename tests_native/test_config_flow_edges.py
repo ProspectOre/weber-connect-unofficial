@@ -11,7 +11,10 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.weber_connect.bluetooth import WeberBluetoothError
 from custom_components.weber_connect.config_flow import (
+    _CLOUD_ASSOCIATION_RETRY_DELAYS,
+    _CLOUD_REQUEST_TIMEOUT,
     OptionsFlow,
+    WeberCloudAssociationPending,
     WeberConnectConfigFlow,
     _is_weber,
 )
@@ -29,6 +32,13 @@ pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 ADDRESS = "AA:BB:CC:DD:EE:FF"
 IDENTITY = CompanionIdentity("11" * 16, "22" * 64, "33" * 64)
 PAIRING = PairingResult(10, "44" * 16, "55" * 64, None)
+
+
+def test_cloud_association_retry_budget_is_five_minutes() -> None:
+    """Keep setup's user-facing maximum aligned with its request budget."""
+
+    request_count = len(_CLOUD_ASSOCIATION_RETRY_DELAYS) + 2
+    assert sum(_CLOUD_ASSOCIATION_RETRY_DELAYS) + request_count * _CLOUD_REQUEST_TIMEOUT == 300.0
 
 
 def flow(hass: object) -> WeberConnectConfigFlow:
@@ -178,7 +188,7 @@ async def test_cloud_setup_missing_state_eventual_timeout_and_close(hass: object
         assert (
             await instance._async_wait_for_cloud_association(client, PAIRING.appliance_id) is None
         )
-    assert sleep.await_count == 4
+    assert sleep.await_count == 8
 
 
 @pytest.mark.asyncio
@@ -186,7 +196,7 @@ async def test_cloud_progress_missing_task_known_error_and_idempotent_start(hass
     instance = flow(hass)
     with patch.object(instance, "_start_cloud_setup", return_value=None):
         result = await instance.async_step_cloud()
-    assert result["step_id"] == "cloud_failed"
+    assert result["step_id"] == "setup_failed"
 
     async def fail() -> dict[str, object]:
         raise WeberCloudError("offline")
@@ -196,7 +206,17 @@ async def test_cloud_progress_missing_task_known_error_and_idempotent_start(hass
     instance._cloud_task = task
     with patch.object(instance, "_start_cloud_setup"):
         result = await instance.async_step_cloud()
-    assert result["step_id"] == "cloud_failed"
+    assert result["step_id"] == "cloud_unavailable"
+
+    async def wait_for_association() -> dict[str, object]:
+        raise WeberCloudAssociationPending("not linked")
+
+    task = hass.async_create_task(wait_for_association())  # type: ignore[attr-defined]
+    await asyncio.sleep(0)
+    instance._cloud_task = task
+    with patch.object(instance, "_start_cloud_setup"):
+        result = await instance.async_step_cloud()
+    assert result["step_id"] == "cloud_not_linked"
 
     sentinel = MagicMock()
     instance._cloud_task = sentinel
@@ -211,7 +231,11 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
         "retry_pairing",
         "choose_hub",
     ]
-    assert (await instance.async_step_cloud_failed())["menu_options"] == [
+    assert (await instance.async_step_cloud_not_linked())["menu_options"] == [
+        "retry_cloud",
+        "start_over",
+    ]
+    assert (await instance.async_step_cloud_unavailable())["menu_options"] == [
         "retry_cloud",
         "start_over",
     ]

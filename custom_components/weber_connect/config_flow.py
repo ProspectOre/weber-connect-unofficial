@@ -43,7 +43,15 @@ from .weber_cloud import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_CLOUD_ASSOCIATION_RETRY_DELAYS = (1.0, 2.0, 4.0, 8.0)
+# Weber can take several minutes to expose a newly paired companion. The delays
+# plus ten five-second HTTP budgets (authentication, the first lookup, and eight
+# follow-up lookups) keep the complete online step within five minutes.
+_CLOUD_ASSOCIATION_RETRY_DELAYS = (5.0, 10.0, 15.0, 30.0, 40.0, 50.0, 50.0, 50.0)
+_CLOUD_REQUEST_TIMEOUT = 5.0
+
+
+class WeberCloudAssociationPending(WeberCloudError):
+    """The generated companion is valid but the hub is not associated with it."""
 
 
 def _is_weber(info: Any) -> bool:
@@ -197,6 +205,10 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_progress(
                 step_id="pairing",
                 progress_action="approve_hub",
+                description_placeholders={
+                    "name": self._name,
+                    "path": self._connection_path,
+                },
                 progress_task=task,
             )
         try:
@@ -227,7 +239,10 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._cloud_config = CloudConfig.generate(self._identity.companion_id)
 
         result = self._pairing_result
-        cloud_client = WeberCloudClient(self._cloud_config)
+        cloud_client = WeberCloudClient(
+            self._cloud_config,
+            timeout=_CLOUD_REQUEST_TIMEOUT,
+        )
         try:
             await self.hass.async_add_executor_job(cloud_client.authenticate)
             appliances = await self.hass.async_add_executor_job(cloud_client.associated_appliances)
@@ -243,7 +258,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     cloud_client, result.appliance_id
                 )
             if associated is None:
-                raise WeberCloudError(
+                raise WeberCloudAssociationPending(
                     "Weber's online service has not finished registering the hub."
                 )
         finally:
@@ -276,7 +291,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._start_cloud_setup()
         task = self._cloud_task
         if task is None:
-            return self.async_show_progress_done(next_step_id="cloud_failed")
+            return self.async_show_progress_done(next_step_id="setup_failed")
         if not task.done():
             return self.async_show_progress(
                 step_id="cloud",
@@ -285,10 +300,14 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         try:
             self._entry_data = await task
+        except WeberCloudAssociationPending as err:
+            _LOGGER.warning("Weber setup is waiting for hub association: %s", err)
+            self._cloud_task = None
+            return self.async_show_progress_done(next_step_id="cloud_not_linked")
         except WeberCloudError as err:
             _LOGGER.warning("Weber setup could not finish: %s", err)
             self._cloud_task = None
-            return self.async_show_progress_done(next_step_id="cloud_failed")
+            return self.async_show_progress_done(next_step_id="cloud_unavailable")
         except Exception:
             _LOGGER.exception("Unexpected Weber setup failure")
             self._cloud_task = None
@@ -314,13 +333,23 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pairing_task = None
         return await self.async_step_pairing()
 
-    async def async_step_cloud_failed(
+    async def async_step_cloud_not_linked(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Offer a cloud-only retry without pairing again."""
+        """Explain that Weber has not associated the new companion."""
 
         return self.async_show_menu(
-            step_id="cloud_failed",
+            step_id="cloud_not_linked",
+            menu_options=["retry_cloud", "start_over"],
+        )
+
+    async def async_step_cloud_unavailable(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Explain a network or Weber Cloud failure separately."""
+
+        return self.async_show_menu(
+            step_id="cloud_unavailable",
             menu_options=["retry_cloud", "start_over"],
         )
 
