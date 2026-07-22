@@ -109,21 +109,6 @@
     }
   },
   "issues": {
-    "connection_lost": {
-      "title": "{name} lost its online connection",
-      "fix_flow": {
-        "step": {
-          "confirm": {
-            "title": "Retry {name}",
-            "description": "Home Assistant has stopped receiving new Weber Cloud data. First turn Bluetooth off on the phone or tablet and confirm the hub appears online in the Weber app; this verifies the hub's Wi-Fi. Then confirm Home Assistant has internet access and continue to retry now."
-          }
-        },
-        "error": {
-          "still_unavailable": "No new data arrived. Check the hub's Wi-Fi in the Weber app with phone Bluetooth off, confirm Home Assistant can reach the internet, and try again.",
-          "entry_not_loaded": "The integration is not loaded. Reload it from its integration page, then return to this repair."
-        }
-      }
-    },
     "credentials_rejected": {
       "title": "{name} needs to be paired again",
       "fix_flow": {

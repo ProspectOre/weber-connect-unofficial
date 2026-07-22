@@ -11,7 +11,7 @@ adapter, account, router, or ESPHome version.
 Every release pull request must pass:
 
 - import and config-flow tests on Home Assistant 2026.7;
-- pairing, settings, repair-flow, status-frame, malformed-frame,
+- pairing, settings, credential-repair, status-frame, malformed-frame,
   persistent cloud/Bluetooth session, entity-identity, transport-ownership, and
   diagnostics-redaction tests;
 - at least 95% combined statement and branch coverage across the native
@@ -75,16 +75,15 @@ Run with the host adapter disabled:
 ### Failure behavior
 
 - Weber Cloud unavailable: the four probe entities remain present and become
-  `Unknown` after repeated failures; the integration does not silently take
-  Bluetooth from the phone.
-- Sustained cloud failures: Home Assistant creates one actionable repair and
-  clears it automatically after data resumes.
+  `Unknown` after repeated failures; the integration retries quietly and does
+  not silently take Bluetooth from the phone or raise a repair for a routinely
+  powered-off hub.
 - Proxy out of slots: Home Assistant retains all four entities as `Unknown` and
   retries without a restart.
 - Hub out of range: the integration releases resources and recovers on a later
   update.
-- Sleeping local hub: the four probe entities remain visible as `Unknown`; this
-  expected idle state does not create a repair.
+- Sleeping or powered-off hub: the four probe entities remain visible as
+  `Unknown`; this expected idle state does not create a repair.
 - Pairing rejected or timed out: no config entry remains. Because the private
   companion must be registered before physical approval, Weber may retain an
   unused server-side companion record; Home Assistant retains no credential

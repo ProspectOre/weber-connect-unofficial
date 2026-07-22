@@ -30,7 +30,6 @@ from .weber_cloud_socket import WeberCloudSession
 
 _LOGGER = logging.getLogger(__name__)
 OFFLINE_FAILURE_THRESHOLD = 3
-REPAIR_FAILURE_THRESHOLD = 6
 
 
 class _TransportSession(Protocol):
@@ -65,7 +64,6 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._transport: _TransportSession
         self._transport_task: asyncio.Task[None] | None = None
         self._cancel_bluetooth_callback: Callable[[], None] | None = None
-        self._status_event = asyncio.Event()
         self.last_error: str | None = None
         self.last_successful_update: str | None = None
         self.consecutive_failures = 0
@@ -111,6 +109,13 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if self._transport_task is not None:
             return
+        # Versions before 3.0.1 raised a repair after routine cloud outages.
+        # A powered-off hub is normal, so clear that retired issue at startup.
+        ir.async_delete_issue(
+            self.hass,
+            DOMAIN,
+            f"connection_lost_{self.entry.entry_id}",
+        )
         if self.bluetooth_session is not None:
             self._cancel_bluetooth_callback = bluetooth.async_register_callback(
                 self.hass,
@@ -142,13 +147,11 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_error = None
         self.last_successful_update = datetime.now(timezone.utc).isoformat()
         self.consecutive_failures = 0
-        self._status_event.set()
-        for issue_prefix in ("connection_lost", "credentials_rejected"):
-            ir.async_delete_issue(
-                self.hass,
-                DOMAIN,
-                f"{issue_prefix}_{self.entry.entry_id}",
-            )
+        ir.async_delete_issue(
+            self.hass,
+            DOMAIN,
+            f"credentials_rejected_{self.entry.entry_id}",
+        )
         self.async_set_updated_data(normalize_state(status, source=self.source, connected=True))
 
     @callback
@@ -162,11 +165,6 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.async_set_updated_data(normalize_state(None, source=self.source, connected=False))
         if self.source == "cloud" and self.cloud_session is not None:
             if self.cloud_session.error_kind == "credentials":
-                ir.async_delete_issue(
-                    self.hass,
-                    DOMAIN,
-                    f"connection_lost_{self.entry.entry_id}",
-                )
                 ir.async_create_issue(
                     self.hass,
                     DOMAIN,
@@ -179,38 +177,6 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     translation_placeholders={"name": self.entry.title},
                 )
                 return
-        if self.source != "cloud" or self.consecutive_failures < REPAIR_FAILURE_THRESHOLD:
-            return
-        if (
-            ir.async_get(self.hass).async_get_issue(
-                DOMAIN,
-                f"credentials_rejected_{self.entry.entry_id}",
-            )
-            is not None
-        ):
-            return
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            f"connection_lost_{self.entry.entry_id}",
-            data={"entry_id": self.entry.entry_id},
-            is_fixable=True,
-            is_persistent=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key="connection_lost",
-            translation_placeholders={"name": self.entry.title},
-        )
-
-    async def async_retry(self, *, timeout: float = 15.0) -> bool:
-        """Wake the selected transport and wait for one fresh status."""
-
-        self._status_event.clear()
-        self._transport.async_wake()
-        try:
-            await asyncio.wait_for(self._status_event.wait(), timeout=timeout)
-        except TimeoutError:
-            return False
-        return True
 
     async def async_close(self) -> None:
         """Cancel all entry work and release the selected transport."""

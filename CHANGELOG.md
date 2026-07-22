@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.1 — 2026-07-21
+
+- Treat a sleeping, powered-off, or temporarily unreachable hub as normal idle
+  behavior instead of raising a Home Assistant repair issue.
+- Continue quiet background recovery while retaining all four probe entities
+  as `Unknown` until fresh readings return.
+- Preserve the actionable repair only for a genuinely rejected generated
+  companion credential, which requires pairing again.
+- Clear connection-loss repair records created by 3.0.0 when the integration
+  starts after an update.
+- Update the pinned WebSocket runtime from 16.1 to 16.1.1.
+
 ## 3.0.0 — 2026-07-21
 
 - Introduced a native Home Assistant custom integration with automatic device
@@ -26,7 +38,7 @@
   table, with bounded retry and fresh-discovery recovery for stale caches.
 - Added one persistent companion WebSocket for the default Phone + Home
   Assistant mode, with no automatic cross-transport fallback.
-- Added actionable cloud-connection repairs, last-success tracking,
+- Added quiet cloud reconnection, last-success tracking,
   privacy-minimized diagnostics, and a fixed start-to-start 10-second cadence.
 - Added a distinct rejected-credential recovery flow and separated Home
   Assistant internet, Weber service, and hub Wi-Fi troubleshooting.

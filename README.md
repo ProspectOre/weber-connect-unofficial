@@ -86,11 +86,12 @@ without changing the entity's identity.
 
 The device page has exactly one permanent temperature entity for each physical
 slot: **Probe 1** through **Probe 4**. A connected probe shows its temperature;
-an empty slot—or a sleeping hub with no current reading—reads **Unknown** with
-the probe-off icon. That is the normal idle state, not a sign that the
-integration or Home Assistant is offline. Battery level, probe type, and probe
-state remain attributes on that same entity instead of creating redundant
-entities.
+an empty slot—or a sleeping or powered-off hub with no current reading—reads
+**Unknown** with the probe-off icon. That is the normal idle state, not a sign
+that the integration or Home Assistant is offline. Routine disconnects recover
+quietly without raising a Home Assistant repair. Battery level, probe type, and
+probe state remain attributes on that same entity instead of creating
+redundant entities.
 
 3.0 is deliberately read-only. Recipe text, instructions, cook controls,
 cavities, timers, and technical connection-status entities are not exposed.
