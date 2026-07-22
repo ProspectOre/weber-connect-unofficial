@@ -10,6 +10,7 @@
   companion credential, which requires pairing again.
 - Clear connection-loss repair records created by 3.0.0 when the integration
   starts after an update.
+- Update the pinned WebSocket runtime from 16.1 to 16.1.1.
 
 ## 3.0.0 — 2026-07-21
 
