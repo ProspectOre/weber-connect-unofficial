@@ -41,9 +41,10 @@ commands, and transient pairing keys are not persisted or returned by
 diagnostics.
 
 Expected idle behavior is represented by four visible temperature entities
-with `Unknown` values and probe-off icons. Local hub sleep is not a repair
-condition. Sustained cloud failure may create one actionable repair because
-internet access is required for the selected mode.
+with `Unknown` values and probe-off icons. Hub sleep, power-off, loss of Wi-Fi,
+and temporary cloud outages are routine availability states, so they recover
+quietly without a repair issue. Only a rejected generated companion credential
+creates a repair because it cannot recover without pairing again.
 
 ## Invariants
 

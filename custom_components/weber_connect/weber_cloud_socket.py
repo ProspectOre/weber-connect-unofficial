@@ -280,8 +280,8 @@ class WeberCloudSession:
         delay_index = 0
         try:
             while not self._closed:
-                # Preserve a repair-flow wake that arrives while network I/O is
-                # in progress so the next attempt starts immediately.
+                # Preserve a wake request that arrives while network I/O is in
+                # progress so the next attempt starts immediately.
                 self._wake.clear()
                 started = asyncio.get_running_loop().time()
                 try:
@@ -314,7 +314,7 @@ class WeberCloudSession:
             await self.async_close()
 
     def async_wake(self) -> None:
-        """Request an immediate cloud retry from a repair flow."""
+        """Request an immediate cloud retry."""
 
         self._wake.set()
 

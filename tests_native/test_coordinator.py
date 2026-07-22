@@ -149,20 +149,19 @@ def test_three_failures_clear_stale_temperature_to_honest_unknown(hass: object) 
 
 def test_local_idle_never_creates_a_repair(hass: object) -> None:
     coordinator, _transport = _coordinator(hass, cloud=False)
-    for _ in range(coordinator_module.REPAIR_FAILURE_THRESHOLD + 2):
+    for _ in range(20):
         coordinator._async_error("hub is asleep")
     issue_id = f"connection_lost_{coordinator.entry.entry_id}"
     assert ir.async_get(hass).async_get_issue("weber_connect", issue_id) is None
 
 
-def test_cloud_outage_creates_one_repair_and_recovery_clears_it(hass: object) -> None:
+def test_cloud_outage_never_creates_a_repair(hass: object) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
-    for _ in range(coordinator_module.REPAIR_FAILURE_THRESHOLD):
-        coordinator._async_error("cloud offline")
+    for _ in range(20):
+        coordinator._async_error("hub powered off")
     issue_id = f"connection_lost_{coordinator.entry.entry_id}"
-    assert ir.async_get(hass).async_get_issue("weber_connect", issue_id) is not None
-    coordinator._async_status({"probes": []})
     assert ir.async_get(hass).async_get_issue("weber_connect", issue_id) is None
+    assert coordinator.data["connected"] is False
 
 
 def test_rejected_cloud_credential_creates_distinct_immediate_repair(hass: object) -> None:
@@ -178,7 +177,7 @@ def test_rejected_cloud_credential_creates_distinct_immediate_repair(hass: objec
     assert registry.async_get_issue("weber_connect", connection_issue) is None
 
     transport.error_kind = "connection"
-    for _ in range(coordinator_module.REPAIR_FAILURE_THRESHOLD):
+    for _ in range(20):
         coordinator._async_error("network unavailable")
     assert registry.async_get_issue("weber_connect", credential_issue) is not None
     assert registry.async_get_issue("weber_connect", connection_issue) is None
@@ -196,19 +195,18 @@ def test_bluetooth_advertisement_wakes_existing_session_only(hass: object) -> No
 
 
 @pytest.mark.asyncio
-async def test_retry_waits_for_fresh_status(hass: object) -> None:
-    coordinator, transport = _coordinator(hass, cloud=True)
-    retry = asyncio.create_task(coordinator.async_retry(timeout=0.5))
-    await asyncio.sleep(0)
-    assert transport.wake_count == 1
-    coordinator._async_status({"probes": []})
-    assert await retry is True
-    assert await coordinator.async_retry(timeout=0.01) is False
-
-
-@pytest.mark.asyncio
 async def test_start_and_close_own_exactly_one_transport_task(hass: object) -> None:
     coordinator, transport = _coordinator(hass, cloud=False)
+    legacy_issue = f"connection_lost_{coordinator.entry.entry_id}"
+    ir.async_create_issue(
+        hass,
+        "weber_connect",
+        legacy_issue,
+        is_fixable=True,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="connection_lost",
+    )
+    assert ir.async_get(hass).async_get_issue("weber_connect", legacy_issue) is not None
     cancel_callback = MagicMock()
     with patch.object(
         coordinator_module.bluetooth,
@@ -219,6 +217,7 @@ async def test_start_and_close_own_exactly_one_transport_task(hass: object) -> N
         coordinator.async_start()
     await transport.started.wait()
     assert coordinator._transport_task is not None
+    assert ir.async_get(hass).async_get_issue("weber_connect", legacy_issue) is None
     register.assert_called_once()
 
     await coordinator.async_close()

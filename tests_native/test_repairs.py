@@ -1,97 +1,27 @@
-"""Native Home Assistant repair-flow coverage."""
+"""Native Home Assistant credential-repair coverage."""
 
 from __future__ import annotations
-
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.weber_connect.const import DOMAIN
-from custom_components.weber_connect.models import WeberRuntimeData
 from custom_components.weber_connect.repairs import async_create_fix_flow
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
 
 @pytest.mark.asyncio
-async def test_connection_repair_recovers_when_data_resumes(hass: object) -> None:
-    coordinator = SimpleNamespace(
-        data={"connected": True},
-        async_retry=AsyncMock(return_value=True),
-    )
-    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id="test-hub")
-    entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
-    entry.add_to_hass(hass)
-
-    flow = await async_create_fix_flow(
-        hass,
-        f"connection_lost_{entry.entry_id}",
-        {"entry_id": entry.entry_id},
-    )
-    flow.hass = hass
-    result = await flow.async_step_init()
-    assert result["type"] is FlowResultType.FORM
-
-    result = await flow.async_step_confirm({})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    coordinator.async_retry.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_connection_repair_stays_open_while_unavailable(hass: object) -> None:
-    coordinator = SimpleNamespace(
-        data={"connected": False},
-        async_retry=AsyncMock(return_value=False),
-    )
-    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id="test-hub")
-    entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
-    entry.add_to_hass(hass)
-    flow = await async_create_fix_flow(
-        hass,
-        f"connection_lost_{entry.entry_id}",
-        {"entry_id": entry.entry_id},
-    )
-    flow.hass = hass
-
-    result = await flow.async_step_confirm({})
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "still_unavailable"}
-
-
-@pytest.mark.asyncio
-async def test_connection_repair_handles_removed_entry_and_invalid_data(hass: object) -> None:
-    flow = await async_create_fix_flow(
-        hass,
-        "connection_lost_removed",
-        {"entry_id": "removed"},
-    )
-    flow.hass = hass
-    result = await flow.async_step_confirm({})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-
+async def test_repair_rejects_retired_connection_issue_and_invalid_data(hass: object) -> None:
+    with pytest.raises(ValueError, match="no longer supported"):
+        await async_create_fix_flow(
+            hass,
+            "connection_lost_retired",
+            {"entry_id": "retired"},
+        )
     with pytest.raises(ValueError, match="missing its config entry"):
-        await async_create_fix_flow(hass, "connection_lost_invalid", None)
-
-
-@pytest.mark.asyncio
-async def test_connection_repair_explains_unloaded_entry(hass: object) -> None:
-    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id="unloaded-hub")
-    entry.add_to_hass(hass)
-    flow = await async_create_fix_flow(
-        hass,
-        f"connection_lost_{entry.entry_id}",
-        {"entry_id": entry.entry_id},
-    )
-    flow.hass = hass
-
-    result = await flow.async_step_confirm({})
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "entry_not_loaded"}
+        await async_create_fix_flow(hass, "credentials_rejected_invalid", None)
 
 
 @pytest.mark.asyncio
