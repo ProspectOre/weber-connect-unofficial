@@ -1,6 +1,7 @@
 # Weber Connect Unofficial
 
-Native Home Assistant support for the Weber Connect Smart Grilling Hub.
+Native Home Assistant support for the Weber Connect Smart Grilling Hub and
+compatible built-in Weber Connect controllers.
 
 Version 3.0 is one native Home Assistant integration:
 
@@ -135,6 +136,13 @@ The final 3.0 physical setup and endurance tests used the ESPHome proxy path.
 A host-adapter-only pairing and endurance run has not been completed, so direct
 adapter compatibility is implemented through Home Assistant's standard
 Bluetooth manager but is not claimed as physically verified for this release.
+
+Version 3.0.3 is also community-verified on a **Weber Performer Deluxe Smart
+57** (also sold as the **Performer Premium Smart**) running firmware
+`2.9.0.8076` in **Phone + Home Assistant** mode. The reporter confirmed that
+the new built-in **Grill temperature** entity works correctly alongside the
+external probes. This is a successful compatibility report rather than a
+controlled endurance test; see [issue #24](https://github.com/ProspectOre/weber-connect-unofficial/issues/24).
 
 The final candidate was also restarted into **Home Assistant only** with the
 ESPHome proxy as the sole Bluetooth source. After a deliberate proxy power

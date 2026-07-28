@@ -5,6 +5,9 @@
 - Added a permanent **Grill temperature** entity for appliances with a built-in
   cavity/ambient sensor, using the current cavity temperature already decoded
   by both cloud and Bluetooth transports.
+- Confirmed through a community report that the entity works on the **Weber
+  Performer Deluxe Smart 57 / Performer Premium Smart** running firmware
+  `2.9.0.8076` in **Phone + Home Assistant** mode.
 
 ## 3.0.2 — 2026-07-22
 

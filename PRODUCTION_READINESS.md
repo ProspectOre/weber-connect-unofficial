@@ -320,14 +320,29 @@ transport also recovered without intervention: final diagnostics recorded four
 successful updates, zero failed or consecutive failed updates, no current
 error, and a fresh Probe 4 reading of `22.3 °C`.
 
+### Community compatibility report
+
+On July 28, 2026, a user confirmed that version 3.0.3 works on a **Weber
+Performer Deluxe Smart 57**, also known as the **Performer Premium Smart**, with
+firmware `2.9.0.8076` in **Phone + Home Assistant** mode. The built-in **Grill
+temperature** entity appeared and worked correctly alongside the external
+probes. The user described the integration as working flawlessly; no debug log
+was needed after the successful validation. This report is recorded in
+[issue #24](https://github.com/ProspectOre/weber-connect-unofficial/issues/24).
+
+This is useful model-specific compatibility evidence, but it is a community
+report rather than the controlled pairing, restart, recovery, and endurance
+matrix performed on the local Weber Connect Hub.
+
 Two-proxy failover remains explicitly untested because a second proxy is not
 available. It may not be described as verified.
 
 The following also remain explicitly unverified on physical production
 hardware: host-adapter-only pairing/endurance, real wall-clock token renewal
 after the approximately 5.8-hour bearer lifetime, revoked-companion recovery,
-prolonged Weber outages, hub Wi-Fi changes, other hub models/firmware/regions,
-and installation from an actual `v3.0.0` HACS release archive. Token renewal,
+prolonged Weber outages, hub Wi-Fi changes, additional models, firmware, and
+regions beyond the evidence above, and installation from an actual `v3.0.0`
+HACS release archive. Token renewal,
 credential rejection, malformed-frame handling, and archive layout are covered
 by deterministic tests or local candidate packaging, but those are not a
 substitute for the named production scenarios.
