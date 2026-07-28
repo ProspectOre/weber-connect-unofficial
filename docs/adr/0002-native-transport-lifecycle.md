@@ -15,9 +15,12 @@ sample, cloud reads repeated cook-history requests that were outside the 3.0
 entity scope, and an optional fallback could compete with the Weber app for the
 hub's single Bluetooth connection.
 
-3.0 exposes four permanent probe-temperature entities plus two concise
-connection-context entities. The runtime architecture should be derived from
-that product contract rather than from the removed add-on.
+3.0 introduced stable probe-temperature entities plus two concise
+connection-context entities. Version 3.0.4 makes the entity surface
+model-aware: Probe 1 and Probe 2 are the baseline, while Probe 3 and Probe 4 are
+created only after their slot numbers appear in decoded status. The runtime
+architecture should be derived from that product contract rather than from the
+removed add-on.
 
 ## Decision
 
@@ -35,16 +38,18 @@ fallback. A transport is closed before another can start, and config-entry
 unload cancels every entry-owned task and releases its WebSocket or GATT
 connection.
 
-The normalized runtime state contains the four probe slots, current connection
-state and method, and the last successful update time. Raw cook sessions,
-recipe text, instructions, cavities, timers, control commands, and transient
-pairing keys are not persisted or returned by diagnostics.
+The normalized runtime state can represent up to four probe slots and records
+which slot numbers were present in the latest decoded status. It also contains
+the current connection state and method and the last successful update time.
+Raw cook sessions, recipe text, instructions, timers, control commands, and
+transient pairing keys are not persisted or returned by diagnostics.
 
-Expected idle behavior is represented by four visible temperature entities
-with `Unknown` values and probe-off icons. Hub sleep, power-off, loss of Wi-Fi,
-and temporary cloud outages are routine availability states, so they recover
-quietly without a repair issue. Only a rejected generated companion credential
-creates a repair because it cannot recover without pairing again.
+Expected idle behavior is represented by every registered probe-temperature
+entity retaining an `Unknown` value and probe-off icon. Hub sleep, power-off,
+loss of Wi-Fi, and temporary cloud outages are routine availability states, so
+they recover quietly without a repair issue. Only a rejected generated
+companion credential creates a repair because it cannot recover without pairing
+again.
 
 ## Invariants
 
@@ -56,8 +61,9 @@ creates a repair because it cannot recover without pairing again.
    never connects to an ESPHome proxy directly or handles its credentials.
 5. Cloud status uses the companion WebSocket only after setup; cook-history REST
    data is not part of the 3.0 runtime path.
-6. Exactly four probe-temperature entities and two connection-context entities
-   exist; their unique IDs depend only on the hub and semantic entity key.
+6. Probe 1 and Probe 2 are baseline entities. Probe 3 and Probe 4 are created
+   only after their slots are reported. Their unique IDs depend only on the hub
+   and semantic entity key.
 7. Diagnostics contain no raw protocol frames, credentials, device identifiers,
    recipe metadata, or instruction text.
 8. An empty or sleeping hub remains a normal visible idle state, not a device

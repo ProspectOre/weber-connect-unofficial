@@ -17,7 +17,7 @@ def normalize_state(
     connected: bool,
     last_successful_update: str | None = None,
 ) -> dict[str, Any]:
-    """Return the built-in grill sensor, four probe slots, and connection context."""
+    """Return model-aware probe data, the grill sensor, and connection context."""
 
     raw = status or {}
     state: dict[str, Any] = {
@@ -30,11 +30,16 @@ def normalize_state(
     probes = raw.get("probes")
     if not isinstance(probes, list):
         probes = []
+    probes_by_number: dict[int, dict[str, Any]] = {}
+    for row in probes:
+        if not isinstance(row, dict):
+            continue
+        number = row.get("probe_number")
+        if type(number) is int and 1 <= number <= 4:
+            probes_by_number.setdefault(number, row)
+    state["reported_probe_numbers"] = tuple(sorted(probes_by_number))
     for number in range(1, 5):
-        probe = next(
-            (row for row in probes if isinstance(row, dict) and row.get("probe_number") == number),
-            {},
-        )
+        probe = probes_by_number.get(number, {})
         state[f"probe_{number}_temperature"] = probe.get("probe_temp_c")
         state[f"probe_{number}_battery"] = probe.get("battery_level")
         state[f"probe_{number}_state"] = probe.get("state") or "Not connected"

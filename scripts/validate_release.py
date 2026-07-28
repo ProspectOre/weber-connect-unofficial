@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.0.3"
+VERSION = "3.0.4"
 DOMAIN = "weber_connect"
 
 
