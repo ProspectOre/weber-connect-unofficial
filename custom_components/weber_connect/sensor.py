@@ -76,6 +76,9 @@ SENSORS: tuple[WeberSensorDescription, ...] = (
     ),
 )
 
+BASE_PROBE_NUMBERS = (1, 2)
+OPTIONAL_PROBE_NUMBERS = (3, 4)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -87,20 +90,38 @@ async def async_setup_entry(
     async_add_entities(
         WeberSensor(coordinator, entry, description)
         for description in SENSORS
-        if description is not GRILL_TEMPERATURE_SENSOR
+        if description.key == "last_successful_update"
+        or description.key in {f"probe_{number}_temperature" for number in BASE_PROBE_NUMBERS}
     )
 
-    grill_sensor_added = False
+    added_dynamic_sensor_keys: set[str] = set()
 
-    def _async_add_grill_sensor() -> None:
-        nonlocal grill_sensor_added
-        if grill_sensor_added or coordinator.data.get("grill_temperature") is None:
+    def _async_add_dynamic_sensors() -> None:
+        descriptions: list[WeberSensorDescription] = []
+        if (
+            "grill_temperature" not in added_dynamic_sensor_keys
+            and coordinator.data.get("grill_temperature") is not None
+        ):
+            descriptions.append(GRILL_TEMPERATURE_SENSOR)
+
+        reported_probe_numbers = coordinator.data.get("reported_probe_numbers", ())
+        if not isinstance(reported_probe_numbers, (list, tuple)):
+            reported_probe_numbers = ()
+        for number in OPTIONAL_PROBE_NUMBERS:
+            key = f"probe_{number}_temperature"
+            if key in added_dynamic_sensor_keys or number not in reported_probe_numbers:
+                continue
+            descriptions.append(next(row for row in SENSORS if row.key == key))
+
+        if not descriptions:
             return
-        grill_sensor_added = True
-        async_add_entities([WeberSensor(coordinator, entry, GRILL_TEMPERATURE_SENSOR)])
+        added_dynamic_sensor_keys.update(description.key for description in descriptions)
+        async_add_entities(
+            WeberSensor(coordinator, entry, description) for description in descriptions
+        )
 
-    _async_add_grill_sensor()
-    entry.async_on_unload(coordinator.async_add_listener(_async_add_grill_sensor))
+    _async_add_dynamic_sensors()
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_dynamic_sensors))
 
 
 class WeberSensor(WeberEntity, SensorEntity):

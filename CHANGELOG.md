@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.4 — 2026-07-28
+
+- Create **Probe 1** and **Probe 2** as the baseline entity set, while adding
+  **Probe 3** and **Probe 4** only after the controller reports those slots.
+- Preserve stable slot-based entity IDs and normal `Unknown` idle behavior once
+  an optional probe slot has been discovered.
+- Update the documentation to describe model-aware probe entities instead of a
+  fixed four-probe contract.
+
 ## 3.0.3 — 2026-07-27
 
 - Added a permanent **Grill temperature** entity for appliances with a built-in
@@ -18,14 +27,13 @@
   hub sleep or power-off retains useful context about the latest fresh data.
 - Remove every retired connection-loss repair on startup, including stale
   repairs left behind by an earlier deleted config entry.
-- Kept the established surface of exactly four stable probe-temperature
-  entities unchanged.
+- Kept the established stable probe-entity identities unchanged.
 
 ## 3.0.1 — 2026-07-21
 
 - Treat a sleeping, powered-off, or temporarily unreachable hub as normal idle
   behavior instead of raising a Home Assistant repair issue.
-- Continue quiet background recovery while retaining all four probe entities
+- Continue quiet background recovery while retaining registered probe entities
   as `Unknown` until fresh readings return.
 - Preserve the actionable repair only for a genuinely rejected generated
   companion credential, which requires pairing again.
@@ -42,13 +50,12 @@
   Home Assistant, including best-path re-resolution during retry.
 - Added automatic Weber Cloud setup for simultaneous Weber app and Home
   Assistant telemetry by default.
-- Added exactly four permanent native probe temperature entities; each keeps
-  its physical slot number and exposes probe state, type, and battery as
-  attributes.
+- Added stable native probe-temperature entities with physical slot numbers;
+  each exposes probe state, type, and battery as attributes.
 - Added optional probe nicknames that remain visibly tied to permanent probe
   slots and stable unique IDs.
-- Kept all four probe slots visible: connected slots show temperature and empty
-  slots show `Unknown` with the probe-off icon.
+- Kept registered probe slots visible: connected slots show temperature and
+  empty slots show `Unknown` with the probe-off icon.
 - Removed unvalidated recipe, instruction, status, cavity, timer, and remote
   control entities from the 3.0 release surface.
 - Added sequential setup progress, task-specific recovery actions, and grouped

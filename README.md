@@ -8,9 +8,9 @@ Version 3.0 is one native Home Assistant integration:
 - automatic Bluetooth discovery through local adapters and active ESPHome proxies;
 - one physically confirmed setup with no Weber email, password, phone secret, or packet capture;
 - native devices and entities—no MQTT broker or separate control panel;
-- one built-in grill temperature entity and exactly four stable probe
-  temperature entities—one for each physical slot—plus clear connection and
-  last-update context;
+- model-aware temperature entities for the built-in grill sensor and physical
+  probe slots the controller reports, plus clear connection and last-update
+  context;
 - phone + Home Assistant by default: the Weber app may own Bluetooth while
   Home Assistant follows probe temperatures through its own Weber Cloud
   connection;
@@ -62,10 +62,10 @@ has been validated end to end on the equipment below.
 
 3.0 is a clean native integration, not an in-place add-on upgrade. In the 2.1
 panel, use **Forget This Hub**, then stop and uninstall the add-on before
-installing 3.0. The native integration creates a new device, four probe
-temperature entities, two connection-context entities, and a grill temperature
-entity when the appliance reports a built-in sensor; it does not import
-the add-on's MQTT entities or settings. If
+installing 3.0. The native integration creates a new device, probe-temperature
+entities appropriate for the controller, two connection-context entities, and
+a grill-temperature entity when the appliance reports a built-in sensor; it
+does not import the add-on's MQTT entities or settings. If
 an old unavailable MQTT device remains, remove its retained discovery records
 from the broker and delete that MQTT device from Home Assistant. The add-on and
 its MQTT broker are not needed by 3.0.
@@ -77,7 +77,7 @@ Assistant**. Home Assistant keeps one Weber Cloud companion socket open and
 requests fresh status on a 10-second cadence, leaving the hub's single
 Bluetooth connection available to the Weber app. Recipes continue to be
 started and managed in the Weber app while Home Assistant monitors the built-in
-grill temperature and four probe temperature slots.
+grill temperature and the controller's available probe slots.
 
 **Home Assistant only** instead keeps one local GATT connection open through
 Home Assistant's selected adapter or active ESPHome proxy. It reconnects only
@@ -89,10 +89,13 @@ Probe entities retain stable slot IDs such as `probe_2_temperature`. Optional
 nicknames keep the physical number visible—for example, **Brisket · Probe 2**—
 without changing the entity's identity.
 
-The device page has a permanent **Grill temperature** entity for the built-in
-grill sensor and exactly one permanent entity for each physical probe slot:
-**Probe 1** through **Probe 4**. A connected probe shows its temperature;
-an empty slot—or a sleeping or powered-off hub with no current reading—reads
+The device page starts with **Probe 1** and **Probe 2**, which are common to the
+supported controllers. **Probe 3** and **Probe 4** are added only after the
+controller reports those slot numbers, so a two-port model does not receive
+unused entities. The built-in **Grill temperature** entity is likewise added
+only when the controller reports that sensor. Once created, each entity keeps
+its stable slot-based identity. A connected probe shows its temperature; an
+empty slot—or a sleeping or powered-off hub with no current reading—reads
 **Unknown** with the probe-off icon. That is the normal idle state, not a sign
 that the integration or Home Assistant is offline. Routine disconnects recover
 quietly without raising a Home Assistant repair. Battery level, probe type, and
@@ -143,6 +146,9 @@ Version 3.0.3 is also community-verified on a **Weber Performer Deluxe Smart
 the new built-in **Grill temperature** entity works correctly alongside the
 external probes. This is a successful compatibility report rather than a
 controlled endurance test; see [issue #24](https://github.com/ProspectOre/weber-connect-unofficial/issues/24).
+The same report confirmed that this model has two physical probe ports; version
+3.0.4 therefore keeps Probe 3 and Probe 4 absent unless the controller actually
+reports them.
 
 The final candidate was also restarted into **Home Assistant only** with the
 ESPHome proxy as the sole Bluetooth source. After a deliberate proxy power

@@ -39,7 +39,7 @@ def test_manifest_and_hacs_contract() -> None:
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == DOMAIN
-    assert manifest["version"] == "3.0.3"
+    assert manifest["version"] == "3.0.4"
     assert manifest["config_flow"] is True
     assert manifest["dependencies"] == ["bluetooth_adapters"]
     assert manifest["iot_class"] == "cloud_polling"
@@ -84,13 +84,21 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
         {
             "actual_cavity_temp_c": 121.5,
             "probes": [
+                "invalid",
+                {"probe_number": True, "probe_temp_c": 99.0},
+                {"probe_number": 5, "probe_temp_c": 99.0},
+                {
+                    "probe_number": 4,
+                    "probe_temp_c": None,
+                    "state": "Not connected",
+                },
                 {
                     "probe_number": 2,
                     "probe_temp_c": 25.4,
                     "battery_level": 87,
                     "state": "CONNECTED",
                     "probe_type": "MEAT",
-                }
+                },
             ],
             "active_cook": {
                 "title": "Private recipe",
@@ -103,6 +111,7 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
     assert state["probe_1_temperature"] is None
     assert state["probe_2_temperature"] == 25.4
     assert state["probe_2_battery"] == 87
+    assert state["reported_probe_numbers"] == (2, 4)
     assert state["grill_temperature"] == 121.5
     assert state["source"] == "cloud"
     assert state["connected"] is True
@@ -113,7 +122,7 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
     assert "timer_1_remaining" not in state
 
 
-def test_sensor_surface_contains_grill_four_probe_slots_and_last_update() -> None:
+def test_sensor_surface_supports_grill_up_to_four_probes_and_last_update() -> None:
     descriptions = {description.key: description for description in SENSORS}
     probe_keys = {f"probe_{number}_temperature" for number in range(1, 5)}
     assert set(descriptions) == probe_keys | {
@@ -148,19 +157,31 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
         lambda entities: batches.append(list(entities)),
     )
     assert len(batches) == 1
-    probe_keys = {f"probe_{number}_temperature" for number in range(1, 5)}
-    assert {entity.entity_description.key for entity in batches[0]} == probe_keys | {
+    assert {entity.entity_description.key for entity in batches[0]} == {
+        "probe_1_temperature",
+        "probe_2_temperature",
         "last_successful_update",
     }
 
     coordinator.data["grill_temperature"] = 121.5
+    coordinator.data["reported_probe_numbers"] = (1, 2, 4)
     listener = listeners[0]
     assert callable(listener)
     listener()
     listener()
 
     assert len(batches) == 2
-    assert [entity.entity_description.key for entity in batches[1]] == ["grill_temperature"]
+    assert [entity.entity_description.key for entity in batches[1]] == [
+        "grill_temperature",
+        "probe_4_temperature",
+    ]
+
+    coordinator.data["reported_probe_numbers"] = (1, 2, 3, 4)
+    listener()
+    listener()
+
+    assert len(batches) == 3
+    assert [entity.entity_description.key for entity in batches[2]] == ["probe_3_temperature"]
 
 
 @pytest.mark.asyncio

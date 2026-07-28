@@ -113,7 +113,7 @@ def test_local_mode_constructs_only_bluetooth_transport(hass: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_status_publishes_grill_and_four_slot_state_and_clears_failure(
+async def test_status_publishes_grill_and_reported_probe_state_and_clears_failure(
     hass: object,
 ) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
@@ -132,6 +132,7 @@ async def test_status_publishes_grill_and_four_slot_state_and_clears_failure(
     )
     assert coordinator.data["probe_2_temperature"] == 25.0
     assert coordinator.data["probe_1_temperature"] is None
+    assert coordinator.data["reported_probe_numbers"] == (2,)
     assert coordinator.data["grill_temperature"] == 121.5
     assert coordinator.data["source"] == "cloud"
     assert coordinator.last_error is None

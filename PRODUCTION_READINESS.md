@@ -35,7 +35,8 @@ row before describing host-adapter-only operation as physically verified.
 2. Fully close the Weber app and temporarily turn off Bluetooth on every phone
    or tablet that uses it.
 3. Complete physical-confirmation pairing, then turn Bluetooth back on.
-4. Verify four stable probe slots and accurate probe temperatures.
+4. Verify stable entities for every probe slot reported by the device and
+   accurate probe temperatures.
 5. Restart Home Assistant and confirm that no re-pairing is needed.
 6. Reopen the Weber app and verify that one persistent companion WebSocket
    provides simultaneous phone plus Home Assistant telemetry for at least one
@@ -74,15 +75,15 @@ Run with the host adapter disabled:
 
 ### Failure behavior
 
-- Weber Cloud unavailable: the four probe entities remain present and become
+- Weber Cloud unavailable: registered probe entities remain present and become
   `Unknown` after repeated failures; the integration retries quietly and does
   not silently take Bluetooth from the phone or raise a repair for a routinely
   powered-off hub.
-- Proxy out of slots: Home Assistant retains all four entities as `Unknown` and
+- Proxy out of slots: Home Assistant retains registered entities as `Unknown` and
   retries without a restart.
 - Hub out of range: the integration releases resources and recovers on a later
   update.
-- Sleeping or powered-off hub: the four probe entities remain visible as
+- Sleeping or powered-off hub: registered probe entities remain visible as
   `Unknown`; this expected idle state does not create a repair.
 - Pairing rejected or timed out: no config entry remains. Because the private
   companion must be registered before physical approval, Weber may retain an
@@ -97,7 +98,7 @@ Run with the host adapter disabled:
 
 ## Current evidence
 
-The local release candidate gate passes 110 tests with 96.06% combined
+The local release candidate gate passes 111 tests with 96.06% combined
 statement/branch coverage against the Home Assistant 2026.7.2 test framework.
 Ruff, formatting, strict mypy, Bandit, dependency audit, Actionlint, release
 contract validation, and Home Assistant 2026.7.2 Hassfest all pass locally.
@@ -130,12 +131,12 @@ proxy-only routing, direct protocol compatibility, clean slot release, and
 recovery from that transient controller failure before the final endurance
 run.
 
-The production entity check showed exactly four permanent probe-temperature
-entities. During an active sample Probe 3 reported `76.1 °F`; after the hub
-slept, all four entities remained visible as `Unknown`. Probe state, type, and
-battery remain attributes of the temperature entity. hci0 was restored after
-the proxy-only window, and the integration was returned successfully to the
-recommended Phone + Home Assistant mode.
+The production entity check observed four probe slots on the documented Weber
+Connect Hub. During an active sample Probe 3 reported `76.1 °F`; after the hub
+slept, every registered probe entity remained visible as `Unknown`. Probe
+state, type, and battery remain attributes of the temperature entity. hci0 was
+restored after the proxy-only window, and the integration was returned
+successfully to the recommended Phone + Home Assistant mode.
 
 On July 20, 2026, the final persistent transports were deployed together to
 Home Assistant 2026.7.2 and exercised against the same hub and proxy. In
@@ -178,8 +179,8 @@ transport recovery was required. Home Assistant's Bluetooth page continued to
 show the ESPHome proxy as the sole advertisement path.
 
 The test installation was then returned to the recommended state: hci0 enabled,
-Phone + Home Assistant selected, exactly four registered probe-temperature
-entities, no repair attention, and a healthy cloud transport.
+Phone + Home Assistant selected, the probe entities reported by that hub, no
+repair attention, and a healthy cloud transport.
 
 All four app/cook combinations were exercised after restoration: app closed
 with no cook, app open with no cook, app open with an active cook, and app
@@ -218,7 +219,8 @@ error afterward. Probe 2 resumed at `23.8 °C`. This verifies recovery from one
 proxy reboot on the documented equipment.
 
 The production config entry was then deleted. Home Assistant removed the entry,
-device, all four probe-temperature entities, and stored private configuration.
+device, all registered probe-temperature entities, and stored private
+configuration.
 A clean re-add
 found the hub through the ESPHome proxy and completed physical approval, but
 Weber's association list never granted the newly generated companion access to
@@ -276,16 +278,16 @@ Bluetooth was restored and the official app reopened, the app showed Probe 3 at
 Final native diagnostics reported the recommended
 `phone_and_home_assistant` mode, `cloud` transport, a connected socket, nine
 successful updates, zero failed updates, zero consecutive failures, no current
-error, and Probe 3 at `23.3 °C`. The device page contained exactly four stable
-probe-temperature entities. This closes the clean-install cloud-association
-release blocker on the documented equipment and validates the intended default
-setup end to end.
+error, and Probe 3 at `23.3 °C`. The device page contained stable entities for
+the four slots reported by that hub. This closes the clean-install
+cloud-association release blocker on the documented equipment and validates
+the intended default setup end to end.
 
 Version 3.0.2 adds two enabled-by-default connection-context entities without
-changing those four probe entities: a connectivity binary sensor with the
+changing the registered probe entities: a connectivity binary sensor with the
 active Weber Cloud or Bluetooth method, and a timestamp for the most recent
 successful update. Their state, icon, attributes, timestamp parsing, offline
-visibility, six-entity setup contract, and cleanup of orphaned pre-3.0.1
+visibility, connection-context setup contract, and cleanup of orphaned pre-3.0.1
 connection-loss repairs are covered by automated tests. The physical endurance
 evidence above validates the transport data that feeds them; the 3.0.2 entity
 presentation itself is an automated validation claim.
@@ -329,6 +331,9 @@ temperature** entity appeared and worked correctly alongside the external
 probes. The user described the integration as working flawlessly; no debug log
 was needed after the successful validation. This report is recorded in
 [issue #24](https://github.com/ProspectOre/weber-connect-unofficial/issues/24).
+The reporter also clarified that this model has two physical probe ports. That
+feedback prompted the 3.0.4 model-aware entity behavior: Probe 3 and Probe 4
+are created only when their slot numbers are present in decoded status.
 
 This is useful model-specific compatibility evidence, but it is a community
 report rather than the controlled pairing, restart, recovery, and endurance
