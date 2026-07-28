@@ -41,7 +41,19 @@ def _timestamp_value(data: dict[str, Any]) -> datetime | None:
     return datetime.fromisoformat(value)
 
 
+GRILL_TEMPERATURE_SENSOR = WeberSensorDescription(
+    key="grill_temperature",
+    translation_key="grill_temperature",
+    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+    device_class=SensorDeviceClass.TEMPERATURE,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=1,
+    icon="mdi:grill-outline",
+    value_fn=_value("grill_temperature"),
+)
+
 SENSORS: tuple[WeberSensorDescription, ...] = (
+    GRILL_TEMPERATURE_SENSOR,
     *tuple(
         WeberSensorDescription(
             key=f"probe_{number}_temperature",
@@ -72,11 +84,27 @@ async def async_setup_entry(
 ) -> None:
     runtime: WeberRuntimeData = entry.runtime_data
     coordinator = runtime.coordinator
-    async_add_entities(WeberSensor(coordinator, entry, description) for description in SENSORS)
+    async_add_entities(
+        WeberSensor(coordinator, entry, description)
+        for description in SENSORS
+        if description is not GRILL_TEMPERATURE_SENSOR
+    )
+
+    grill_sensor_added = False
+
+    def _async_add_grill_sensor() -> None:
+        nonlocal grill_sensor_added
+        if grill_sensor_added or coordinator.data.get("grill_temperature") is None:
+            return
+        grill_sensor_added = True
+        async_add_entities([WeberSensor(coordinator, entry, GRILL_TEMPERATURE_SENSOR)])
+
+    _async_add_grill_sensor()
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_grill_sensor))
 
 
 class WeberSensor(WeberEntity, SensorEntity):
-    """One permanent Weber probe temperature slot."""
+    """One Weber temperature or update sensor."""
 
     entity_description: WeberSensorDescription
 
@@ -120,9 +148,11 @@ class WeberSensor(WeberEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Keep permanent probe slots visible while an empty slot is unknown."""
+        """Keep permanent temperature slots visible while their values are unknown."""
 
         key = self.entity_description.key
+        if key == "grill_temperature":
+            return True
         if key.startswith("probe_") and key.endswith("_temperature"):
             return True
         if key == "last_successful_update":

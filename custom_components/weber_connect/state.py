@@ -17,7 +17,7 @@ def normalize_state(
     connected: bool,
     last_successful_update: str | None = None,
 ) -> dict[str, Any]:
-    """Return the four stable probe slots and connection context."""
+    """Return the built-in grill sensor, four probe slots, and connection context."""
 
     raw = status or {}
     state: dict[str, Any] = {
@@ -25,6 +25,7 @@ def normalize_state(
         "connected": connected,
         "source": source,
         "last_successful_update": last_successful_update,
+        "grill_temperature": raw.get("actual_cavity_temp_c"),
     }
     probes = raw.get("probes")
     if not isinstance(probes, list):

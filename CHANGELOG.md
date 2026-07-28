@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.3 — 2026-07-27
+
+- Added a permanent **Grill temperature** entity for appliances with a built-in
+  cavity/ambient sensor, using the current cavity temperature already decoded
+  by both cloud and Bluetooth transports.
+
 ## 3.0.2 — 2026-07-22
 
 - Added an enabled-by-default **Connection** entity that reports

@@ -16,7 +16,8 @@ Home Assistant config entry
                                       │
                              local adapter or active proxy
 
-coordinator ──► four permanent native probe temperature sensors
+coordinator ──► one permanent built-in grill temperature sensor
+            ├─► four permanent native probe temperature sensors
             ├─► one connection binary sensor
             └─► one last-successful-update timestamp sensor
 ```
@@ -65,10 +66,11 @@ Home Assistant retains no credential after the flow is discarded.
 - Never fail over automatically between cloud and Bluetooth. Changing mode
   reloads the entry and closes the old transport first.
 
-The coordinator normalizes both transports into one stable state shape. Four
-temperature entities retain the physical probe slots. An always-visible
-connection binary sensor reports the current transport state and method, while
-a timestamp sensor preserves the last successful read. Entity unique IDs use
+The coordinator normalizes both transports into one stable state shape. One
+temperature entity exposes the built-in grill sensor, while four more retain
+the physical probe slots. An always-visible connection binary sensor reports
+the current transport state and method, while a timestamp sensor preserves the
+last successful read. Entity unique IDs use
 the config entry's hub address plus a semantic key, so a proxy change or
 user-visible rename does not create new entities.
 
