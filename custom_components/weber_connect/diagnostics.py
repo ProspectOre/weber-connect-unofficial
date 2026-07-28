@@ -46,6 +46,7 @@ async def async_get_config_entry_diagnostics(
         "successful_updates": coordinator.successful_updates,
         "failed_updates": coordinator.failed_updates,
         "last_error": coordinator.last_error,
+        "grill_temperature_c": state.get("grill_temperature"),
         "probe_slots": [
             {
                 "number": number,

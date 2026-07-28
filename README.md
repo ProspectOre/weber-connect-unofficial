@@ -7,8 +7,9 @@ Version 3.0 is one native Home Assistant integration:
 - automatic Bluetooth discovery through local adapters and active ESPHome proxies;
 - one physically confirmed setup with no Weber email, password, phone secret, or packet capture;
 - native devices and entities—no MQTT broker or separate control panel;
-- exactly four stable probe temperature entities—one for each physical slot—
-  plus clear connection and last-update context;
+- one built-in grill temperature entity and exactly four stable probe
+  temperature entities—one for each physical slot—plus clear connection and
+  last-update context;
 - phone + Home Assistant by default: the Weber app may own Bluetooth while
   Home Assistant follows probe temperatures through its own Weber Cloud
   connection;
@@ -61,7 +62,8 @@ has been validated end to end on the equipment below.
 3.0 is a clean native integration, not an in-place add-on upgrade. In the 2.1
 panel, use **Forget This Hub**, then stop and uninstall the add-on before
 installing 3.0. The native integration creates a new device, four probe
-temperature entities, and two connection-context entities; it does not import
+temperature entities, two connection-context entities, and a grill temperature
+entity when the appliance reports a built-in sensor; it does not import
 the add-on's MQTT entities or settings. If
 an old unavailable MQTT device remains, remove its retained discovery records
 from the broker and delete that MQTT device from Home Assistant. The add-on and
@@ -73,8 +75,8 @@ After cloud association succeeds, the default mode is **Phone + Home
 Assistant**. Home Assistant keeps one Weber Cloud companion socket open and
 requests fresh status on a 10-second cadence, leaving the hub's single
 Bluetooth connection available to the Weber app. Recipes continue to be
-started and managed in the Weber app while Home Assistant monitors the four
-probe temperature slots.
+started and managed in the Weber app while Home Assistant monitors the built-in
+grill temperature and four probe temperature slots.
 
 **Home Assistant only** instead keeps one local GATT connection open through
 Home Assistant's selected adapter or active ESPHome proxy. It reconnects only
@@ -86,8 +88,9 @@ Probe entities retain stable slot IDs such as `probe_2_temperature`. Optional
 nicknames keep the physical number visible—for example, **Brisket · Probe 2**—
 without changing the entity's identity.
 
-The device page has exactly one permanent temperature entity for each physical
-slot: **Probe 1** through **Probe 4**. A connected probe shows its temperature;
+The device page has a permanent **Grill temperature** entity for the built-in
+grill sensor and exactly one permanent entity for each physical probe slot:
+**Probe 1** through **Probe 4**. A connected probe shows its temperature;
 an empty slot—or a sleeping or powered-off hub with no current reading—reads
 **Unknown** with the probe-off icon. That is the normal idle state, not a sign
 that the integration or Home Assistant is offline. Routine disconnects recover
@@ -101,8 +104,8 @@ using **Weber Cloud** or **Bluetooth**. **Last successful update** preserves the
 time fresh hub data most recently arrived, including while the hub is sleeping
 or powered off.
 
-3.0 is deliberately read-only. Recipe text, instructions, cook controls,
-cavities, and timers are not exposed.
+3.0 is deliberately read-only. Recipe text, instructions, cook controls, target
+temperatures, and timers are not exposed.
 
 ## Requirements
 

@@ -240,6 +240,7 @@ class CookSessionStatusTests(unittest.TestCase):
 
         # sentinel deci-celsius sets the *_c/*_f pair to None.
         self.assertIsNone(parsed["target_cavity_temp_c"])
+        self.assertEqual(parsed["actual_cavity_temp_c"], 41.0)
         self.assertEqual(parsed["display_cavity_temp_f"], 205)
         self.assertEqual(parsed["cook_mode"], 1)
 

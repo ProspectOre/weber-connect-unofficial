@@ -113,22 +113,26 @@ def test_local_mode_constructs_only_bluetooth_transport(hass: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_status_publishes_four_slot_state_and_clears_failure(hass: object) -> None:
+async def test_status_publishes_grill_and_four_slot_state_and_clears_failure(
+    hass: object,
+) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
     coordinator._async_error("temporary")
     coordinator._async_status(
         {
+            "actual_cavity_temp_c": 121.5,
             "probes": [
                 {
                     "probe_number": 2,
                     "probe_temp_c": 25.0,
                     "state": "PROBED",
                 }
-            ]
+            ],
         }
     )
     assert coordinator.data["probe_2_temperature"] == 25.0
     assert coordinator.data["probe_1_temperature"] is None
+    assert coordinator.data["grill_temperature"] == 121.5
     assert coordinator.data["source"] == "cloud"
     assert coordinator.last_error is None
     assert coordinator.consecutive_failures == 0
@@ -137,13 +141,19 @@ async def test_status_publishes_four_slot_state_and_clears_failure(hass: object)
 
 def test_three_failures_clear_stale_temperature_to_honest_unknown(hass: object) -> None:
     coordinator, _transport = _coordinator(hass, cloud=False)
-    coordinator._async_status({"probes": [{"probe_number": 4, "probe_temp_c": 30.0}]})
+    coordinator._async_status(
+        {
+            "actual_cavity_temp_c": 110.0,
+            "probes": [{"probe_number": 4, "probe_temp_c": 30.0}],
+        }
+    )
     last_successful_update = coordinator.data["last_successful_update"]
     for _ in range(coordinator_module.OFFLINE_FAILURE_THRESHOLD - 1):
         coordinator._async_error("hub sleeping")
     assert coordinator.data["probe_4_temperature"] == 30.0
     coordinator._async_error("hub sleeping")
     assert coordinator.data["probe_4_temperature"] is None
+    assert coordinator.data["grill_temperature"] is None
     assert coordinator.data["connected"] is False
     assert coordinator.data["last_successful_update"] == last_successful_update
     assert coordinator.failed_updates == coordinator_module.OFFLINE_FAILURE_THRESHOLD
@@ -265,7 +275,12 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     hass: object,
 ) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
-    coordinator._async_status({"probes": [{"probe_number": 1, "probe_temp_c": 63.5}]})
+    coordinator._async_status(
+        {
+            "actual_cavity_temp_c": 121.5,
+            "probes": [{"probe_number": 1, "probe_temp_c": 63.5}],
+        }
+    )
     entry = _entry(hass, cloud=True)
     entry.data["companion_private_key"] = "private-key"
     entry.data["companion_public_key"] = "public-key"
@@ -277,6 +292,7 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     assert "private-key" not in serialized
     assert "public-key" not in serialized
     assert diagnostics["transport"] == "cloud"
+    assert diagnostics["grill_temperature_c"] == 121.5
     assert diagnostics["probe_slots"][0]["temperature_c"] == 63.5
     assert diagnostics["cloud_socket_received_types"] == [0x80]
     assert "state" not in diagnostics

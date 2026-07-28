@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -38,7 +39,7 @@ def test_manifest_and_hacs_contract() -> None:
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == DOMAIN
-    assert manifest["version"] == "3.0.2"
+    assert manifest["version"] == "3.0.3"
     assert manifest["config_flow"] is True
     assert manifest["dependencies"] == ["bluetooth_adapters"]
     assert manifest["iot_class"] == "cloud_polling"
@@ -78,9 +79,10 @@ def test_weber_discovery_matches_company_ids_and_names() -> None:
     assert not _is_weber(SimpleNamespace(manufacturer_data={1: b"x"}, name="Speaker"))
 
 
-def test_normalized_state_contains_only_support_metadata_and_probe_slots() -> None:
+def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
     state = normalize_state(
         {
+            "actual_cavity_temp_c": 121.5,
             "probes": [
                 {
                     "probe_number": 2,
@@ -101,6 +103,7 @@ def test_normalized_state_contains_only_support_metadata_and_probe_slots() -> No
     assert state["probe_1_temperature"] is None
     assert state["probe_2_temperature"] == 25.4
     assert state["probe_2_battery"] == 87
+    assert state["grill_temperature"] == 121.5
     assert state["source"] == "cloud"
     assert state["connected"] is True
     assert "status" not in state
@@ -110,20 +113,25 @@ def test_normalized_state_contains_only_support_metadata_and_probe_slots() -> No
     assert "timer_1_remaining" not in state
 
 
-def test_sensor_surface_contains_four_probe_slots_and_last_update() -> None:
+def test_sensor_surface_contains_grill_four_probe_slots_and_last_update() -> None:
     descriptions = {description.key: description for description in SENSORS}
     probe_keys = {f"probe_{number}_temperature" for number in range(1, 5)}
-    assert set(descriptions) == probe_keys | {"last_successful_update"}
+    assert set(descriptions) == probe_keys | {
+        "grill_temperature",
+        "last_successful_update",
+    }
     assert len(probe_keys) == 4
     assert all(description.value_fn({}) is None for description in descriptions.values())
 
 
 @pytest.mark.asyncio
-async def test_sensor_platform_adds_probe_and_last_update_entities() -> None:
+async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> None:
+    listeners: list[object] = []
     coordinator = SimpleNamespace(
         data={},
         options=WeberOptions(),
         last_update_success=True,
+        async_add_listener=lambda listener: listeners.append(listener) or MagicMock(),
     )
     entry = SimpleNamespace(
         runtime_data=SimpleNamespace(coordinator=coordinator),
@@ -131,6 +139,7 @@ async def test_sensor_platform_adds_probe_and_last_update_entities() -> None:
         entry_id="entry",
         title="Weber Connect Hub",
         data={"address": "AA:BB:CC:DD:EE:FF"},
+        async_on_unload=MagicMock(),
     )
     batches: list[list[WeberSensor]] = []
     await async_setup_sensor_entry(
@@ -141,8 +150,17 @@ async def test_sensor_platform_adds_probe_and_last_update_entities() -> None:
     assert len(batches) == 1
     probe_keys = {f"probe_{number}_temperature" for number in range(1, 5)}
     assert {entity.entity_description.key for entity in batches[0]} == probe_keys | {
-        "last_successful_update"
+        "last_successful_update",
     }
+
+    coordinator.data["grill_temperature"] = 121.5
+    listener = listeners[0]
+    assert callable(listener)
+    listener()
+    listener()
+
+    assert len(batches) == 2
+    assert [entity.entity_description.key for entity in batches[1]] == ["grill_temperature"]
 
 
 @pytest.mark.asyncio
@@ -205,6 +223,31 @@ def test_last_successful_update_is_an_always_visible_timestamp() -> None:
     assert entity.extra_state_attributes is None
 
 
+def test_grill_temperature_is_an_always_visible_measurement() -> None:
+    coordinator = SimpleNamespace(
+        data={"grill_temperature": 121.5},
+        options=WeberOptions(),
+        last_update_success=False,
+    )
+    entry = SimpleNamespace(
+        unique_id="AA:BB:CC:DD:EE:FF",
+        entry_id="entry",
+        title="Weber Connect Hub",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+    )
+    description = next(row for row in SENSORS if row.key == "grill_temperature")
+    entity = WeberSensor(coordinator, entry, description)
+
+    assert entity.native_value == 121.5
+    assert entity.available is True
+    assert entity.icon == "mdi:grill-outline"
+    assert entity.extra_state_attributes is None
+
+    coordinator.data["grill_temperature"] = None
+    assert entity.native_value is None
+    assert entity.available is True
+
+
 def test_named_probe_preserves_slot_and_single_entity_semantics() -> None:
     coordinator = SimpleNamespace(
         data={
@@ -256,7 +299,8 @@ def test_idle_probe_is_unknown_even_when_transport_is_not_connected() -> None:
         title="Weber Connect Hub",
         data={"address": "AA:BB:CC:DD:EE:FF"},
     )
-    entity = WeberSensor(coordinator, entry, SENSORS[0])
+    description = next(row for row in SENSORS if row.key == "probe_1_temperature")
+    entity = WeberSensor(coordinator, entry, description)
     assert entity.available is True
     assert entity.native_value is None
     assert entity.icon == "mdi:thermometer-probe-off"

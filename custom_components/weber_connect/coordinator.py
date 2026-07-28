@@ -45,7 +45,7 @@ class _TransportSession(Protocol):
 
 
 class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Own one transport and publish its decoded probe status."""
+    """Own one transport and publish its decoded temperature status."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
@@ -168,7 +168,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @callback
     def _async_error(self, message: str) -> None:
-        """Record a bounded transport failure without hiding probe entities."""
+        """Record a bounded transport failure without hiding temperature entities."""
 
         self.last_error = message
         self.failed_updates += 1
