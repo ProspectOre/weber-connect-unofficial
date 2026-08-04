@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.5 — 2026-08-03
+
+- Clarify that pairing approval happens on the physical Weber hub rather than
+  in the Weber app.
+- Explain how to approve Home Assistant on both the standalone Smart Grilling
+  Hub and grill controllers, including the standalone hub's four-probe-light
+  prompt and pressable top/display.
+
 ## 3.0.4 — 2026-07-28
 
 - Create **Probe 1** and **Probe 2** as the baseline entity set, while adding
