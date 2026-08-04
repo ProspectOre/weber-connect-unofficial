@@ -50,7 +50,11 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 6. Fully close the Weber app on every phone or tablet that uses it, and turn off
    Bluetooth on any other one. This prevents a phone from reclaiming the hub
    while Home Assistant pairs.
-7. Wake the hub, continue setup, and approve Home Assistant on the hub display.
+7. Wake the hub and continue setup. Approval happens on the physical hub, not
+   in the Weber app. On a standalone Smart Grilling Hub, wait for all four
+   probe indicators to light, then press down once on the top/display within
+   60 seconds. On a grill controller, press its dial or confirmation control
+   when prompted.
 8. Home Assistant checks Weber Cloud for up to five minutes. After setup
    completes, turn Bluetooth back on and reopen the Weber app.
 

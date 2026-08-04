@@ -3,7 +3,7 @@
   "config": {
     "progress": {
       "preparing_companion": "**Preparing a private Weber connection.** Home Assistant is registering its new companion with Weber before Bluetooth pairing. This usually takes only a few seconds and ensures the hub can link it during approval.",
-      "approve_hub": "**Connecting to {name} through {path}.** A Bluetooth proxy may need up to 90 seconds to open the connection. When the hub asks, approve **Home Assistant** within 60 seconds. This screen advances automatically after approval.",
+      "approve_hub": "**Connecting to {name} through {path}.** A Bluetooth proxy may need up to 90 seconds to open the connection. Approval happens on the physical hub, not in the Weber app. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted. This screen advances automatically after approval.",
       "finishing_setup": "**Checking Weber Cloud · {remaining} remaining.** The hub approved Home Assistant. Home Assistant is waiting for Weber to make the new connection available so the Weber app and Home Assistant can work at the same time. This screen updates automatically; no action is needed."
     },
     "step": {
@@ -23,11 +23,11 @@
       },
       "confirm": {
         "title": "Connect {name}",
-        "description": "Initial setup requires working internet access and the hub to be online in Weber Cloud, even if you plan to use Home Assistant-only mode later. In the Weber app, first confirm the hub is online while the phone or tablet's Bluetooth is off. Then fully close the Weber app, leave Bluetooth off on every phone or tablet that uses it, and wake {name}. Home Assistant will connect through **{path}**; a Bluetooth proxy may need up to 90 seconds. When the hub asks, approve **Home Assistant** within 60 seconds. The final Weber Cloud check can take up to five minutes."
+        "description": "Initial setup requires working internet access and the hub to be online in Weber Cloud, even if you plan to use Home Assistant-only mode later. In the Weber app, first confirm the hub is online while the phone or tablet's Bluetooth is off. Then fully close the Weber app, leave Bluetooth off on every phone or tablet that uses it, and wake {name}. Home Assistant will connect through **{path}**; a Bluetooth proxy may need up to 90 seconds. Approval happens on the physical hub, not in the Weber app. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted. The final Weber Cloud check can take up to five minutes."
       },
       "pairing_failed": {
         "title": "Pairing did not finish",
-        "description": "**What happened:** {reason}\n\nNo Home Assistant integration entry was saved. Keep the Weber app closed and phone or tablet Bluetooth off, wake the hub, then try pairing again with the same prepared private connection.",
+        "description": "**What happened:** {reason}\n\nNo Home Assistant integration entry was saved. Approval happens on the physical hub, not in the Weber app. Keep the app closed and phone or tablet Bluetooth off, wake the hub, then try pairing again with the same prepared private connection. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted.",
         "menu_options": {
           "retry_pairing": "Try pairing again",
           "choose_hub": "Choose another hub"
