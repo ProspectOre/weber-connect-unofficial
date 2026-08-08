@@ -39,7 +39,7 @@ def test_manifest_and_hacs_contract() -> None:
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == DOMAIN
-    assert manifest["version"] == "3.0.6"
+    assert manifest["version"] == "3.0.7"
     assert manifest["config_flow"] is True
     assert manifest["dependencies"] == ["bluetooth_adapters"]
     assert manifest["iot_class"] == "cloud_polling"
@@ -59,6 +59,15 @@ def test_source_strings_match_english_translations() -> None:
     strings = json.loads((integration / "strings.json").read_text())
     translations = json.loads((integration / "translations" / "en.json").read_text())
     assert strings == translations
+    no_devices = strings["config"]["step"]["no_devices"]["description"]
+    for required_guidance in (
+        "Initial setup requires a connectable Bluetooth path",
+        "Weber Cloud",
+        "Fully close the Weber app",
+        "turn off Bluetooth",
+        "active ESPHome Bluetooth proxy with a free connection slot",
+    ):
+        assert required_guidance in no_devices
 
 
 def test_entity_identity_depends_only_on_hub_and_physical_slot() -> None:

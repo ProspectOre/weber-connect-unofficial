@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.7 — 2026-08-08
+
+- Explain directly on the **No Weber hub found** screen that initial setup
+  requires Bluetooth even when Weber Cloud will be used afterward.
+- Add the complete recovery path to that screen: close the Weber app, disable
+  phone or tablet Bluetooth, wake the hub, and use a nearby Home Assistant
+  adapter or active ESPHome proxy with a free connection slot.
+- This is setup guidance only; runtime discovery and connection behavior are
+  unchanged.
+
 ## 3.0.6 — 2026-08-08
 
 - Preserve the cavity display temperature when optional per-unit temperature
