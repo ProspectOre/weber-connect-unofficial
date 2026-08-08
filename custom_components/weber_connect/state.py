@@ -9,7 +9,6 @@ from typing import Any
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
 def normalize_state(
     status: dict[str, Any] | None,
     *,
@@ -20,12 +19,18 @@ def normalize_state(
     """Return model-aware probe data, the grill sensor, and connection context."""
 
     raw = status or {}
+
+    # Fall back to display temp if actual temp isn't broadcast
+    grill_temp = raw.get("actual_cavity_temp_c")
+    if grill_temp is None:
+        grill_temp = raw.get("display_cavity_temp_c")
+
     state: dict[str, Any] = {
         "updated_at": _utc_now(),
         "connected": connected,
         "source": source,
         "last_successful_update": last_successful_update,
-        "grill_temperature": raw.get("actual_cavity_temp_c"),
+        "grill_temperature": grill_temp,
     }
     probes = raw.get("probes")
     if not isinstance(probes, list):
