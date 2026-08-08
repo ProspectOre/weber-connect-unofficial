@@ -455,6 +455,7 @@ def parse_cook_session_status_payload(payload: bytes) -> dict[str, Any]:
         parsed["unparsed_tail_hex"] = bytes_to_hex(fields[-1][-1])
     return parsed
 
+
 def parse_error_payload(payload: bytes) -> dict[str, Any]:
     fields: dict[int, list[bytes]] = {}
     index = 0

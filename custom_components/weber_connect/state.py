@@ -9,6 +9,7 @@ from typing import Any
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
 def normalize_state(
     status: dict[str, Any] | None,
     *,

@@ -122,6 +122,28 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
     assert "timer_1_remaining" not in state
 
 
+def test_normalized_state_prefers_actual_cavity_temp_then_display_fallback() -> None:
+    fallback_state = normalize_state(
+        {
+            "actual_cavity_temp_c": None,
+            "display_cavity_temp_c": 93.5,
+        },
+        source="cloud",
+        connected=True,
+    )
+    actual_state = normalize_state(
+        {
+            "actual_cavity_temp_c": 94.0,
+            "display_cavity_temp_c": 93.5,
+        },
+        source="bluetooth",
+        connected=True,
+    )
+
+    assert fallback_state["grill_temperature"] == 93.5
+    assert actual_state["grill_temperature"] == 94.0
+
+
 def test_sensor_surface_supports_grill_up_to_four_probes_and_last_update() -> None:
     descriptions = {description.key: description for description in SENSORS}
     probe_keys = {f"probe_{number}_temperature" for number in range(1, 5)}
