@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.0.6 — 2026-08-08
+
+- Preserve the cavity display temperature when optional per-unit temperature
+  tags are absent, fixing a missing **Grill temperature** entity on affected
+  appliances including the Weber EXP325S.
+- Prefer the actual cavity temperature and fall back to the display temperature
+  only when the actual reading is unavailable, consistently across Bluetooth
+  and cloud connections.
+- Allow reviewed fork pull requests to satisfy the required review gate while
+  continuing to require an explicit maintainer merge.
+- Thanks to [@jarnose](https://github.com/jarnose) for reporting the cavity
+  temperature issue and contributing the fix in
+  [#36](https://github.com/ProspectOre/weber-connect-unofficial/pull/36).
+
 ## 3.0.5 — 2026-08-03
 
 - Clarify that pairing approval happens on the physical Weber hub rather than
