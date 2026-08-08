@@ -445,8 +445,12 @@ def parse_cook_session_status_payload(payload: bytes) -> dict[str, Any]:
     parsed.update(_temperature_fields(target_cavity_temp_dc, "target_cavity_temp"))
     parsed.update(_temperature_fields(display_cavity_temp_dc, "display_cavity_temp"))
     parsed.update(_temperature_fields(actual_cavity_temp_dc, "actual_cavity_temp"))
-    parsed["display_cavity_temp_f"] = display_cavity_temp_f
-    parsed["display_cavity_temp_c"] = display_cavity_temp_c
+    # Only overwrite if the grill explicitly sent values in Tags 14 or 15
+    if display_cavity_temp_f is not None:
+        parsed["display_cavity_temp_f"] = display_cavity_temp_f
+    if display_cavity_temp_c is not None:
+        parsed["display_cavity_temp_c"] = display_cavity_temp_c
+
     if -1 in fields:
         parsed["unparsed_tail_hex"] = bytes_to_hex(fields[-1][-1])
     return parsed

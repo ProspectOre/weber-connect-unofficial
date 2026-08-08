@@ -244,6 +244,16 @@ class CookSessionStatusTests(unittest.TestCase):
         self.assertEqual(parsed["display_cavity_temp_f"], 205)
         self.assertEqual(parsed["cook_mode"], 1)
 
+    def test_display_cavity_temp_uses_deci_celsius_when_unit_tags_are_absent(
+        self,
+    ) -> None:
+        payload = tlv(2, (400).to_bytes(2, "little", signed=True))
+
+        parsed = sf.parse_cook_session_status_payload(payload)
+
+        self.assertEqual(parsed["display_cavity_temp_c"], 40.0)
+        self.assertEqual(parsed["display_cavity_temp_f"], 104.0)
+
     def test_status_with_unparsed_tail(self) -> None:
         payload = tlv(3, bytes([1])) + b"\x07"
         parsed = sf.parse_cook_session_status_payload(payload)
