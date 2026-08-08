@@ -16,7 +16,7 @@
       },
       "no_devices": {
         "title": "No Weber hub found",
-        "description": "Home Assistant cannot currently see a connectable Weber hub. Wake the hub, keep it near Home Assistant or an active ESPHome Bluetooth proxy, and search again.",
+        "description": "Initial setup requires a connectable Bluetooth path, even if you plan to use Weber Cloud afterward. Fully close the Weber app and turn off Bluetooth on every phone or tablet that uses the hub. Wake the hub, keep it near Home Assistant or an active ESPHome Bluetooth proxy with a free connection slot, then search again.",
         "menu_options": {
           "search_again": "Search again"
         }
