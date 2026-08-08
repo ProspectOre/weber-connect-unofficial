@@ -189,7 +189,7 @@ jobs:
           esac
 
           # WITHDRAW FIRST, UNCONDITIONALLY. Every precheck below can leave without
-          # arming — draft, cross-repo, unprotected base, no required checks, and an
+          # arming — draft, unprotected base, no required checks, and an
           # unreadable branch protection that now fails the run outright — and each of
           # those paths would otherwise leave a live arm on a PR this run never cleared.
           #
@@ -224,10 +224,6 @@ jobs:
           fi
 
           is_cross_repo="$(gh pr view "$pr_ref" --json isCrossRepository --jq '.isCrossRepository')"
-          if [[ "$is_cross_repo" == "true" ]]; then
-            echo "Cross-repository pull request; leaving auto-merge disabled."
-            exit 0
-          fi
 
           base_ref="$(gh pr view "$pr_ref" --json baseRefName --jq '.baseRefName')"
           protected="$(gh api "repos/$REPO/branches/$base_ref" --jq '.protected')"
@@ -285,9 +281,11 @@ jobs:
           #
           # Arm only once the reviewer has covered THIS head: its verdict carries
           # "Reviewed commit: <sha>". A stale review of an older head does not count.
-          # Escape hatch: the OVERRIDE_LABEL arms regardless (reviewer down, quota
-          # exhausted, or a deliberate hotfix) — a label leaves an audit trail, which
-          # a silent race did not, and the account that applied it is checked below.
+          # Escape hatch: the OVERRIDE_LABEL clears the gate regardless (reviewer
+          # down, quota exhausted, or a deliberate hotfix) — a label leaves an audit
+          # trail, which a silent race did not, and the account that applied it is
+          # checked below. Same-repository PRs are armed later; fork PRs are left for
+          # an explicit maintainer merge after receiving the same per-head status.
           head_sha="$(gh pr view "$pr_ref" --json headRefOid --jq '.headRefOid')"
           pr_number="$(gh pr view "$pr_ref" --json number --jq '.number')"
           # The sha is interpolated into the verdict-matching pattern below. An
@@ -528,7 +526,7 @@ jobs:
               echo "Could not update the '$REVIEW_GATE_CONTEXT' status for $head_sha."
             fi
             echo "Leaving auto-merge disabled. This workflow re-runs when a review or comment lands;"
-            echo "apply the '$OVERRIDE_LABEL' label to arm without a review pass."
+            echo "apply the '$OVERRIDE_LABEL' label to clear the gate without a review pass."
             exit 0
           fi
 
@@ -545,6 +543,17 @@ jobs:
             echo "The verdict is not recorded on the head, so a required '$REVIEW_GATE_CONTEXT'"
             echo "check has nothing to satisfy it. Failing so this is visible."
             exit 1
+          fi
+
+          # Fork authors control their head repository, so do not leave an automatic
+          # merge armed across that trust boundary. The review decision still belongs
+          # to this exact head SHA, though: stamp the required gate above, then require
+          # a maintainer to perform the merge explicitly. Exiting before evaluation
+          # used to leave fork PRs permanently blocked because branch protection
+          # required a status this workflow refused to create.
+          if [[ "$is_cross_repo" == "true" ]]; then
+            echo "Cross-repository pull request cleared; leaving auto-merge disabled for an explicit maintainer merge."
+            exit 0
           fi
 
           if [[ "$auto_merge_enabled" == "true" ]]; then

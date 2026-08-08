@@ -201,6 +201,14 @@ def check_workflows() -> None:
         fail("CI must enforce at least 95% native integration coverage")
     if "--cov-branch" not in ci:
         fail("CI must include branch coverage in the 95% release floor")
+    auto_merge = (ROOT / ".github" / "workflows" / "auto-merge.yml").read_text(encoding="utf-8")
+    review_stamp = auto_merge.find("if ! stamp_review_gate success")
+    fork_stop = auto_merge.find('if [[ "$is_cross_repo" == "true" ]]; then')
+    auto_merge_arm = auto_merge.find('gh pr merge "$pr_ref" --auto --squash')
+    if -1 in (review_stamp, fork_stop, auto_merge_arm):
+        fail("auto-merge workflow is missing the fork review-gate safeguards")
+    if not review_stamp < fork_stop < auto_merge_arm:
+        fail("fork PRs must receive the review-gate status before auto-merge stops")
     if (ROOT / ".github" / "workflows" / "publish.yml").exists():
         fail("3.0 must not retain the add-on container publishing workflow")
 
