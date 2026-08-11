@@ -40,9 +40,10 @@ connection.
 
 The normalized runtime state can represent up to four probe slots and records
 which slot numbers were present in the latest decoded status. It also contains
-the current connection state and method and the last successful update time.
-Raw cook sessions, recipe text, instructions, timers, control commands, and
-transient pairing keys are not persisted or returned by diagnostics.
+the current connection state and method, the last successful update time, and
+capability-driven appliance, cook, session, timer, and burner telemetry. Recipe
+text, instructions, control commands, transient pairing keys, and raw protocol
+frames are not persisted or returned by diagnostics.
 
 Expected idle behavior is represented by every registered probe-temperature
 entity retaining an `Unknown` value and probe-off icon. Hub sleep, power-off,

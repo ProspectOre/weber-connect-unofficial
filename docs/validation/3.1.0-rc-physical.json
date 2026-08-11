@@ -1,0 +1,63 @@
+{
+  "candidate": "3.1.0",
+  "evidence_date": "2026-08-11",
+  "identifiers": "redacted",
+  "environment": {
+    "home_assistant": "2026.8.1",
+    "host": "Home Assistant Yellow",
+    "hub": "Weber Connect Hub 2.0.3_7398",
+    "transport": "Weber Cloud",
+    "connection_mode": "phone_and_home_assistant"
+  },
+  "verified": {
+    "exact_candidate_loaded_after_core_restart": true,
+    "config_entry_loaded": true,
+    "hub_battery_entity": true,
+    "hub_charging_entity": true,
+    "wifi_signal_entity": true,
+    "wifi_status_entity": true,
+    "cloud_status_entity": true,
+    "device_state_entity": true,
+    "firmware_metadata": true,
+    "capability_driven_idle_probe_countdown_suppression": true,
+    "stable_entity_ids_across_restart_and_reload": true,
+    "config_entry_reload_without_restart": true,
+    "diagnostics_redaction": true,
+    "weber_warning_or_error_entries": 0
+  },
+  "initial_live_sample": {
+    "connected": true,
+    "hub_battery_percent": 65,
+    "hub_is_charging": true,
+    "wifi_signal_dbm": -35,
+    "wifi_status": "connected",
+    "cloud_status": "connected",
+    "device_state": "idle",
+    "probe_celsius": 24.3,
+    "successful_updates": 5,
+    "failed_updates": 0
+  },
+  "post_reload_live_sample": {
+    "reload_requires_restart": false,
+    "connected": true,
+    "hub_battery_percent": 70,
+    "hub_is_charging": true,
+    "wifi_signal_dbm": -37,
+    "successful_updates": 3,
+    "failed_updates": 0
+  },
+  "core_restart": {
+    "http_became_unavailable": true,
+    "http_recovered": true,
+    "integration_reloaded_without_repair_or_repairing": true
+  },
+  "not_verified": [
+    "active probe countdown on physical hardware",
+    "wireless probe battery, ambient, and case telemetry on physical hardware",
+    "fuel, burner, timed-session, and grill-control telemetry on other Weber models",
+    "host-adapter-only 3.1 pairing and endurance",
+    "two-proxy failover",
+    "installation from the published v3.1.0 HACS archive",
+    "other hub models, firmware, regions, routers, and accounts"
+  ]
+}

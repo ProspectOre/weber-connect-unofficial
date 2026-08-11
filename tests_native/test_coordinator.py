@@ -177,6 +177,52 @@ def test_cloud_outage_never_creates_a_repair(hass: object) -> None:
     assert coordinator.data["connected"] is False
 
 
+def test_status_updates_device_firmware_metadata(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    registry = MagicMock()
+    registry.async_get_device.return_value = SimpleNamespace(id="device-id")
+
+    with patch.object(coordinator_module.dr, "async_get", return_value=registry):
+        coordinator._async_status(
+            {
+                "software_version": "2.0.3_7398",
+                "hardware_version": "rev-b",
+                "probes": [],
+            }
+        )
+
+    registry.async_get_device.assert_called_once_with(
+        identifiers={("weber_connect", coordinator.entry.unique_id)}
+    )
+    registry.async_update_device.assert_called_once_with(
+        "device-id",
+        sw_version="2.0.3_7398",
+        hw_version="rev-b",
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_update"),
+    [
+        ({"software_version": "2.0.3_7398"}, {"sw_version": "2.0.3_7398"}),
+        ({"hardware_version": "rev-b"}, {"hw_version": "rev-b"}),
+    ],
+)
+def test_status_updates_only_reported_device_version(
+    hass: object,
+    status: dict[str, str],
+    expected_update: dict[str, str],
+) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    registry = MagicMock()
+    registry.async_get_device.return_value = SimpleNamespace(id="device-id")
+
+    with patch.object(coordinator_module.dr, "async_get", return_value=registry):
+        coordinator._async_status({**status, "probes": []})
+
+    registry.async_update_device.assert_called_once_with("device-id", **expected_update)
+
+
 def test_rejected_cloud_credential_creates_distinct_immediate_repair(hass: object) -> None:
     coordinator, transport = _coordinator(hass, cloud=True)
     transport.error_kind = "credentials"
@@ -279,6 +325,19 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     coordinator._async_status(
         {
             "actual_cavity_temp_c": 121.5,
+            "battery_level": 64,
+            "is_charging": True,
+            "target_cavity_temp_c": 135.0,
+            "cook_mode": "smoke_boost",
+            "simple_intensity": 7,
+            "wifi_signal_strength": -61,
+            "wifi_connection_status": "connected",
+            "cloud_connection_status": "connected",
+            "device_state": "active",
+            "fuel_percent": 18,
+            "fuel_level": "low",
+            "software_version": "2.0.3_7398",
+            "hardware_version": "rev-b",
             "probes": [{"probe_number": 1, "probe_temp_c": 63.5}],
         }
     )
@@ -294,6 +353,13 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     assert "public-key" not in serialized
     assert diagnostics["transport"] == "cloud"
     assert diagnostics["grill_temperature_c"] == 121.5
+    assert diagnostics["hub_battery_level"] == 64
+    assert diagnostics["hub_is_charging"] is True
+    assert diagnostics["target_grill_temperature_c"] == 135.0
+    assert diagnostics["cook_mode"] == "smoke_boost"
+    assert diagnostics["wifi_signal_strength"] == -61
+    assert diagnostics["fuel_percent"] == 18
+    assert diagnostics["software_version"] == "2.0.3_7398"
     assert diagnostics["probe_slots"][0]["temperature_c"] == 63.5
     assert diagnostics["cloud_socket_received_types"] == [0x80]
     assert "state" not in diagnostics

@@ -97,14 +97,15 @@ The device page starts with **Probe 1** and **Probe 2**, which are common to the
 supported controllers. **Probe 3** and **Probe 4** are added only after the
 controller reports those slot numbers, so a two-port model does not receive
 unused entities. The built-in **Grill temperature** entity is likewise added
-only when the controller reports that sensor. Once created, each entity keeps
-its stable slot-based identity. A connected probe shows its temperature; an
-empty slot—or a sleeping or powered-off hub with no current reading—reads
-**Unknown** with the probe-off icon. That is the normal idle state, not a sign
-that the integration or Home Assistant is offline. Routine disconnects recover
-quietly without raising a Home Assistant repair. Battery level, probe type, and
-probe state remain attributes on that same entity instead of creating
-redundant entities.
+only when the controller reports that sensor. A diagnostic **Battery** entity
+and **Charging** entity are added when a portable hub reports its power state.
+Once created, each entity keeps its stable slot-based identity. A connected
+probe shows its temperature; an empty slot—or a sleeping or powered-off hub
+with no current reading—reads **Unknown** with the probe-off icon. That is the
+normal idle state, not a sign that the integration or Home Assistant is
+offline. Routine disconnects recover quietly without raising a Home Assistant
+repair. Battery level, probe type, and probe state remain attributes on that
+same entity instead of creating redundant entities.
 
 Two additional context entities are enabled by default. **Connection** reports
 **Connected** or **Disconnected** and identifies whether Home Assistant is
@@ -112,8 +113,19 @@ using **Weber Cloud** or **Bluetooth**. **Last successful update** preserves the
 time fresh hub data most recently arrived, including while the hub is sleeping
 or powered off.
 
-3.0 is deliberately read-only. Recipe text, instructions, cook controls, target
-temperatures, and timers are not exposed.
+Additional entities are capability-driven and appear only after the appliance
+reports their underlying telemetry. Depending on the Weber model, these can
+include target grill temperature, cook mode and intensity, active cooking,
+Wi-Fi and Weber Cloud status, Wi-Fi signal strength, fuel percentage or coarse
+fuel level, wireless-probe battery/case/ambient readings, cook and timer
+countdowns, and burner state. Session progress and burner details remain
+attributes on their corresponding entity to avoid duplicating every protocol
+field as a separate entity. Software and hardware versions are recorded on the
+Home Assistant device and in diagnostics.
+
+3.0 is deliberately read-only. It exposes reported targets and timer progress,
+but does not expose recipe text or instructions and cannot start, stop, or
+change cooks, temperatures, timers, burners, or other appliance controls.
 
 ## Requirements
 
@@ -161,6 +173,14 @@ another failed update, retained the live `23.1 °C` probe reading, and reported
 no current error. Returning to **Phone + Home Assistant** then produced six
 cloud updates with zero failures while the official app was open.
 
+The exact 3.1.0 candidate was subsequently installed on Home Assistant 2026.8.1
+and exercised against the Weber Connect Hub `2.0.3_7398`. After a full Core
+restart it exposed live battery and charging state, Wi-Fi signal and status,
+Weber Cloud status, device state, and firmware metadata. Battery changed from
+65% to 70% during the validation window while charging. A config-entry reload
+preserved the entity identities, resumed cloud updates with zero failures, and
+produced no Weber warning or error log entries.
+
 The current greenfield transport implementation is held to at least 95%
 combined statement/branch coverage. Import, config flow, transient
 identity generation, entity contracts, protocol frames, persistent-session
@@ -172,7 +192,7 @@ open and an active cook. The proxy-only test ran for more than one hour and was
 followed by a successful Home Assistant restart without re-pairing. See
 [Production readiness](PRODUCTION_READINESS.md) for the measurements and
 remaining unverified scenarios. The corresponding
-[redacted machine-readable evidence](docs/validation/3.0.0-rc-physical.json)
+[redacted machine-readable evidence](docs/validation/3.1.0-rc-physical.json)
 contains no device identifiers. Multi-proxy failover is explicitly unverified.
 
 That is a test matrix, not a claim that every Weber model, firmware, account

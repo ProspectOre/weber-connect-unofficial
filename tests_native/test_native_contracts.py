@@ -10,7 +10,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.weber_connect.binary_sensor import WeberConnectionBinarySensor
+from custom_components.weber_connect.binary_sensor import (
+    WeberChargingBinarySensor,
+    WeberConnectionBinarySensor,
+    WeberCookingBinarySensor,
+)
 from custom_components.weber_connect.binary_sensor import (
     async_setup_entry as async_setup_binary_sensor_entry,
 )
@@ -39,7 +43,7 @@ def test_manifest_and_hacs_contract() -> None:
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == DOMAIN
-    assert manifest["version"] == "3.0.7"
+    assert manifest["version"] == "3.1.0"
     assert manifest["config_flow"] is True
     assert manifest["dependencies"] == ["bluetooth_adapters"]
     assert manifest["iot_class"] == "cloud_polling"
@@ -92,6 +96,8 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
     state = normalize_state(
         {
             "actual_cavity_temp_c": 121.5,
+            "battery_level": 64,
+            "is_charging": True,
             "probes": [
                 "invalid",
                 {"probe_number": True, "probe_temp_c": 99.0},
@@ -122,6 +128,8 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
     assert state["probe_2_battery"] == 87
     assert state["reported_probe_numbers"] == (2, 4)
     assert state["grill_temperature"] == 121.5
+    assert state["battery_level"] == 64
+    assert state["is_charging"] is True
     assert state["source"] == "cloud"
     assert state["connected"] is True
     assert "status" not in state
@@ -153,10 +161,104 @@ def test_normalized_state_prefers_actual_cavity_temp_then_display_fallback() -> 
     assert actual_state["grill_temperature"] == 94.0
 
 
+def test_normalized_state_exposes_capability_driven_telemetry() -> None:
+    state = normalize_state(
+        {
+            "target_cavity_temp_c": 135.0,
+            "cook_mode": "smoke_boost",
+            "simple_intensity": 7,
+            "wifi_signal_strength": -61,
+            "wifi_connection_status": "connected",
+            "cloud_connection_status": "connected",
+            "device_state": "active",
+            "fuel_percent": 18,
+            "fuel_level": "low",
+            "software_version": "2.0.3_7398",
+            "hardware_version": "rev-b",
+            "probes": [
+                {
+                    "probe_number": 1,
+                    "probe_type": "WIRELESS",
+                    "state": "ACTIVE",
+                    "battery_level": 72,
+                    "ambient_temp_c": 38.5,
+                    "case_temp_c": 41.0,
+                    "time_remaining_s": 900,
+                    "time_elapsed_s": 60,
+                    "prompt_time_remaining_s": 30,
+                    "prompt_time_elapsed_s": 5,
+                    "serial_number": "SERIAL",
+                    "sku": "SKU",
+                }
+            ],
+            "timed_sessions": [
+                {
+                    "slot_number": 2,
+                    "time_remaining_s": 600,
+                    "time_elapsed_s": 120,
+                    "state": "ACTIVE",
+                }
+            ],
+            "timers": [
+                {
+                    "slot_number": 3,
+                    "time_remaining_s": 300,
+                    "time_elapsed_s": 30,
+                    "state": "PAUSED",
+                }
+            ],
+            "burners": [
+                {
+                    "number": 1,
+                    "type": "gas_burner",
+                    "state": "on",
+                    "target_intensity": 8,
+                    "actual_intensity": 6,
+                    "flame_sensed": True,
+                    "locked": False,
+                }
+            ],
+        },
+        source="cloud",
+        connected=True,
+    )
+
+    assert state["target_grill_temperature"] == 135.0
+    assert state["cook_mode"] == "smoke_boost"
+    assert state["cook_intensity"] == 7
+    assert state["wifi_signal_strength"] == -61
+    assert state["fuel_percent"] == 18
+    assert state["probe_1_battery"] == 72
+    assert state["probe_1_ambient_temperature"] == 38.5
+    assert state["probe_1_case_temperature"] == 41.0
+    assert state["probe_1_time_remaining"] == 900
+    assert state["reported_timed_session_numbers"] == (2,)
+    assert state["timed_session_2_time_remaining"] == 600
+    assert state["reported_timer_numbers"] == (3,)
+    assert state["timer_3_time_remaining"] == 300
+    assert state["reported_burner_numbers"] == (1,)
+    assert state["burner_1_state"] == "on"
+    assert state["burner_1_target_intensity"] == 8
+    assert state["burner_1_actual_intensity"] == 6
+    assert state["burner_1_flame_sensed"] is True
+    assert state["burner_1_locked"] is False
+    assert state["cooking"] is True
+
+
 def test_sensor_surface_supports_grill_up_to_four_probes_and_last_update() -> None:
     descriptions = {description.key: description for description in SENSORS}
     probe_keys = {f"probe_{number}_temperature" for number in range(1, 5)}
     assert set(descriptions) == probe_keys | {
+        "battery_level",
+        "target_grill_temperature",
+        "wifi_signal_strength",
+        "wifi_connection_status",
+        "cloud_connection_status",
+        "device_state",
+        "fuel_percent",
+        "fuel_level",
+        "cook_mode",
+        "cook_intensity",
         "grill_temperature",
         "last_successful_update",
     }
@@ -195,6 +297,8 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
     }
 
     coordinator.data["grill_temperature"] = 121.5
+    coordinator.data["battery_level"] = 64
+    coordinator.data["is_charging"] = True
     coordinator.data["reported_probe_numbers"] = (1, 2, 4)
     listener = listeners[0]
     assert callable(listener)
@@ -203,6 +307,7 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
 
     assert len(batches) == 2
     assert [entity.entity_description.key for entity in batches[1]] == [
+        "battery_level",
         "grill_temperature",
         "probe_4_temperature",
     ]
@@ -216,11 +321,51 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
 
 
 @pytest.mark.asyncio
-async def test_binary_sensor_platform_adds_connection_entity() -> None:
+async def test_sensor_platform_adds_all_reported_dynamic_telemetry() -> None:
     coordinator = SimpleNamespace(
-        data={"connected": True, "source": "cloud"},
+        data={
+            "battery_level": 64,
+            "grill_temperature": 121.5,
+            "target_grill_temperature": 135.0,
+            "wifi_signal_strength": -61,
+            "wifi_connection_status": "connected",
+            "cloud_connection_status": "connected",
+            "device_state": "active",
+            "fuel_percent": 18,
+            "fuel_level": "low",
+            "cook_mode": "smoke_boost",
+            "cook_intensity": 7,
+            "reported_probe_numbers": (1,),
+            "probe_1_battery": 72,
+            "probe_1_type": "WIRELESS",
+            "probe_1_serial_number": "SERIAL",
+            "probe_1_sku": "SKU",
+            "probe_1_ambient_temperature": 38.5,
+            "probe_1_case_temperature": 41.0,
+            "probe_1_time_remaining": 900,
+            "probe_1_time_elapsed": 60,
+            "probe_1_prompt_time_remaining": 30,
+            "probe_1_prompt_time_elapsed": 5,
+            "probe_1_state": "ACTIVE",
+            "reported_timed_session_numbers": (2,),
+            "timed_session_2_time_remaining": 600,
+            "timed_session_2_time_elapsed": 120,
+            "timed_session_2_state": "ACTIVE",
+            "reported_timer_numbers": (3,),
+            "timer_3_time_remaining": 300,
+            "timer_3_time_elapsed": 30,
+            "timer_3_state": "PAUSED",
+            "reported_burner_numbers": (1,),
+            "burner_1_state": "on",
+            "burner_1_type": "gas_burner",
+            "burner_1_target_intensity": 8,
+            "burner_1_actual_intensity": 6,
+            "burner_1_flame_sensed": True,
+            "burner_1_locked": False,
+        },
         options=WeberOptions(),
         last_update_success=True,
+        async_add_listener=MagicMock(return_value=MagicMock()),
     )
     entry = SimpleNamespace(
         runtime_data=SimpleNamespace(coordinator=coordinator),
@@ -228,6 +373,110 @@ async def test_binary_sensor_platform_adds_connection_entity() -> None:
         entry_id="entry",
         title="Weber Connect Hub",
         data={"address": "AA:BB:CC:DD:EE:FF"},
+        async_on_unload=MagicMock(),
+    )
+    batches: list[list[WeberSensor]] = []
+
+    await async_setup_sensor_entry(
+        SimpleNamespace(),
+        entry,
+        lambda entities: batches.append(list(entities)),
+    )
+
+    dynamic = {entity.entity_description.key: entity for entity in batches[1]}
+    assert set(dynamic) == {
+        "battery_level",
+        "grill_temperature",
+        "target_grill_temperature",
+        "wifi_signal_strength",
+        "wifi_connection_status",
+        "cloud_connection_status",
+        "device_state",
+        "fuel_percent",
+        "fuel_level",
+        "cook_mode",
+        "cook_intensity",
+        "probe_1_battery",
+        "probe_1_ambient_temperature",
+        "probe_1_case_temperature",
+        "probe_1_time_remaining",
+        "timed_session_2_time_remaining",
+        "timer_3_time_remaining",
+        "burner_1_state",
+    }
+    assert dynamic["probe_1_battery"].extra_state_attributes == {
+        "probe_type": "WIRELESS",
+        "serial_number": "SERIAL",
+        "sku": "SKU",
+    }
+    assert dynamic["probe_1_time_remaining"].extra_state_attributes == {
+        "time_elapsed": 60,
+        "prompt_time_remaining": 30,
+        "prompt_time_elapsed": 5,
+        "session_state": "ACTIVE",
+    }
+    assert dynamic["burner_1_state"].extra_state_attributes == {
+        "burner_type": "gas_burner",
+        "target_intensity": 8,
+        "actual_intensity": 6,
+        "flame_sensed": True,
+        "locked": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_sensor_platform_ignores_idle_probe_zero_countdown() -> None:
+    coordinator = SimpleNamespace(
+        data={
+            "reported_probe_numbers": (1,),
+            "probe_1_time_remaining": 0,
+            "probe_1_time_elapsed": 2_116_452,
+            "probe_1_prompt_time_remaining": 0,
+            "probe_1_prompt_time_elapsed": 0,
+            "probe_1_state": "PROBED",
+        },
+        options=WeberOptions(),
+        last_update_success=True,
+        async_add_listener=MagicMock(return_value=MagicMock()),
+    )
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        unique_id="AA:BB:CC:DD:EE:FF",
+        entry_id="entry",
+        title="Weber Connect Hub",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+        async_on_unload=MagicMock(),
+    )
+    batches: list[list[WeberSensor]] = []
+
+    await async_setup_sensor_entry(
+        SimpleNamespace(),
+        entry,
+        lambda entities: batches.append(list(entities)),
+    )
+
+    assert all(
+        entity.entity_description.key != "probe_1_time_remaining"
+        for batch in batches
+        for entity in batch
+    )
+
+
+@pytest.mark.asyncio
+async def test_binary_sensor_platform_adds_connection_entity() -> None:
+    coordinator = SimpleNamespace(
+        data={"connected": True, "source": "cloud"},
+        options=WeberOptions(),
+        last_update_success=True,
+        async_add_listener=MagicMock(return_value=MagicMock()),
+    )
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        unique_id="AA:BB:CC:DD:EE:FF",
+        entry_id="entry",
+        title="Weber Connect Hub",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+        async_on_unload=MagicMock(),
     )
     batches: list[list[WeberConnectionBinarySensor]] = []
     await async_setup_binary_sensor_entry(
@@ -252,6 +501,54 @@ async def test_binary_sensor_platform_adds_connection_entity() -> None:
     assert entity.is_on is True
     assert entity.icon == "mdi:bluetooth-connect"
     assert entity.extra_state_attributes == {"connection_method": "Bluetooth"}
+
+
+@pytest.mark.asyncio
+async def test_binary_sensor_platform_adds_charging_and_cooking_when_reported() -> None:
+    listeners: list[object] = []
+    coordinator = SimpleNamespace(
+        data={
+            "connected": True,
+            "source": "cloud",
+            "battery_level": 64,
+            "is_charging": True,
+            "cooking": True,
+            "cook_mode": "smoke_boost",
+        },
+        options=WeberOptions(),
+        last_update_success=True,
+        async_add_listener=lambda listener: listeners.append(listener) or MagicMock(),
+    )
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        unique_id="AA:BB:CC:DD:EE:FF",
+        entry_id="entry",
+        title="Weber Connect Hub",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+        async_on_unload=MagicMock(),
+    )
+    batches: list[list[object]] = []
+
+    await async_setup_binary_sensor_entry(
+        SimpleNamespace(),
+        entry,
+        lambda entities: batches.append(list(entities)),
+    )
+
+    assert len(batches) == 2
+    charging = next(
+        entity for entity in batches[1] if isinstance(entity, WeberChargingBinarySensor)
+    )
+    cooking = next(entity for entity in batches[1] if isinstance(entity, WeberCookingBinarySensor))
+    assert charging.is_on is True
+    assert charging.extra_state_attributes == {"battery_level": 64}
+    assert cooking.is_on is True
+    assert cooking.extra_state_attributes == {"cook_mode": "smoke_boost"}
+
+    coordinator.data["is_charging"] = None
+    coordinator.data["cooking"] = None
+    assert charging.is_on is None
+    assert cooking.is_on is None
 
 
 def test_last_successful_update_is_an_always_visible_timestamp() -> None:
@@ -298,6 +595,36 @@ def test_grill_temperature_is_an_always_visible_measurement() -> None:
     coordinator.data["grill_temperature"] = None
     assert entity.native_value is None
     assert entity.available is True
+
+
+def test_hub_battery_exposes_charge_level_and_charging_state() -> None:
+    coordinator = SimpleNamespace(
+        data={"battery_level": 64, "is_charging": True},
+        options=WeberOptions(),
+        last_update_success=True,
+    )
+    entry = SimpleNamespace(
+        unique_id="AA:BB:CC:DD:EE:FF",
+        entry_id="entry",
+        title="Weber Connect Hub",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+    )
+    description = next(row for row in SENSORS if row.key == "battery_level")
+    entity = WeberSensor(coordinator, entry, description)
+
+    assert entity.native_value == 64
+    assert entity.extra_state_attributes == {"is_charging": True}
+
+
+def test_invalid_hub_battery_values_normalize_to_unknown() -> None:
+    for value in (True, -1, 101, "64"):
+        state = normalize_state(
+            {"battery_level": value, "is_charging": 1},
+            source="cloud",
+            connected=True,
+        )
+        assert state["battery_level"] is None
+        assert state["is_charging"] is None
 
 
 def test_named_probe_preserves_slot_and_single_entity_semantics() -> None:

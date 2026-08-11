@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -45,7 +46,7 @@ class _TransportSession(Protocol):
 
 
 class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Own one transport and publish its decoded temperature status."""
+    """Own one transport and publish its decoded appliance status."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
@@ -157,14 +158,29 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             DOMAIN,
             f"credentials_rejected_{self.entry.entry_id}",
         )
-        self.async_set_updated_data(
-            normalize_state(
-                status,
-                source=self.source,
-                connected=True,
-                last_successful_update=self.last_successful_update,
-            )
+        normalized = normalize_state(
+            status,
+            source=self.source,
+            connected=True,
+            last_successful_update=self.last_successful_update,
         )
+        self.async_set_updated_data(normalized)
+
+        identity = self.entry.unique_id or self.entry.entry_id
+        device_registry = dr.async_get(self.hass)
+        device = device_registry.async_get_device(identifiers={(DOMAIN, identity)})
+        software_version = normalized.get("software_version")
+        hardware_version = normalized.get("hardware_version")
+        if device is not None and software_version is not None and hardware_version is not None:
+            device_registry.async_update_device(
+                device.id,
+                sw_version=software_version,
+                hw_version=hardware_version,
+            )
+        elif device is not None and software_version is not None:
+            device_registry.async_update_device(device.id, sw_version=software_version)
+        elif device is not None and hardware_version is not None:
+            device_registry.async_update_device(device.id, hw_version=hardware_version)
 
     @callback
     def _async_error(self, message: str) -> None:

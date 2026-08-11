@@ -196,18 +196,56 @@ class CookSessionStatusTests(unittest.TestCase):
             ]
         )
 
+    def _timed_session(self) -> bytes:
+        return b"".join(
+            [
+                tlv(1, bytes([1])),
+                tlv(2, bytes([8])),
+                tlv(5, (900).to_bytes(4, "little")),
+                tlv(6, (60).to_bytes(4, "little")),
+                tlv(12, bytes([5])),
+            ]
+        )
+
+    def _timer(self) -> bytes:
+        return b"".join(
+            [
+                tlv(1, bytes([2])),
+                tlv(2, bytes([9])),
+                tlv(5, (300).to_bytes(4, "little")),
+                tlv(6, (30).to_bytes(4, "little")),
+                tlv(12, bytes([6])),
+            ]
+        )
+
+    def _burner(self) -> bytes:
+        return b"".join(
+            [
+                tlv(1, bytes([0])),
+                tlv(2, bytes([3])),
+                tlv(3, bytes([2])),
+                tlv(4, bytes([75])),
+                tlv(5, bytes([60])),
+                tlv(6, bytes([1])),
+                tlv(7, bytes([2])),
+            ]
+        )
+
     def test_full_status_roundtrip(self) -> None:
         payload = b"".join(
             [
                 tlv(4, self._full_probe()),
                 tlv(4, self._minimal_probe()),
+                tlv(5, self._timed_session()),
+                tlv(6, self._timer()),
+                tlv(7, self._burner()),
                 tlv(1, (-32768).to_bytes(2, "little", signed=True)),  # sentinel -> None
                 tlv(2, (400).to_bytes(2, "little", signed=True)),
                 tlv(3, bytes([1])),  # cook mode
                 tlv(8, b"\xde\xad"),
                 tlv(9, (12).to_bytes(4, "little")),
                 tlv(10, (99).to_bytes(8, "little")),
-                tlv(11, bytes([3])),
+                tlv(11, bytes([170])),
                 tlv(12, bytes([1])),
                 tlv(13, (410).to_bytes(2, "little", signed=True)),
                 tlv(14, (205).to_bytes(2, "little", signed=True)),
@@ -242,7 +280,33 @@ class CookSessionStatusTests(unittest.TestCase):
         self.assertIsNone(parsed["target_cavity_temp_c"])
         self.assertEqual(parsed["actual_cavity_temp_c"], 41.0)
         self.assertEqual(parsed["display_cavity_temp_f"], 205)
-        self.assertEqual(parsed["cook_mode"], 1)
+        self.assertEqual(parsed["cook_mode_value"], 1)
+        self.assertEqual(parsed["cook_mode"], "grill")
+        self.assertEqual(parsed["simple_intensity_raw"], 170)
+        self.assertEqual(parsed["simple_intensity"], 7)
+        self.assertEqual(parsed["timed_sessions"][0]["slot_number"], 2)
+        self.assertEqual(parsed["timed_sessions"][0]["time_remaining_s"], 900)
+        self.assertEqual(parsed["timed_sessions"][0]["state"], "ACTIVE")
+        self.assertEqual(parsed["timers"][0]["slot_number"], 3)
+        self.assertEqual(parsed["timers"][0]["time_remaining_s"], 300)
+        self.assertEqual(parsed["timers"][0]["state"], "PAUSED")
+        self.assertEqual(parsed["burners"][0]["number"], 1)
+        self.assertEqual(parsed["burners"][0]["type"], "gas_burner")
+        self.assertEqual(parsed["burners"][0]["state"], "on")
+        self.assertEqual(parsed["burners"][0]["target_intensity_raw"], 75)
+        self.assertEqual(parsed["burners"][0]["target_intensity"], 3)
+        self.assertEqual(parsed["burners"][0]["actual_intensity"], 3)
+        self.assertTrue(parsed["burners"][0]["flame_sensed"])
+        self.assertTrue(parsed["burners"][0]["locked"])
+
+    def test_ir_burner_uses_two_intensity_levels_and_missing_state_is_none(self) -> None:
+        parsed = sf.parse_burner_status_tlv(
+            tlv(1, bytes([0])) + tlv(2, bytes([7])) + tlv(4, bytes([255])) + tlv(5, bytes([0]))
+        )
+
+        self.assertIsNone(parsed["state"])
+        self.assertEqual(parsed["target_intensity"], 2)
+        self.assertEqual(parsed["actual_intensity"], 1)
 
     def test_display_cavity_temp_uses_deci_celsius_when_unit_tags_are_absent(
         self,
@@ -270,6 +334,49 @@ class CookSessionStatusTests(unittest.TestCase):
     def test_status_dispatch_through_known_payload(self) -> None:
         parsed = sf.parse_known_payload(0x80, tlv(3, bytes([2])))
         self.assertEqual(parsed["kind"], "cook_session_status")
+
+    def test_appliance_status_reports_hub_battery_and_charging_state(self) -> None:
+        parsed = sf.parse_appliance_status_payload(tlv(1, bytes([87])) + tlv(2, bytes([1])))
+
+        self.assertEqual(parsed["kind"], "appliance_status")
+        self.assertEqual(parsed["battery_level"], 87)
+        self.assertTrue(parsed["is_charging"])
+        minimal = sf.parse_known_payload(0x83, tlv(2, bytes([0])))
+        self.assertEqual(minimal["kind"], "appliance_status")
+        self.assertIsNone(minimal["battery_level"])
+        self.assertFalse(minimal["is_charging"])
+
+    def test_appliance_status_reports_connectivity_fuel_and_versions(self) -> None:
+        parsed = sf.parse_appliance_status_payload(
+            b"".join(
+                [
+                    tlv(4, bytes([3])),
+                    tlv(10, (-61).to_bytes(4, "little", signed=True)),
+                    tlv(14, b"rev-b"),
+                    tlv(15, bytes([2])),
+                    tlv(17, bytes([1])),
+                    tlv(19, b"2.0.3_7398"),
+                    tlv(20, bytes([5])),
+                    tlv(27, bytes([18])),
+                ]
+            )
+        )
+
+        self.assertEqual(parsed["cloud_connection_status"], "connected")
+        self.assertEqual(parsed["wifi_signal_strength"], -61)
+        self.assertEqual(parsed["wifi_connection_status"], "connected")
+        self.assertEqual(parsed["device_state"], "active")
+        self.assertEqual(parsed["software_version"], "2.0.3_7398")
+        self.assertEqual(parsed["hardware_version"], "rev-b")
+        self.assertEqual(parsed["fuel_level"], "low")
+        self.assertEqual(parsed["fuel_percent"], 18)
+
+    def test_appliance_status_preserves_unknown_and_unparsed_tail(self) -> None:
+        parsed = sf.parse_appliance_status_payload(b"\x07")
+
+        self.assertIsNone(parsed["battery_level"])
+        self.assertIsNone(parsed["is_charging"])
+        self.assertEqual(parsed["unparsed_tail_hex"], "07")
 
 
 if __name__ == "__main__":
