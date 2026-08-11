@@ -245,6 +245,8 @@ def parse_appliance_payload(body: bytes) -> AppliancePayload | None:
 def parse_known_payload(type_value: int, payload: bytes) -> dict[str, Any] | None:
     if type_value == 0x80:
         return parse_cook_session_status_payload(payload)
+    if type_value == 0x83:
+        return parse_appliance_status_payload(payload)
     if type_value == 0x85 and len(payload) >= 81:
         status = payload[80]
         return {
@@ -274,11 +276,85 @@ SESSION_STATES = {
     10: "PREHEAT",
 }
 
+COOK_MODES = {
+    0: "unknown",
+    1: "grill",
+    2: "smoke_boost",
+    3: "preheat",
+    4: "indirect",
+    5: "custom",
+    6: "simple",
+    7: "manual",
+    8: "sear",
+    9: "steam",
+    10: "warm",
+}
+
+CLOUD_CONNECTION_STATES = {
+    0: "unknown",
+    1: "disconnected",
+    2: "connecting",
+    3: "connected",
+}
+
+WIFI_CONNECTION_STATES = {
+    0: "unknown",
+    1: "connecting",
+    2: "connected",
+    3: "network_not_found",
+    4: "invalid_password",
+    5: "unsupported_network_type",
+    6: "timed_out",
+    7: "disabled",
+    8: "invalid_password_format",
+}
+
+DEVICE_STATES = {
+    0: "idle",
+    1: "active",
+    2: "shutting_down",
+    3: "off",
+}
+
+FUEL_LEVELS = {
+    0: "unknown",
+    1: "full",
+    2: "full_to_half",
+    3: "half_to_quarter",
+    4: "quarter_to_low",
+    5: "low",
+}
+
 PROBE_TYPES = {
     0: "UNKNOWN",
     1: "WIRED",
     2: "WIRELESS",
     3: "AMBIENT",
+}
+
+BURNER_TYPES = {
+    0: "unknown",
+    1: "charcoal",
+    2: "electric_burner",
+    3: "gas_burner",
+    4: "gas_sear_station",
+    5: "gas_side_burner",
+    6: "gas_smoke_box_burner",
+    7: "ir_rotisserie",
+    8: "pellet_pot",
+    9: "gas_burner_flame_sense",
+    10: "gas_burner_uart_flame_sense",
+    11: "sear_burner_flame_sense",
+    12: "sear_burner_uart_flame_sense",
+    13: "ir_burner_flame_sense",
+    14: "ir_burner_uart_flame_sense",
+}
+
+BURNER_STATES = {
+    0: "unknown",
+    1: "off",
+    2: "on",
+    3: "ignition_requested",
 }
 
 
@@ -307,6 +383,20 @@ def _lookup(table: dict[int, str], value: int | None) -> str:
     return table.get(value, "UNKNOWN")
 
 
+def _optional_lookup(table: dict[int, str], value: int | None) -> str | None:
+    if value is None:
+        return None
+    return table.get(value, "unknown")
+
+
+def _idealized_level(value: int | None, stops: int) -> int | None:
+    """Convert Weber's unsigned idealized 0-255 range to a discrete level."""
+
+    if value is None:
+        return None
+    return (value * stops) // 256 + 1
+
+
 def _last(fields: dict[int, list[bytes]], tag: int) -> bytes | None:
     values = fields.get(tag)
     return values[-1] if values else None
@@ -332,6 +422,12 @@ def _u32(value: bytes | None) -> int | None:
     if value is None or len(value) < 4:
         return None
     return int.from_bytes(value[:4], "little", signed=False)
+
+
+def _i32(value: bytes | None) -> int | None:
+    if value is None or len(value) < 4:
+        return None
+    return int.from_bytes(value[:4], "little", signed=True)
 
 
 def _u64(value: bytes | None) -> int | None:
@@ -420,11 +516,78 @@ def parse_probe_session_status_tlv(payload: bytes) -> dict[str, Any]:
     return row
 
 
+def parse_timed_session_status_tlv(payload: bytes) -> dict[str, Any]:
+    """Parse a non-probe timed cook session nested inside INCOMING_STATUS."""
+
+    fields = parse_tlv(payload)
+    slot_index = _u8(_last(fields, 1))
+    state_value = _u8(_last(fields, 12))
+    return {
+        "slot_index": slot_index,
+        "slot_number": slot_index + 1 if slot_index is not None else None,
+        "session_id": _u8(_last(fields, 2)),
+        "time_remaining_s": _u32(_last(fields, 5)),
+        "time_elapsed_s": _u32(_last(fields, 6)),
+        "prompt_time_remaining_s": _u32(_last(fields, 8)),
+        "prompt_time_elapsed_s": _u32(_last(fields, 9)),
+        "state_value": state_value,
+        "state": _lookup(SESSION_STATES, state_value),
+    }
+
+
+def parse_timer_session_status_tlv(payload: bytes) -> dict[str, Any]:
+    """Parse a countdown timer nested inside INCOMING_STATUS."""
+
+    fields = parse_tlv(payload)
+    slot_index = _u8(_last(fields, 1))
+    state_value = _u8(_last(fields, 12))
+    return {
+        "slot_index": slot_index,
+        "slot_number": slot_index + 1 if slot_index is not None else None,
+        "timer_id": _u8(_last(fields, 2)),
+        "time_remaining_s": _u32(_last(fields, 5)),
+        "time_elapsed_s": _u32(_last(fields, 6)),
+        "state_value": state_value,
+        "state": _lookup(SESSION_STATES, state_value),
+    }
+
+
+def parse_burner_status_tlv(payload: bytes) -> dict[str, Any]:
+    """Parse one burner status nested inside INCOMING_STATUS."""
+
+    fields = parse_tlv(payload)
+    index = _u8(_last(fields, 1))
+    type_value = _u8(_last(fields, 2))
+    state_value = _u8(_last(fields, 3))
+    target_intensity_raw = _u8(_last(fields, 4))
+    actual_intensity_raw = _u8(_last(fields, 5))
+    intensity_stops = 2 if type_value in {7, 13, 14} else 10
+    flame_sensed_value = _u8(_last(fields, 6))
+    locked_value = _u8(_last(fields, 7))
+    return {
+        "index": index,
+        "number": index + 1 if index is not None else None,
+        "type_value": type_value,
+        "type": _optional_lookup(BURNER_TYPES, type_value),
+        "state_value": state_value,
+        "state": _optional_lookup(BURNER_STATES, state_value),
+        "target_intensity_raw": target_intensity_raw,
+        "target_intensity": _idealized_level(target_intensity_raw, intensity_stops),
+        "actual_intensity_raw": actual_intensity_raw,
+        "actual_intensity": _idealized_level(actual_intensity_raw, intensity_stops),
+        "flame_sensed": flame_sensed_value > 0 if flame_sensed_value is not None else None,
+        "locked": locked_value > 0 if locked_value is not None else None,
+    }
+
+
 def parse_cook_session_status_payload(payload: bytes) -> dict[str, Any]:
     """Parse the plaintext body of an INCOMING_STATUS message."""
 
     fields = parse_tlv(payload)
     probes = [parse_probe_session_status_tlv(item) for item in fields.get(4, [])]
+    timed_sessions = [parse_timed_session_status_tlv(item) for item in fields.get(5, [])]
+    timers = [parse_timer_session_status_tlv(item) for item in fields.get(6, [])]
+    burners = [parse_burner_status_tlv(item) for item in fields.get(7, [])]
     target_cavity_temp_dc = _i16(_last(fields, 1))
     display_cavity_temp_dc = _i16(_last(fields, 2))
     actual_cavity_temp_dc = _i16(_last(fields, 13))
@@ -435,11 +598,16 @@ def parse_cook_session_status_payload(payload: bytes) -> dict[str, Any]:
         "kind": "cook_session_status",
         "probe_count": len(probes),
         "probes": probes,
-        "cook_mode": _u8(_last(fields, 3)),
+        "timed_sessions": timed_sessions,
+        "timers": timers,
+        "burners": burners,
+        "cook_mode_value": _u8(_last(fields, 3)),
+        "cook_mode": _optional_lookup(COOK_MODES, _u8(_last(fields, 3))),
         "cook_history_session_id_hex": bytes_to_hex(_last(fields, 8) or b"") or None,
         "boot_count": _u32(_last(fields, 9)),
         "time_since_boot_raw": _u64(_last(fields, 10)),
-        "simple_intensity": _u8(_last(fields, 11)),
+        "simple_intensity_raw": _u8(_last(fields, 11)),
+        "simple_intensity": _idealized_level(_u8(_last(fields, 11)), 10),
         "cavity_temp_status": _u8(_last(fields, 12)),
     }
     parsed.update(_temperature_fields(target_cavity_temp_dc, "target_cavity_temp"))
@@ -451,6 +619,29 @@ def parse_cook_session_status_payload(payload: bytes) -> dict[str, Any]:
     if display_cavity_temp_c is not None:
         parsed["display_cavity_temp_c"] = display_cavity_temp_c
 
+    if -1 in fields:
+        parsed["unparsed_tail_hex"] = bytes_to_hex(fields[-1][-1])
+    return parsed
+
+
+def parse_appliance_status_payload(payload: bytes) -> dict[str, Any]:
+    """Parse the hub-level fields from an INCOMING_APPLIANCE_STATUS message."""
+
+    fields = parse_tlv(payload)
+    charging_value = _u8(_last(fields, 2))
+    parsed: dict[str, Any] = {
+        "kind": "appliance_status",
+        "battery_level": _u8(_last(fields, 1)),
+        "is_charging": charging_value == 1 if charging_value is not None else None,
+        "cloud_connection_status": _optional_lookup(CLOUD_CONNECTION_STATES, _u8(_last(fields, 4))),
+        "wifi_signal_strength": _i32(_last(fields, 10)),
+        "wifi_connection_status": _optional_lookup(WIFI_CONNECTION_STATES, _u8(_last(fields, 15))),
+        "device_state": _optional_lookup(DEVICE_STATES, _u8(_last(fields, 17))),
+        "software_version": _text(_last(fields, 19)),
+        "fuel_level": _optional_lookup(FUEL_LEVELS, _u8(_last(fields, 20))),
+        "fuel_percent": _u8(_last(fields, 27)),
+        "hardware_version": _text(_last(fields, 14)),
+    }
     if -1 in fields:
         parsed["unparsed_tail_hex"] = bytes_to_hex(fields[-1][-1])
     return parsed

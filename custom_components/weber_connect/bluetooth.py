@@ -66,6 +66,7 @@ class WeberBluetoothSession:
         self._received = asyncio.Event()
         self._wake = asyncio.Event()
         self._latest: dict[str, Any] | None = None
+        self._appliance_status: dict[str, Any] = {}
         self._status_callback: StatusCallback | None = None
         self._sequence = 1
         self._session_started = False
@@ -82,11 +83,19 @@ class WeberBluetoothSession:
         except WeberBluetoothError:
             _LOGGER.warning("Ignored an invalid Weber Bluetooth status frame")
             return
-        if isinstance(parsed, dict) and parsed.get("kind") == "cook_session_status":
-            self._latest = parsed
+        if not isinstance(parsed, dict):
+            return
+        if parsed.get("kind") == "appliance_status":
+            self._appliance_status = parsed
+            return
+        if parsed.get("kind") == "cook_session_status":
+            self._latest = {
+                **parsed,
+                **{key: value for key, value in self._appliance_status.items() if key != "kind"},
+            }
             self._received.set()
             if self._status_callback is not None:
-                self._status_callback(parsed)
+                self._status_callback(self._latest)
 
     def _handle_disconnect(self, _client: BleakClient) -> None:
         self._wake.set()
@@ -95,6 +104,7 @@ class WeberBluetoothSession:
         client = self._client
         self._client = None
         self._session_started = False
+        self._appliance_status = {}
         if client is not None:
             await _safe_disconnect(client)
 
@@ -167,6 +177,12 @@ class WeberBluetoothSession:
             self._received.clear()
             if self._session_started:
                 characteristic = COMMAND_UUID
+                appliance_status_frame = build_command_frame(
+                    self._next_sequence(),
+                    self.message_version,
+                    0x07,
+                    b"",
+                )
                 frame = build_command_frame(
                     self._next_sequence(),
                     self.message_version,
@@ -182,6 +198,12 @@ class WeberBluetoothSession:
                     build_handshake_body(self.companion_id, secrets.token_bytes(32)),
                 )
             try:
+                if self._session_started:
+                    await client.write_gatt_char(
+                        COMMAND_UUID,
+                        appliance_status_frame,
+                        response=True,
+                    )
                 await client.write_gatt_char(characteristic, frame, response=True)
                 self._session_started = True
                 await asyncio.wait_for(self._received.wait(), timeout=timeout)

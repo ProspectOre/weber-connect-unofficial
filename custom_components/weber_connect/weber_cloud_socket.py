@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import InvalidStatus
 
-from .saber_frames import parse_cook_session_status_payload
+from .saber_frames import parse_appliance_status_payload, parse_cook_session_status_payload
 from .weber_cloud import WeberCloudAuthError
 
 LOGGER = logging.getLogger(__name__)
@@ -128,6 +128,7 @@ class WeberCloudSession:
         self._wake = asyncio.Event()
         self.received_types: list[int] = []
         self.error_kind = "connection"
+        self._appliance_status: dict[str, Any] = {}
 
     def _next_sequence(self) -> int:
         value = self._sequence
@@ -183,6 +184,7 @@ class WeberCloudSession:
     async def _async_close_connection(self) -> None:
         connection, self._connection = self._connection, None
         self._subscribed = False
+        self._appliance_status = {}
         if connection is not None:
             try:
                 await connection.close()
@@ -244,8 +246,19 @@ class WeberCloudSession:
                 self.received_types = [*self.received_types[-19:], message.type_value]
                 if message.type_value == 0x87:
                     raise WeberCloudSocketError("The hub rejected the cloud request.")
+                if message.type_value == 0x83:
+                    self._appliance_status = parse_appliance_status_payload(message.payload)
+                    continue
                 if message.type_value == 0x80:
-                    return parse_cook_session_status_payload(message.payload)
+                    cook_status = parse_cook_session_status_payload(message.payload)
+                    return {
+                        **cook_status,
+                        **{
+                            key: value
+                            for key, value in self._appliance_status.items()
+                            if key != "kind"
+                        },
+                    }
 
     async def async_request_status(self) -> dict[str, Any]:
         """Request one current status without rebuilding the socket."""
@@ -260,6 +273,7 @@ class WeberCloudSession:
         if not self._subscribed:
             await self._async_subscribe()
         else:
+            await self._async_send(0x07)
             await self._async_send(0x05)
         try:
             return await self._async_receive_status()

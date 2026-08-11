@@ -38,6 +38,11 @@ def _status() -> bytes:
     return build_command_frame(4, 10, 0x80, b"")
 
 
+def _appliance_status() -> bytes:
+    payload = bytes([1, 1, 64, 2, 1, 1])
+    return build_command_frame(3, 10, 0x83, payload)
+
+
 def test_payload_rejects_bad_length_crc_tail_and_extra_bytes() -> None:
     valid = _status()
     assert transport._payload(valid)[0] == 0x80
@@ -95,6 +100,10 @@ class FakeClient:
     async def write_gatt_char(self, uuid: str, data: bytes, response: bool = True) -> None:
         self.writes.append((uuid, bytes(data), response))
         type_value = transport._payload(bytes(data))[0] if len(data) > 1 else None
+        if uuid == transport.COMMAND_UUID and type_value == 0x07:
+            callback = self.callbacks.get(transport.STATUS_UUID)
+            if callback is not None:
+                callback(transport.STATUS_UUID, bytearray(_appliance_status()))  # type: ignore[operator]
         if uuid == transport.SESSION_UUID or (
             uuid == transport.COMMAND_UUID and type_value == 0x05
         ):
@@ -286,11 +295,15 @@ async def test_persistent_session_reuses_one_proxy_connection() -> None:
         assert [uuid for uuid, _data, _response in client.writes] == [
             transport.SESSION_UUID,
             transport.COMMAND_UUID,
+            transport.COMMAND_UUID,
         ]
         assert [transport._payload(data)[0] for _uuid, data, _response in client.writes] == [
             0x70,
+            0x07,
             0x05,
         ]
+        assert second["battery_level"] == 64
+        assert second["is_charging"] is True
         connect.assert_awaited_once_with(
             session.hass,
             ADDRESS,
@@ -448,8 +461,14 @@ async def test_persistent_session_callbacks_and_disconnect_wake() -> None:
     session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
     session._status_callback = statuses.append
 
+    session._handle_status(transport.STATUS_UUID, bytearray(_appliance_status()))
+    assert statuses == []
+    assert not session._received.is_set()
+
     session._handle_status(transport.STATUS_UUID, bytearray(_status()))
     assert statuses[0]["kind"] == "cook_session_status"
+    assert statuses[0]["battery_level"] == 64
+    assert statuses[0]["is_charging"] is True
     assert session._received.is_set()
 
     session._received.clear()

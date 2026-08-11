@@ -125,11 +125,119 @@
     "binary_sensor": {
       "connection": {
         "name": "Connection"
+      },
+      "charging": {
+        "name": "Charging"
+      },
+      "cooking": {
+        "name": "Cooking"
       }
     },
     "sensor": {
       "grill_temperature": {
         "name": "Grill temperature"
+      },
+      "battery_level": {
+        "name": "Battery"
+      },
+      "target_grill_temperature": {
+        "name": "Target grill temperature"
+      },
+      "wifi_signal_strength": {
+        "name": "Wi-Fi signal strength"
+      },
+      "wifi_connection_status": {
+        "name": "Wi-Fi status",
+        "state": {
+          "unknown": "Unknown",
+          "connecting": "Connecting",
+          "connected": "Connected",
+          "network_not_found": "Network not found",
+          "invalid_password": "Invalid password",
+          "unsupported_network_type": "Unsupported network type",
+          "timed_out": "Timed out",
+          "disabled": "Disabled",
+          "invalid_password_format": "Invalid password format"
+        }
+      },
+      "cloud_connection_status": {
+        "name": "Weber Cloud status",
+        "state": {
+          "unknown": "Unknown",
+          "disconnected": "Disconnected",
+          "connecting": "Connecting",
+          "connected": "Connected"
+        }
+      },
+      "device_state": {
+        "name": "Device state",
+        "state": {
+          "unknown": "Unknown",
+          "idle": "Idle",
+          "active": "Active",
+          "shutting_down": "Shutting down",
+          "off": "Off"
+        }
+      },
+      "fuel_percent": {
+        "name": "Fuel"
+      },
+      "fuel_level": {
+        "name": "Fuel level",
+        "state": {
+          "unknown": "Unknown",
+          "full": "Full",
+          "full_to_half": "Full to half",
+          "half_to_quarter": "Half to quarter",
+          "quarter_to_low": "Quarter to low",
+          "low": "Low"
+        }
+      },
+      "cook_mode": {
+        "name": "Cook mode",
+        "state": {
+          "unknown": "Unknown",
+          "grill": "Grill",
+          "smoke_boost": "SmokeBoost",
+          "preheat": "Preheat",
+          "indirect": "Indirect",
+          "custom": "Custom",
+          "simple": "Simple",
+          "manual": "Manual",
+          "sear": "Sear",
+          "steam": "Steam",
+          "warm": "Warm"
+        }
+      },
+      "cook_intensity": {
+        "name": "Cook intensity level"
+      },
+      "probe_battery": {
+        "name": "Probe {number} battery"
+      },
+      "probe_ambient_temperature": {
+        "name": "Probe {number} ambient temperature"
+      },
+      "probe_case_temperature": {
+        "name": "Probe {number} case temperature"
+      },
+      "probe_time_remaining": {
+        "name": "Probe {number} time remaining"
+      },
+      "timed_session_time_remaining": {
+        "name": "Cook {number} time remaining"
+      },
+      "timer_time_remaining": {
+        "name": "Timer {number} time remaining"
+      },
+      "burner_state": {
+        "name": "Burner {number}",
+        "state": {
+          "unknown": "Unknown",
+          "off": "Off",
+          "on": "On",
+          "ignition_requested": "Ignition requested"
+        }
       },
       "last_successful_update": {
         "name": "Last successful update"

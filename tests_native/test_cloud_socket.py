@@ -26,6 +26,10 @@ def routed(type_value: int, payload: bytes = b"") -> bytes:
     )
 
 
+def tlv(tag: int, value: bytes) -> bytes:
+    return bytes([tag, len(value)]) + value
+
+
 class FakeHass:
     async def async_add_executor_job(self, target: object, *args: object) -> object:
         return target(*args)  # type: ignore[operator]
@@ -123,13 +127,38 @@ async def test_first_status_subscribes_once_and_next_status_reuses_socket() -> N
     assert first["kind"] == "cook_session_status"
     assert second["kind"] == "cook_session_status"
     assert initial_count == 9
-    assert len(connection.sent) == 10
+    assert len(connection.sent) == 11
+    assert socket.decode_routed_message(connection.sent[-2]).type_value == 0x07
     assert socket.decode_routed_message(connection.sent[-1]).type_value == 0x05
     assert cloud.wake_calls == [APPLIANCE_ID]
     connect.assert_awaited_once()
     assert connect.await_args.kwargs["proxy"] is None
     assert isinstance(connect.await_args.kwargs["ssl"], ssl.SSLContext)
     assert session.received_types == [0x80, 0x80]
+
+
+@pytest.mark.asyncio
+async def test_appliance_status_is_merged_into_cook_status() -> None:
+    connection = FakeConnection(
+        [
+            routed(0x83, tlv(1, bytes([64])) + tlv(2, bytes([1]))),
+            routed(0x80),
+        ]
+    )
+    session = socket.WeberCloudSession(
+        FakeHass(),  # type: ignore[arg-type]
+        FakeCloudClient(),
+        APPLIANCE_ID,
+        timeout=0.1,
+        subscribe_delay=0,
+    )
+    with patch.object(socket, "connect", AsyncMock(return_value=connection)):
+        status = await session.async_request_status()
+
+    assert status["kind"] == "cook_session_status"
+    assert status["battery_level"] == 64
+    assert status["is_charging"] is True
+    assert session.received_types == [0x83, 0x80]
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.0 — 2026-08-11
+
+- Add capability-driven hub battery and charging entities, including the
+  battery level requested in issue #42.
+- Expose available Wi-Fi, cloud, device, fuel, target, cook-mode, cooking,
+  intensity, timer, burner, wireless-probe, and firmware telemetry without
+  creating unsupported entities on devices that do not report it.
+- Preserve stable entity identities while dynamically adding newly discovered
+  capabilities across Weber Cloud and Bluetooth transports.
+- Expand diagnostics, documentation, translations, protocol coverage, and
+  lifecycle tests for the new production entity surface.
+
 ## 3.0.7 — 2026-08-08
 
 - Explain directly on the **No Weber hub found** screen that initial setup

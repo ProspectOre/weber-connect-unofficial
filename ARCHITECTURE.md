@@ -16,11 +16,12 @@ Home Assistant config entry
                                       │
                              local adapter or active proxy
 
-coordinator ──► built-in grill temperature sensor when reported
-            ├─► two baseline native probe temperature sensors
-            ├─► up to two additional probe sensors when reported
+coordinator ──► two baseline native probe temperature sensors
             ├─► one connection binary sensor
-            └─► one last-successful-update timestamp sensor
+            ├─► one last-successful-update timestamp sensor
+            └─► capability-driven sensors and binary sensors when reported
+                 (grill, target, battery, charging, cooking, connectivity,
+                  fuel, wireless probes, sessions, timers, and burners)
 ```
 
 There is no MQTT broker, separate web app, copied proxy secret, or
@@ -68,14 +69,17 @@ Home Assistant retains no credential after the flow is discarded.
   reloads the entry and closes the old transport first.
 
 The coordinator normalizes both transports into one stable state shape. Probe
-1 and Probe 2 form the baseline entity set. Probe 3, Probe 4, and the built-in
-grill-temperature entity are added only when the decoded status reports them.
-Once created, probe entities retain their physical slot identity while current
+1 and Probe 2 form the baseline entity set. Probe 3, Probe 4, and other
+appliance-specific entities are added only when decoded status reports the
+corresponding capability. This includes hub power, appliance connectivity,
+fuel, cook status, wireless-probe details, countdowns, and burner state. Once
+created, probe entities retain their physical slot identity while current
 values may become `Unknown`. An always-visible connection binary sensor reports
 the current transport state and method, while a timestamp sensor preserves the
-last successful read. Entity unique IDs use
-the config entry's hub address plus a semantic key, so a proxy change or
-user-visible rename does not create new entities.
+last successful read. Entity unique IDs use the config entry's hub address plus
+a semantic key, so a proxy change or user-visible rename does not create new
+entities. Reported software and hardware versions update Home Assistant's
+device registry metadata.
 
 ## Security boundary
 
@@ -92,11 +96,11 @@ operations have bounded timeouts. The integration is read-only.
 ## Private protocols
 
 `saber_frames.py` implements Weber's observed null-session transport, pairing,
-and cook-status TLV decoding. `weber_cloud.py` and `weber_cloud_socket.py`
-implement the minimal read-only companion REST/WebSocket surface for
-association and probe telemetry. Cook-history, recipe, instruction, timer, and
-control APIs are outside the 3.0 runtime. These interfaces are private and can
-change without notice.
+appliance-status, and cook-status TLV decoding. `weber_cloud.py` and
+`weber_cloud_socket.py` implement the minimal read-only companion
+REST/WebSocket surface for association and live appliance telemetry.
+Cook-history, recipe, instruction, and control APIs are outside the 3.0
+runtime. These interfaces are private and can change without notice.
 
 The local decoder accepts only a complete transport frame whose declared
 length, envelope CRC, and terminal marker all verify. The cloud decoder accepts

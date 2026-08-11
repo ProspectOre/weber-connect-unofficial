@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the 3.0 native Home Assistant integration release contract."""
+"""Validate the native Home Assistant integration release contract."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.0.7"
+VERSION = "3.1.0"
 DOMAIN = "weber_connect"
 
 
@@ -41,6 +41,8 @@ def check_required_files() -> None:
         "PRODUCTION_READINESS.md",
         "docs/validation/3.0.0-rc-automated.json",
         "docs/validation/3.0.0-rc-physical.json",
+        "docs/validation/3.1.0-rc-automated.json",
+        "docs/validation/3.1.0-rc-physical.json",
         "SECURITY.md",
         "hacs.json",
         "requirements-runtime.txt",
@@ -63,7 +65,7 @@ def check_required_files() -> None:
             fail(f"missing required file: {relative}")
     for removed in ("repository.yaml", "weber_connect_ble"):
         if (ROOT / removed).exists():
-            fail(f"legacy add-on artifact must not ship in 3.0: {removed}")
+            fail(f"legacy add-on artifact must not ship: {removed}")
 
 
 def check_manifest() -> None:
@@ -176,14 +178,18 @@ def check_privacy_and_scope() -> None:
         )
     )
     if platforms != ("binary_sensor", "sensor"):
-        fail("3.0 must expose its probe sensors and connection context")
-    evidence = load_json(ROOT / "docs" / "validation" / "3.0.0-rc-physical.json")
+        fail("the integration must expose its sensor and connection platforms")
+    evidence = load_json(ROOT / "docs" / "validation" / "3.1.0-rc-physical.json")
     evidence_text = json.dumps(evidence)
+    if evidence.get("candidate") != VERSION:
+        fail("physical validation evidence must match the release version")
     if evidence.get("identifiers") != "redacted":
         fail("physical validation evidence must declare identifiers redacted")
     if re.search(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b", evidence_text):
         fail("physical validation evidence must not contain MAC addresses")
-    automated = load_json(ROOT / "docs" / "validation" / "3.0.0-rc-automated.json")
+    automated = load_json(ROOT / "docs" / "validation" / "3.1.0-rc-automated.json")
+    if automated.get("candidate") != VERSION:
+        fail("automated validation evidence must match the release version")
     tests = automated.get("tests")
     if (
         not isinstance(tests, dict)
@@ -210,7 +216,7 @@ def check_workflows() -> None:
     if not review_stamp < fork_stop < auto_merge_arm:
         fail("fork PRs must receive the review-gate status before auto-merge stops")
     if (ROOT / ".github" / "workflows" / "publish.yml").exists():
-        fail("3.0 must not retain the add-on container publishing workflow")
+        fail("the native integration must not retain the add-on container publishing workflow")
 
 
 def check_brand_assets() -> None:
