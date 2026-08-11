@@ -20,8 +20,8 @@
     "git_diff_check": "passed"
   },
   "hosted_gates": {
-    "github_actions_exact_commit": "not_run_until_publish_workflow",
-    "hacs_repository_action_exact_commit": "not_run_until_publish_workflow",
-    "home_assistant_hassfest_exact_commit": "not_run_until_publish_workflow"
+    "github_actions_exact_commit": "passed",
+    "hacs_repository_action_exact_commit": "passed",
+    "home_assistant_hassfest_exact_commit": "passed"
   }
 }
