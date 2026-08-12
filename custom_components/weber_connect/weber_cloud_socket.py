@@ -184,7 +184,6 @@ class WeberCloudSession:
     async def _async_close_connection(self) -> None:
         connection, self._connection = self._connection, None
         self._subscribed = False
-        self._appliance_status = {}
         if connection is not None:
             try:
                 await connection.close()
@@ -247,7 +246,19 @@ class WeberCloudSession:
                 if message.type_value == 0x87:
                     raise WeberCloudSocketError("The hub rejected the cloud request.")
                 if message.type_value == 0x83:
-                    self._appliance_status = parse_appliance_status_payload(message.payload)
+                    appliance_status = parse_appliance_status_payload(message.payload)
+                    # Weber can send partial appliance-status frames between full
+                    # snapshots. Missing TLVs parse as None, but they mean "not
+                    # included in this frame", not that every omitted entity has
+                    # become unknown. Merge only reported values so one partial
+                    # frame cannot briefly clear all hub-level telemetry.
+                    self._appliance_status.update(
+                        {
+                            key: value
+                            for key, value in appliance_status.items()
+                            if key not in {"kind", "unparsed_tail_hex"} and value is not None
+                        }
+                    )
                     continue
                 if message.type_value == 0x80:
                     cook_status = parse_cook_session_status_payload(message.payload)

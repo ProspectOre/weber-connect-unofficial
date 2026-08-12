@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.1.1 — 2026-08-11
+
+- Preserve hub battery, charging, Wi-Fi, Weber Cloud, and device-state telemetry
+  when Weber sends a partial appliance-status frame.
+- Retain the last complete hub snapshot across transient cloud socket reconnects
+  instead of briefly publishing synchronized `Unknown` entity states.
+- Keep slow-changing hub telemetry visible during longer Weber Cloud outages
+  while the connection entity reports disconnected and live cooking and probe
+  readings clear as stale.
+- Add regression coverage for partial frames, reconnects, sustained failures,
+  and recovery, backed by a live Home Assistant soak with no post-baseline hub
+  entity dropouts.
+
 ## 3.1.0 — 2026-08-11
 
 - Add capability-driven hub battery and charging entities, including the

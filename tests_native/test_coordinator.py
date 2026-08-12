@@ -140,7 +140,9 @@ async def test_status_publishes_grill_and_reported_probe_state_and_clears_failur
     assert coordinator.successful_updates == 1
 
 
-def test_three_failures_clear_stale_temperature_to_honest_unknown(hass: object) -> None:
+def test_three_local_failures_clear_stale_temperature_to_honest_unknown(
+    hass: object,
+) -> None:
     coordinator, _transport = _coordinator(hass, cloud=False)
     coordinator._async_status(
         {
@@ -158,6 +160,56 @@ def test_three_failures_clear_stale_temperature_to_honest_unknown(hass: object) 
     assert coordinator.data["connected"] is False
     assert coordinator.data["last_successful_update"] == last_successful_update
     assert coordinator.failed_updates == coordinator_module.OFFLINE_FAILURE_THRESHOLD
+
+
+def test_three_cloud_failures_retain_only_slow_changing_hub_state(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator._async_status(
+        {
+            "actual_cavity_temp_c": 110.0,
+            "battery_level": 64,
+            "is_charging": True,
+            "wifi_signal_strength": -61,
+            "wifi_connection_status": "connected",
+            "cloud_connection_status": "connected",
+            "device_state": "idle",
+            "probes": [{"probe_number": 4, "probe_temp_c": 30.0}],
+        }
+    )
+    last_successful_update = coordinator.data["last_successful_update"]
+
+    for _ in range(coordinator_module.OFFLINE_FAILURE_THRESHOLD + 15):
+        coordinator._async_error("cloud relay unavailable")
+
+    assert coordinator.data["connected"] is False
+    assert coordinator.data["last_successful_update"] == last_successful_update
+    assert coordinator.data["battery_level"] == 64
+    assert coordinator.data["is_charging"] is True
+    assert coordinator.data["wifi_signal_strength"] == -61
+    assert coordinator.data["wifi_connection_status"] == "connected"
+    assert coordinator.data["cloud_connection_status"] == "connected"
+    assert coordinator.data["device_state"] == "idle"
+    assert coordinator.data["grill_temperature"] is None
+    assert coordinator.data["probe_4_temperature"] is None
+    assert coordinator.failed_updates == coordinator_module.OFFLINE_FAILURE_THRESHOLD + 15
+
+    coordinator._async_status(
+        {
+            "battery_level": 63,
+            "is_charging": False,
+            "wifi_signal_strength": -55,
+            "wifi_connection_status": "connected",
+            "cloud_connection_status": "connected",
+            "device_state": "active",
+            "probes": [],
+        }
+    )
+    assert coordinator.data["connected"] is True
+    assert coordinator.data["battery_level"] == 63
+    assert coordinator.data["is_charging"] is False
+    assert coordinator.data["device_state"] == "active"
+    assert coordinator.consecutive_failures == 0
+    assert coordinator.last_error is None
 
 
 def test_local_idle_never_creates_a_repair(hass: object) -> None:

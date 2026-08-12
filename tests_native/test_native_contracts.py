@@ -43,7 +43,7 @@ def test_manifest_and_hacs_contract() -> None:
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == DOMAIN
-    assert manifest["version"] == "3.1.0"
+    assert manifest["version"] == "3.1.1"
     assert manifest["config_flow"] is True
     assert manifest["dependencies"] == ["bluetooth_adapters"]
     assert manifest["iot_class"] == "cloud_polling"

@@ -162,6 +162,44 @@ async def test_appliance_status_is_merged_into_cook_status() -> None:
 
 
 @pytest.mark.asyncio
+async def test_partial_appliance_status_preserves_cached_hub_telemetry() -> None:
+    connection = FakeConnection(
+        [
+            routed(
+                0x83,
+                tlv(1, bytes([64]))
+                + tlv(2, bytes([1]))
+                + tlv(10, (-61).to_bytes(4, "little", signed=True))
+                + tlv(15, bytes([2])),
+            ),
+            routed(0x80),
+            routed(0x83, tlv(10, (-52).to_bytes(4, "little", signed=True))),
+            routed(0x80),
+        ]
+    )
+    session = socket.WeberCloudSession(
+        FakeHass(),  # type: ignore[arg-type]
+        FakeCloudClient(),
+        APPLIANCE_ID,
+        timeout=0.1,
+        subscribe_delay=0,
+    )
+    with patch.object(socket, "connect", AsyncMock(return_value=connection)):
+        first = await session.async_request_status()
+        second = await session.async_request_status()
+
+    assert first["battery_level"] == 64
+    assert first["is_charging"] is True
+    assert first["wifi_signal_strength"] == -61
+    assert first["wifi_connection_status"] == "connected"
+    assert second["battery_level"] == 64
+    assert second["is_charging"] is True
+    assert second["wifi_signal_strength"] == -52
+    assert second["wifi_connection_status"] == "connected"
+    assert session.received_types == [0x83, 0x80, 0x83, 0x80]
+
+
+@pytest.mark.asyncio
 async def test_idle_socket_renews_subscription_once_before_failure() -> None:
     connection = FakeConnection([None, routed(0x80)])
     session = socket.WeberCloudSession(
@@ -199,6 +237,46 @@ async def test_expiring_token_rotates_socket_before_next_request() -> None:
     assert len(second.sent) == 9
     assert cloud.token_calls == 2
     assert connect.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_reconnect_preserves_cached_appliance_status() -> None:
+    first = FakeConnection(
+        [
+            routed(
+                0x83,
+                tlv(1, bytes([64]))
+                + tlv(2, bytes([1]))
+                + tlv(10, (-61).to_bytes(4, "little", signed=True))
+                + tlv(15, bytes([2])),
+            ),
+            routed(0x80),
+        ]
+    )
+    # A newly subscribed socket can deliver cook status before the first fresh
+    # appliance-status frame. The previous complete snapshot must bridge that
+    # reconnect instead of briefly publishing unknown hub-level telemetry.
+    second = FakeConnection([routed(0x80)])
+    cloud = FakeCloudClient()
+    session = socket.WeberCloudSession(
+        FakeHass(),  # type: ignore[arg-type]
+        cloud,
+        APPLIANCE_ID,
+        timeout=0.1,
+        subscribe_delay=0,
+    )
+    with patch.object(socket, "connect", AsyncMock(side_effect=[first, second])):
+        before_reconnect = await session.async_request_status()
+        cloud.refresh_required = True
+        after_reconnect = await session.async_request_status()
+
+    assert before_reconnect["battery_level"] == 64
+    assert after_reconnect["battery_level"] == 64
+    assert after_reconnect["is_charging"] is True
+    assert after_reconnect["wifi_signal_strength"] == -61
+    assert after_reconnect["wifi_connection_status"] == "connected"
+    assert first.closed is True
+    assert session.received_types == [0x83, 0x80, 0x80]
 
 
 @pytest.mark.asyncio

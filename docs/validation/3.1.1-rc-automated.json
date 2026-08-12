@@ -1,0 +1,27 @@
+{
+  "candidate": "3.1.1",
+  "evidence_date": "2026-08-11",
+  "home_assistant_test_framework": "2026.7.2",
+  "python": "3.14.6",
+  "tests": {
+    "passed": 130,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 95.66,
+    "required_coverage_percent": 95
+  },
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "pip_audit": "passed",
+    "actionlint": "passed",
+    "release_contract": "passed",
+    "git_diff_check": "passed"
+  },
+  "hosted_gates": {
+    "github_actions": "pending",
+    "hacs_repository_action": "pending",
+    "home_assistant_hassfest": "pending"
+  }
+}
