@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.1.0"
+VERSION = "3.1.1"
 DOMAIN = "weber_connect"
 
 
@@ -43,6 +43,8 @@ def check_required_files() -> None:
         "docs/validation/3.0.0-rc-physical.json",
         "docs/validation/3.1.0-rc-automated.json",
         "docs/validation/3.1.0-rc-physical.json",
+        "docs/validation/3.1.1-rc-automated.json",
+        "docs/validation/3.1.1-rc-physical.json",
         "SECURITY.md",
         "hacs.json",
         "requirements-runtime.txt",
@@ -179,7 +181,7 @@ def check_privacy_and_scope() -> None:
     )
     if platforms != ("binary_sensor", "sensor"):
         fail("the integration must expose its sensor and connection platforms")
-    evidence = load_json(ROOT / "docs" / "validation" / "3.1.0-rc-physical.json")
+    evidence = load_json(ROOT / "docs" / "validation" / "3.1.1-rc-physical.json")
     evidence_text = json.dumps(evidence)
     if evidence.get("candidate") != VERSION:
         fail("physical validation evidence must match the release version")
@@ -187,7 +189,7 @@ def check_privacy_and_scope() -> None:
         fail("physical validation evidence must declare identifiers redacted")
     if re.search(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b", evidence_text):
         fail("physical validation evidence must not contain MAC addresses")
-    automated = load_json(ROOT / "docs" / "validation" / "3.1.0-rc-automated.json")
+    automated = load_json(ROOT / "docs" / "validation" / "3.1.1-rc-automated.json")
     if automated.get("candidate") != VERSION:
         fail("automated validation evidence must match the release version")
     tests = automated.get("tests")

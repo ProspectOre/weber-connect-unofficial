@@ -1,0 +1,74 @@
+{
+  "candidate": "3.1.1",
+  "evidence_date": "2026-08-11",
+  "identifiers": "redacted",
+  "environment": {
+    "home_assistant": "2026.8.1",
+    "host": "Home Assistant Yellow",
+    "hub": "Weber Connect Hub 2.0.3_7398",
+    "transport": "Weber Cloud",
+    "connection_mode": "phone_and_home_assistant"
+  },
+  "verified": {
+    "exact_candidate_loaded_after_core_restart": true,
+    "config_entry_loaded": true,
+    "partial_appliance_status_preserves_cached_hub_telemetry": true,
+    "reconnect_preserves_cached_hub_telemetry": true,
+    "sustained_cloud_outage_preserves_slow_changing_hub_telemetry": true,
+    "connection_entity_reports_outages": true,
+    "live_cooking_and_probe_values_clear_during_sustained_outage": true,
+    "diagnostics_redaction": true,
+    "weber_warning_or_error_entries": 0
+  },
+  "live_validation": {
+    "baseline_utc": "2026-08-12T02:04:24.008Z",
+    "end_utc": "2026-08-12T06:00:00.000Z",
+    "duration_seconds": 14135.992,
+    "post_baseline_unknown_or_unavailable_transitions": 0,
+    "connection_outages": [
+      {
+        "started_utc": "2026-08-12T02:28:16.364921Z",
+        "duration_seconds": 1.268,
+        "hub_telemetry_retained": true
+      },
+      {
+        "started_utc": "2026-08-12T02:46:10.412537Z",
+        "duration_seconds": 1.308,
+        "hub_telemetry_retained": true
+      },
+      {
+        "started_utc": "2026-08-12T05:22:48.892515Z",
+        "duration_seconds": 1.293,
+        "hub_telemetry_retained": true
+      },
+      {
+        "started_utc": "2026-08-12T05:57:30.482913Z",
+        "duration_seconds": 5.676,
+        "hub_telemetry_retained": true
+      }
+    ],
+    "final_sample": {
+      "connected": true,
+      "hub_battery_percent": 70,
+      "hub_is_charging": false,
+      "wifi_signal_dbm": -54,
+      "wifi_status": "connected",
+      "cloud_status": "connected",
+      "device_state": "idle",
+      "successful_updates": 227,
+      "failed_updates": 5,
+      "last_error": null
+    }
+  },
+  "comparison": {
+    "pre_patch_synchronized_dropouts_same_day": 47,
+    "prior_candidate_regression_utc": "2026-08-12T01:31:59Z",
+    "prior_candidate_regression_duration_seconds": 372.668,
+    "final_candidate_synchronized_dropouts": 0
+  },
+  "not_verified": [
+    "other hub models, firmware, regions, routers, and accounts",
+    "host-adapter-only pairing and endurance",
+    "two-proxy failover"
+  ]
+}

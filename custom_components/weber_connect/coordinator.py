@@ -31,6 +31,14 @@ from .weber_cloud_socket import WeberCloudSession
 
 _LOGGER = logging.getLogger(__name__)
 OFFLINE_FAILURE_THRESHOLD = 3
+CLOUD_OFFLINE_RETAINED_KEYS = (
+    "battery_level",
+    "is_charging",
+    "wifi_signal_strength",
+    "wifi_connection_status",
+    "cloud_connection_status",
+    "device_state",
+)
 
 
 class _TransportSession(Protocol):
@@ -190,14 +198,22 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.failed_updates += 1
         self.consecutive_failures += 1
         if self.consecutive_failures >= OFFLINE_FAILURE_THRESHOLD:
-            self.async_set_updated_data(
-                normalize_state(
-                    None,
-                    source=self.source,
-                    connected=False,
-                    last_successful_update=self.last_successful_update,
-                )
+            offline_state = normalize_state(
+                None,
+                source=self.source,
+                connected=False,
+                last_successful_update=self.last_successful_update,
             )
+            if self.source == "cloud":
+                # Connection state and the timestamp communicate that this data
+                # is stale. Retain the last hub snapshot through a cloud outage
+                # so a transport failure cannot turn every slow-changing hub
+                # entity unknown; live cooking and probe values remain cleared.
+                previous_state = self.data or {}
+                offline_state.update(
+                    {key: previous_state.get(key) for key in CLOUD_OFFLINE_RETAINED_KEYS}
+                )
+            self.async_set_updated_data(offline_state)
         if self.source == "cloud" and self.cloud_session is not None:
             if self.cloud_session.error_kind == "credentials":
                 ir.async_create_issue(
