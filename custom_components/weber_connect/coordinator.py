@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .bluetooth import WeberBluetoothSession
 from .const import (
+    CLOUD_OFFLINE_RETAINED_KEYS,
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
@@ -31,14 +32,6 @@ from .weber_cloud_socket import WeberCloudSession
 
 _LOGGER = logging.getLogger(__name__)
 OFFLINE_FAILURE_THRESHOLD = 3
-CLOUD_OFFLINE_RETAINED_KEYS = (
-    "battery_level",
-    "is_charging",
-    "wifi_signal_strength",
-    "wifi_connection_status",
-    "cloud_connection_status",
-    "device_state",
-)
 
 
 class _TransportSession(Protocol):

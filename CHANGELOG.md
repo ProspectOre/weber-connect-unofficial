@@ -5,7 +5,8 @@
 - Preserve hub battery, charging, Wi-Fi, Weber Cloud, and device-state telemetry
   when Weber sends a partial appliance-status frame.
 - Retain the last complete hub snapshot across transient cloud socket reconnects
-  instead of briefly publishing synchronized `Unknown` entity states.
+  instead of briefly publishing synchronized `Unknown` entity states, while
+  requiring fresh appliance frames before republishing fuel and version data.
 - Keep slow-changing hub telemetry visible during longer Weber Cloud outages
   while the connection entity reports disconnected and live cooking and probe
   readings clear as stale.

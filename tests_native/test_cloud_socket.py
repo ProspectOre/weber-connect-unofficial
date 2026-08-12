@@ -247,8 +247,14 @@ async def test_reconnect_preserves_cached_appliance_status() -> None:
                 0x83,
                 tlv(1, bytes([64]))
                 + tlv(2, bytes([1]))
+                + tlv(4, bytes([3]))
                 + tlv(10, (-61).to_bytes(4, "little", signed=True))
-                + tlv(15, bytes([2])),
+                + tlv(14, b"rev-b")
+                + tlv(15, bytes([2]))
+                + tlv(17, bytes([1]))
+                + tlv(19, b"2.0.3_7398")
+                + tlv(20, bytes([5]))
+                + tlv(27, bytes([18])),
             ),
             routed(0x80),
         ]
@@ -275,6 +281,14 @@ async def test_reconnect_preserves_cached_appliance_status() -> None:
     assert after_reconnect["is_charging"] is True
     assert after_reconnect["wifi_signal_strength"] == -61
     assert after_reconnect["wifi_connection_status"] == "connected"
+    assert after_reconnect["cloud_connection_status"] == "connected"
+    assert after_reconnect["device_state"] == "active"
+    assert before_reconnect["fuel_level"] == "low"
+    assert before_reconnect["fuel_percent"] == 18
+    assert "fuel_level" not in after_reconnect
+    assert "fuel_percent" not in after_reconnect
+    assert "software_version" not in after_reconnect
+    assert "hardware_version" not in after_reconnect
     assert first.closed is True
     assert session.received_types == [0x83, 0x80, 0x80]
 
