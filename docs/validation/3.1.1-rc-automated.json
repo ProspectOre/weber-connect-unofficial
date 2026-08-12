@@ -20,8 +20,8 @@
     "git_diff_check": "passed"
   },
   "hosted_gates": {
-    "github_actions": "pending",
-    "hacs_repository_action": "pending",
-    "home_assistant_hassfest": "pending"
+    "github_actions": "passed",
+    "hacs_repository_action": "passed",
+    "home_assistant_hassfest": "passed"
   }
 }
