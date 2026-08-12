@@ -7,6 +7,14 @@ from typing import Final
 DOMAIN: Final = "weber_connect"
 NAME: Final = "Weber Connect Unofficial"
 MANUFACTURER: Final = "Weber"
+CLOUD_OFFLINE_RETAINED_KEYS: Final = (
+    "battery_level",
+    "is_charging",
+    "wifi_signal_strength",
+    "wifi_connection_status",
+    "cloud_connection_status",
+    "device_state",
+)
 
 CONF_COMPANION_ID: Final = "companion_id"
 CONF_MESSAGE_VERSION: Final = "message_version"

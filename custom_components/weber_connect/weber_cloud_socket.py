@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import InvalidStatus
 
+from .const import CLOUD_OFFLINE_RETAINED_KEYS
 from .saber_frames import parse_appliance_status_payload, parse_cook_session_status_payload
 from .weber_cloud import WeberCloudAuthError
 
@@ -184,6 +185,15 @@ class WeberCloudSession:
     async def _async_close_connection(self) -> None:
         connection, self._connection = self._connection, None
         self._subscribed = False
+        # A reconnect may receive cook status before its first appliance-status
+        # frame. Preserve only the slow-changing hub fields needed to bridge
+        # that gap. Live or consumable fields (for example fuel) must wait for
+        # a fresh appliance frame so stale values cannot appear current.
+        self._appliance_status = {
+            key: self._appliance_status[key]
+            for key in CLOUD_OFFLINE_RETAINED_KEYS
+            if key in self._appliance_status
+        }
         if connection is not None:
             try:
                 await connection.close()
