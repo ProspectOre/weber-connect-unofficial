@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.1.2 — 2026-08-13
+
+- Add a one-click HACS repository link with installation instructions that work
+  both before and after default-store inclusion.
+- Add focused discovery, pairing, cloud, availability, diagnostics, and removal
+  guidance for end users.
+- Refresh stale 3.0-era overview language and point current validation claims
+  to the 3.1.1 evidence.
+- Add specification-sized normal and high-DPI brand assets while preserving the
+  existing project identity and transparent backgrounds.
+- This release changes documentation, presentation, and repository metadata
+  only; integration runtime behavior is unchanged from 3.1.1.
+
 ## 3.1.1 — 2026-08-11
 
 - Preserve hub battery, charging, Wi-Fi, Weber Cloud, and device-state telemetry

@@ -98,16 +98,16 @@ Run with the host adapter disabled:
 
 ## Current evidence
 
-The local 3.1.0 release candidate gate passes 127 tests with 95.65% combined
+The local 3.1.1 release candidate gate passes 130 tests with 95.66% combined
 statement/branch coverage against the Home Assistant 2026.7.2 test framework.
 Ruff, formatting, strict mypy, Bandit, dependency audit, Actionlint, release
 contract validation, and diff-integrity checks all pass locally. Hassfest and
 HACS validation remain required hosted gates on the exact release commit.
 
-The 3.1 automated results are retained in
-[`docs/validation/3.1.0-rc-automated.json`](docs/validation/3.1.0-rc-automated.json).
-The live 3.1 assertions are retained in
-[`docs/validation/3.1.0-rc-physical.json`](docs/validation/3.1.0-rc-physical.json)
+The current automated results are retained in
+[`docs/validation/3.1.1-rc-automated.json`](docs/validation/3.1.1-rc-automated.json).
+The current live assertions are retained in
+[`docs/validation/3.1.1-rc-physical.json`](docs/validation/3.1.1-rc-physical.json)
 without device identifiers. The original 3.0 transport and endurance evidence
 remains in the adjacent 3.0 validation files.
 
