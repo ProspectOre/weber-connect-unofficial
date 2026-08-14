@@ -14,8 +14,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
 VERSION = "3.1.2"
-# Presentation-only releases retain the last physically validated runtime.
-RUNTIME_EVIDENCE_VERSION = "3.1.1"
+# A presentation-only release may reuse evidence for an unchanged runtime. Keep
+# each exception keyed to the exact release so changing VERSION automatically
+# requires matching fresh evidence unless a new exception is deliberately added.
+PRESENTATION_ONLY_RUNTIME_EVIDENCE = {"3.1.2": "3.1.1"}
+RUNTIME_EVIDENCE_VERSION = PRESENTATION_ONLY_RUNTIME_EVIDENCE.get(VERSION, VERSION)
 DOMAIN = "weber_connect"
 
 
