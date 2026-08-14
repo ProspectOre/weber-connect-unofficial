@@ -7,12 +7,15 @@ import ast
 import json
 import py_compile
 import re
+import struct
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.1.1"
+VERSION = "3.1.2"
+# Presentation-only releases retain the last physically validated runtime.
+RUNTIME_EVIDENCE_VERSION = "3.1.1"
 DOMAIN = "weber_connect"
 
 
@@ -181,17 +184,21 @@ def check_privacy_and_scope() -> None:
     )
     if platforms != ("binary_sensor", "sensor"):
         fail("the integration must expose its sensor and connection platforms")
-    evidence = load_json(ROOT / "docs" / "validation" / "3.1.1-rc-physical.json")
+    evidence = load_json(
+        ROOT / "docs" / "validation" / f"{RUNTIME_EVIDENCE_VERSION}-rc-physical.json"
+    )
     evidence_text = json.dumps(evidence)
-    if evidence.get("candidate") != VERSION:
-        fail("physical validation evidence must match the release version")
+    if evidence.get("candidate") != RUNTIME_EVIDENCE_VERSION:
+        fail("physical validation evidence must match the runtime evidence version")
     if evidence.get("identifiers") != "redacted":
         fail("physical validation evidence must declare identifiers redacted")
     if re.search(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b", evidence_text):
         fail("physical validation evidence must not contain MAC addresses")
-    automated = load_json(ROOT / "docs" / "validation" / "3.1.1-rc-automated.json")
-    if automated.get("candidate") != VERSION:
-        fail("automated validation evidence must match the release version")
+    automated = load_json(
+        ROOT / "docs" / "validation" / f"{RUNTIME_EVIDENCE_VERSION}-rc-automated.json"
+    )
+    if automated.get("candidate") != RUNTIME_EVIDENCE_VERSION:
+        fail("automated validation evidence must match the runtime evidence version")
     tests = automated.get("tests")
     if (
         not isinstance(tests, dict)
@@ -223,10 +230,27 @@ def check_workflows() -> None:
 
 def check_brand_assets() -> None:
     brand = INTEGRATION / "brand"
-    for asset_name in ("icon.png", "logo.png"):
+    expected_dimensions = {
+        "icon.png": (256, 256),
+        "icon@2x.png": (512, 512),
+        "logo.png": (640, 256),
+        "logo@2x.png": (1280, 512),
+    }
+    for asset_name, expected in expected_dimensions.items():
         asset = brand / asset_name
         if not asset.is_file():
             fail(f"integration brand asset is missing: {asset.relative_to(ROOT)}")
+        header = asset.read_bytes()[:26]
+        if len(header) != 26 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+            fail(f"integration brand asset is not a valid PNG: {asset.relative_to(ROOT)}")
+        dimensions = struct.unpack(">II", header[16:24])
+        if dimensions != expected:
+            fail(f"integration brand asset {asset_name} must be {expected[0]}x{expected[1]}")
+        if header[25] not in {4, 6}:
+            fail(f"integration brand asset must preserve transparency: {asset_name}")
+        publication_copy = ROOT / "images" / asset_name
+        if not publication_copy.is_file() or publication_copy.read_bytes() != asset.read_bytes():
+            fail(f"publication brand asset must match the integration asset: {asset_name}")
 
 
 def main() -> int:

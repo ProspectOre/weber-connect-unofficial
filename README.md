@@ -1,9 +1,13 @@
 # Weber Connect Unofficial
 
+<p align="center">
+  <img src="images/logo.png" srcset="images/logo@2x.png 2x" alt="Weber Connect Unofficial" width="320">
+</p>
+
 Native Home Assistant support for the Weber Connect Smart Grilling Hub and
 compatible built-in Weber Connect controllers.
 
-Version 3.0 is one native Home Assistant integration:
+Version 3.x is one native Home Assistant integration:
 
 - automatic Bluetooth discovery through local adapters and active ESPHome proxies;
 - one physically confirmed setup with no Weber email, password, phone secret, or packet capture;
@@ -30,7 +34,36 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 
 ## Install
 
-3.0 is installed as a HACS custom integration:
+Install Weber Connect Unofficial through HACS:
+
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ProspectOre&repository=weber-connect-unofficial&category=integration)
+
+1. Select the button above to open this repository in HACS, then choose
+   **Download**. If HACS cannot find the repository while its default-store
+   submission is pending, use the manual fallback below.
+2. Restart Home Assistant when HACS prompts you.
+3. Open **Settings → Devices & services**. Select the discovered Weber hub, or
+   choose **Add integration → Weber Connect Unofficial**.
+4. Before closing the Weber app, turn off Bluetooth on that phone or tablet and
+   confirm the hub still appears online through Wi-Fi. Leave Bluetooth off.
+   Initial setup always needs Home Assistant internet access and a working
+   hub-to-Weber Cloud connection, including when you intend to select **Home
+   Assistant only** after setup.
+5. Fully close the Weber app on every phone or tablet that uses it, and turn off
+   Bluetooth on any other one. This prevents a phone from reclaiming the hub
+   while Home Assistant pairs.
+6. Wake the hub and continue setup. Approval happens on the physical hub, not
+   in the Weber app. On a standalone Smart Grilling Hub, wait for all four
+   probe indicators to light, then press down once on the top/display within
+   60 seconds. On a grill controller, press its dial or confirmation control
+   when prompted.
+7. Home Assistant checks Weber Cloud for up to five minutes. After setup
+   completes, turn Bluetooth back on and reopen the Weber app.
+
+### Manual HACS fallback
+
+Until the default-store submission is accepted, the repository can always be
+added manually:
 
 1. Open **HACS → Integrations → ⋮ → Custom repositories**.
 2. Add this repository as category **Integration**:
@@ -39,24 +72,8 @@ This project is not affiliated with, endorsed by, or supported by Weber.
    https://github.com/ProspectOre/weber-connect-unofficial
    ```
 
-3. Download **Weber Connect Unofficial** and restart Home Assistant.
-4. Open **Settings → Devices & services**. Select the discovered Weber hub, or
-   choose **Add integration → Weber Connect Unofficial**.
-5. Before closing the Weber app, turn off Bluetooth on that phone or tablet and
-   confirm the hub still appears online through Wi-Fi. Leave Bluetooth off.
-   Initial setup always needs Home Assistant internet access and a working
-   hub-to-Weber Cloud connection, including when you intend to select **Home
-   Assistant only** after setup.
-6. Fully close the Weber app on every phone or tablet that uses it, and turn off
-   Bluetooth on any other one. This prevents a phone from reclaiming the hub
-   while Home Assistant pairs.
-7. Wake the hub and continue setup. Approval happens on the physical hub, not
-   in the Weber app. On a standalone Smart Grilling Hub, wait for all four
-   probe indicators to light, then press down once on the top/display within
-   60 seconds. On a grill controller, press its dial or confirmation control
-   when prompted.
-8. Home Assistant checks Weber Cloud for up to five minutes. After setup
-   completes, turn Bluetooth back on and reopen the Weber app.
+3. Download **Weber Connect Unofficial**, restart Home Assistant, and continue
+   with step 3 in the installation instructions above.
 
 The intended setup creates and stores a private Home Assistant companion
 without asking for a Weber account password. The documented clean-install path
@@ -64,15 +81,15 @@ has been validated end to end on the equipment below.
 
 ### Replacing the 2.1 add-on
 
-3.0 is a clean native integration, not an in-place add-on upgrade. In the 2.1
+The native 3.x integration is not an in-place add-on upgrade. In the 2.1
 panel, use **Forget This Hub**, then stop and uninstall the add-on before
-installing 3.0. The native integration creates a new device, probe-temperature
+installing the native integration. It creates a new device, probe-temperature
 entities appropriate for the controller, two connection-context entities, and
 a grill-temperature entity when the appliance reports a built-in sensor; it
 does not import the add-on's MQTT entities or settings. If
 an old unavailable MQTT device remains, remove its retained discovery records
 from the broker and delete that MQTT device from Home Assistant. The add-on and
-its MQTT broker are not needed by 3.0.
+its MQTT broker are not needed by the native integration.
 
 ## Everyday behavior
 
@@ -123,14 +140,15 @@ attributes on their corresponding entity to avoid duplicating every protocol
 field as a separate entity. Software and hardware versions are recorded on the
 Home Assistant device and in diagnostics.
 
-3.0 is deliberately read-only. It exposes reported targets and timer progress,
-but does not expose recipe text or instructions and cannot start, stop, or
-change cooks, temperatures, timers, burners, or other appliance controls.
+The integration is deliberately read-only. It exposes reported targets and
+timer progress, but does not expose recipe text or instructions and cannot
+start, stop, or change cooks, temperatures, timers, burners, or other appliance
+controls.
 
 ## Requirements
 
 - Home Assistant 2026.7.0 or newer.
-- HACS for installation until the integration is accepted into Home Assistant.
+- HACS for installation.
 - A connectable Home Assistant Bluetooth adapter or active ESPHome Bluetooth
   proxy in range during setup.
 - Home Assistant internet access and a hub that is already online in Weber
@@ -192,12 +210,68 @@ open and an active cook. The proxy-only test ran for more than one hour and was
 followed by a successful Home Assistant restart without re-pairing. See
 [Production readiness](PRODUCTION_READINESS.md) for the measurements and
 remaining unverified scenarios. The corresponding
-[redacted machine-readable evidence](docs/validation/3.1.0-rc-physical.json)
+[redacted machine-readable evidence](docs/validation/3.1.1-rc-physical.json)
 contains no device identifiers. Multi-proxy failover is explicitly unverified.
 
 That is a test matrix, not a claim that every Weber model, firmware, account
 region, or proxy has been certified. Compatibility reports and pull requests
 are welcome; see [Contributing](CONTRIBUTING.md) for the safe details to include.
+
+## Troubleshooting
+
+### No hub is discovered or no approval prompt appears
+
+- Fully close the Weber app and disable Bluetooth on every phone or tablet that
+  uses the hub. The hub accepts only one active Bluetooth owner.
+- Wake the hub and keep it near a connectable Home Assistant Bluetooth adapter
+  or an active ESPHome Bluetooth proxy with a free connection slot.
+- Confirm the hub advertises on **Settings → Devices & services → Bluetooth**,
+  then choose **Search again** in the setup flow.
+- If the hub recently restarted, wait for it to finish booting before retrying;
+  its advertisement can appear before its complete GATT service table is ready.
+
+### Setup waits for Weber Cloud
+
+Initial setup requires both Home Assistant internet access and a working
+hub-to-Weber Cloud connection. With the phone's Bluetooth disabled, open the
+Weber app and verify the hub still appears online through Wi-Fi. Restore the
+hub's Wi-Fi connection or wait for a temporary Weber outage to clear, then use
+the setup flow's cloud retry action.
+
+### Probe entities are `Unknown`
+
+`Unknown` is normal when a probe is unplugged or the hub is sleeping, powered
+off, or temporarily unreachable. Wake the hub and inspect **Connection** and
+**Last successful update** on its device page. The integration retries quietly
+and republishes temperatures when fresh data arrives.
+
+### The Weber app cannot connect over Bluetooth
+
+**Home Assistant only** deliberately owns the hub's single Bluetooth
+connection. Change the integration option to **Phone + Home Assistant** and
+allow the config entry to reload before reopening the Weber app.
+
+### Collecting diagnostics
+
+Open **Settings → Devices & services → Weber Connect Unofficial**, select the
+three-dot menu for the config entry, and download diagnostics. Identifiers and
+stored credentials are redacted. Attach that file, the Home Assistant version,
+hub model and firmware, connection mode, and relevant logs to a
+[GitHub issue](https://github.com/ProspectOre/weber-connect-unofficial/issues).
+
+## Removing the integration
+
+1. Open **Settings → Devices & services → Weber Connect Unofficial**.
+2. Select the three-dot menu for the config entry and choose **Delete**. This
+   stops the active transport and deletes the locally stored companion
+   credential, device, and entities.
+3. To remove the integration files as well, open HACS, select **Weber Connect
+   Unofficial**, choose **Remove**, and restart Home Assistant.
+
+Weber provides no supported companion-revocation endpoint. An unused
+server-side companion record can therefore remain after removal, but it has no
+Weber account password and the local credential is deleted with the config
+entry.
 
 ## Privacy
 
