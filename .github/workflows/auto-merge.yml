@@ -114,7 +114,7 @@ jobs:
           EVENT_PR_URL: ${{ github.event.pull_request.html_url }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_IS_PR: ${{ github.event.issue.pull_request != null }}
-          REVIEW_BOT: chatgpt-codex-connector[bot]
+          REVIEW_BOT: ${{ vars.REVIEW_PROVIDER == 'claude' && 'claude[bot]' || 'chatgpt-codex-connector[bot]' }}
           OVERRIDE_LABEL: auto-merge-now
           # The status context stamped on each reviewed head. Adding this name to a
           # branch's REQUIRED status checks is what turns the gate from advisory into
