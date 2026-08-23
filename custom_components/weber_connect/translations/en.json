@@ -23,7 +23,7 @@
       },
       "confirm": {
         "title": "Connect {name}",
-        "description": "Initial setup requires working internet access and the hub to be online in Weber Cloud, even if you plan to use Home Assistant-only mode later. In the Weber app, first confirm the hub is online while the phone or tablet's Bluetooth is off. Then fully close the Weber app, leave Bluetooth off on every phone or tablet that uses it, and wake {name}. Home Assistant will connect through **{path}**; a Bluetooth proxy may need up to 90 seconds. Approval happens on the physical hub, not in the Weber app. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted. The final Weber Cloud check can take up to five minutes."
+        "description": "Initial setup requires working internet access and the hub to be online in Weber Cloud. In the Weber app, first confirm the hub is online while the phone or tablet's Bluetooth is off. Then fully close the Weber app, leave Bluetooth off on every phone or tablet that uses it, and wake {name}. Home Assistant will connect through **{path}**; an active proxy may need up to 90 seconds. Approval happens on the physical hub, not in the Weber app. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted. The final Weber Cloud check can take up to five minutes."
       },
       "pairing_failed": {
         "title": "Pairing did not finish",
@@ -81,7 +81,7 @@
         "sections": {
           "connection": {
             "name": "Connection",
-            "description": "Phone + Home Assistant leaves Bluetooth available to the Weber app and receives temperatures online. Home Assistant only keeps the hub's Bluetooth connection through a local adapter or active proxy, so the app cannot use Bluetooth at the same time. Changing modes closes the current connection before starting the other one.",
+            "description": "Home Assistant receives status through its authenticated Weber Cloud companion. Local Bluetooth is used only for physically confirmed setup; unauthenticated local telemetry is not accepted.",
             "data": {
               "connection_mode": "Use with"
             }
@@ -103,8 +103,7 @@
   "selector": {
     "connection_mode": {
       "options": {
-        "phone_and_home_assistant": "Phone + Home Assistant — Recommended",
-        "home_assistant_only": "Home Assistant only"
+        "phone_and_home_assistant": "Phone + Home Assistant"
       }
     }
   },

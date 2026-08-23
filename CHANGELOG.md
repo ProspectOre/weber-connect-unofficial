@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Require positive review evidence bound to the exact pull-request head before
+  the automated merge gate can clear.
+- Restrict Weber REST requests and redirects to trusted HTTPS origins and cap
+  both compressed and expanded response bodies.
+- Release Bluetooth pairing connections on setup errors and cancellation.
+- Retire unauthenticated local null-session telemetry; existing
+  `home_assistant_only` settings migrate to the authenticated cloud companion.
+
 ## 3.1.2 — 2026-08-13
 
 - Add a one-click HACS repository link with installation instructions that work

@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted, implemented, and production-validated for 3.0 on the documented
-Home Assistant Yellow, Weber hub, and single ESPHome proxy setup. Direct
-host-adapter operation and two-proxy failover remain explicitly unverified.
+Superseded for runtime telemetry by
+[ADR 0003](0003-authenticated-telemetry-boundary.md). The setup lifecycle and
+historical 3.0 validation record remain applicable; persistent local telemetry
+is no longer an accepted runtime transport.
 
 ## Context
 

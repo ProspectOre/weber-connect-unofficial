@@ -9,23 +9,20 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
-from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .bluetooth import WeberBluetoothSession
 from .const import (
     CLOUD_OFFLINE_RETAINED_KEYS,
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
-    CONF_MESSAGE_VERSION,
     DOMAIN,
 )
-from .options import ConnectionMode, WeberOptions
+from .options import WeberOptions
 from .state import normalize_state
 from .weber_cloud import CloudConfig, WeberCloudClient
 from .weber_cloud_socket import WeberCloudSession
@@ -51,47 +48,26 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
-        self.address = str(entry.data["address"])
-        self.companion_id = str(entry.data[CONF_COMPANION_ID])
-        self.message_version = int(entry.data.get(CONF_MESSAGE_VERSION, 11))
         self.options = WeberOptions.from_mapping(entry.options)
-        self.source = (
-            "cloud"
-            if self.options.connection_mode is ConnectionMode.PHONE_AND_HOME_ASSISTANT
-            else "bluetooth"
-        )
-        self.cloud_client: WeberCloudClient | None = None
-        self.cloud_session: WeberCloudSession | None = None
-        self.bluetooth_session: WeberBluetoothSession | None = None
-        self._transport: _TransportSession
+        self.source = "cloud"
         self._transport_task: asyncio.Task[None] | None = None
-        self._cancel_bluetooth_callback: Callable[[], None] | None = None
         self.last_error: str | None = None
         self.last_successful_update: str | None = None
         self.consecutive_failures = 0
         self.successful_updates = 0
         self.failed_updates = 0
 
-        if self.source == "cloud":
-            appliance_id = str(entry.data[CONF_APPLIANCE_ID])
-            config = CloudConfig.from_mapping(
-                {
-                    "device_id": self.companion_id,
-                    "device_password": entry.data[CONF_CLOUD_PASSWORD],
-                    "appliance_id": appliance_id,
-                }
-            )
-            self.cloud_client = WeberCloudClient(config)
-            self.cloud_session = WeberCloudSession(hass, self.cloud_client, appliance_id)
-            self._transport = self.cloud_session
-        else:
-            self.bluetooth_session = WeberBluetoothSession(
-                hass,
-                self.address,
-                self.companion_id,
-                self.message_version,
-            )
-            self._transport = self.bluetooth_session
+        appliance_id = str(entry.data[CONF_APPLIANCE_ID])
+        config = CloudConfig.from_mapping(
+            {
+                "device_id": entry.data[CONF_COMPANION_ID],
+                "device_password": entry.data[CONF_CLOUD_PASSWORD],
+                "appliance_id": appliance_id,
+            }
+        )
+        self.cloud_client = WeberCloudClient(config)
+        self.cloud_session = WeberCloudSession(hass, self.cloud_client, appliance_id)
+        self._transport: _TransportSession = self.cloud_session
 
         super().__init__(
             hass,
@@ -123,28 +99,11 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for domain, issue_id in tuple(registry.issues):
             if domain == DOMAIN and issue_id.startswith("connection_lost_"):
                 ir.async_delete_issue(self.hass, domain, issue_id)
-        if self.bluetooth_session is not None:
-            self._cancel_bluetooth_callback = bluetooth.async_register_callback(
-                self.hass,
-                self._async_bluetooth_advertisement,
-                {"address": self.address, "connectable": True},
-                bluetooth.BluetoothScanningMode.ACTIVE,
-            )
         self._transport_task = self.entry.async_create_background_task(
             self.hass,
             self._transport.async_run(self._async_status, self._async_error),
             name=f"{DOMAIN} {self.source} session",
         )
-
-    @callback
-    def _async_bluetooth_advertisement(
-        self,
-        _service_info: bluetooth.BluetoothServiceInfoBleak,
-        _change: bluetooth.BluetoothChange,
-    ) -> None:
-        """Retry promptly when an idle local hub wakes and advertises."""
-
-        self._transport.async_wake()
 
     @callback
     def _async_status(self, status: dict[str, Any]) -> None:
@@ -225,9 +184,6 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_close(self) -> None:
         """Cancel all entry work and release the selected transport."""
 
-        if self._cancel_bluetooth_callback is not None:
-            self._cancel_bluetooth_callback()
-            self._cancel_bluetooth_callback = None
         if self._transport_task is not None:
             task = self._transport_task
             self._transport_task = None
@@ -236,5 +192,4 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await task
         await self._transport.async_close()
         await self.async_shutdown()
-        if self.cloud_client is not None:
-            await self.hass.async_add_executor_job(self.cloud_client.close)
+        await self.hass.async_add_executor_job(self.cloud_client.close)

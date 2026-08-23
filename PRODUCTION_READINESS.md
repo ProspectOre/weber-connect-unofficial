@@ -1,10 +1,15 @@
 # Production readiness
 
-3.1 is release-ready only when every automated gate and the validated ESPHome
-proxy matrix below pass. Optional compatibility rows are explicitly marked and
-do not become claims until exercised. A passing matrix validates only the
-documented equipment; it does not certify every Weber model, firmware, region,
-adapter, account, router, or ESPHome version.
+The current candidate is release-ready only when every automated gate and the
+authenticated cloud/pairing matrix pass. Optional compatibility rows are
+explicitly marked and do not become claims until exercised. A passing matrix
+validates only the documented equipment; it does not certify every Weber model,
+firmware, region, adapter, account, router, or ESPHome version.
+
+> **Security boundary update:** runtime null-session Bluetooth telemetry is
+> retired by ADR 0003 because the observed frames do not authenticate their
+> sender. Proxy-only telemetry rows below are retained as historical 3.0
+> availability evidence, not as current release gates or security claims.
 
 ## Automated gates
 
@@ -12,7 +17,7 @@ Every release pull request must pass:
 
 - import and config-flow tests on Home Assistant 2026.7;
 - pairing, settings, credential-repair, status-frame, malformed-frame,
-  persistent cloud/Bluetooth session, entity-identity, transport-ownership, and
+  persistent cloud session, entity-identity, transport-ownership, and
   diagnostics-redaction tests;
 - at least 95% combined statement and branch coverage across the native
   integration;

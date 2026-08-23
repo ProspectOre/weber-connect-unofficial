@@ -18,7 +18,6 @@ class ConnectionMode(StrEnum):
     """How Home Assistant should receive live Weber data."""
 
     PHONE_AND_HOME_ASSISTANT = "phone_and_home_assistant"
-    HOME_ASSISTANT_ONLY = "home_assistant_only"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +54,8 @@ class WeberOptions:
                 )
             )
         except ValueError:
+            # Versions through 3.1.2 offered an unauthenticated local telemetry
+            # mode. Fail closed by migrating that retired value to cloud reads.
             mode = ConnectionMode.PHONE_AND_HOME_ASSISTANT
 
         names = (

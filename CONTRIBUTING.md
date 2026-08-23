@@ -39,8 +39,9 @@ Hassfest and HACS validation run in GitHub Actions.
   an ESPHome proxy, copy a proxy key, or read Home Assistant `.storage`.
 - Re-resolve the best adapter or proxy on connection retry and disconnect every
   GATT client in `finally`.
-- Keep **Phone + Home Assistant** as the default. Local fallback must remain explicit
-  because it may take the hub's single Bluetooth connection from the phone.
+- Keep live telemetry on the authenticated cloud companion. Bluetooth is for
+  physically confirmed setup only until peer-authenticated local status is
+  documented and validated.
 - Preserve physical confirmation for pairing.
 - Never request the user's Weber email/password or extract phone secrets.
 - Cloud authentication alone is insufficient; associate and scope access to
@@ -58,8 +59,8 @@ Success and failure reports are equally useful. Include:
 - Weber product name and firmware version;
 - official app platform/version and account country or region;
 - local adapter or ESPHome proxy model and ESPHome version;
-- whether discovery, physical pairing, cloud association, phone + Home Assistant,
-  local reads, and proxy failover each succeeded.
+- whether discovery, physical pairing, cloud association, and phone + Home
+  Assistant telemetry each succeeded.
 
 Do not post MAC addresses, appliance or companion IDs, config entries, device
 passwords, bearer tokens, email addresses, packet captures, or unredacted

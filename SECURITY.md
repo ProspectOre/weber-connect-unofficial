@@ -26,7 +26,12 @@ unredacted diagnostics.
   protocol failure paths.
 - Diagnostics redact the hub address, appliance and companion IDs, cloud
   password, companion keys, and appliance public key.
-- Cloud REST requests are restricted to HTTPS and WebSocket requests to WSS.
+- Cloud REST requests are restricted to the expected HTTPS origins with
+  same-origin redirects and bounded compressed/expanded bodies. WebSocket
+  requests are restricted to WSS.
+- Bluetooth is used for physically confirmed companion setup only. The
+  observed null-session status protocol does not authenticate its peer, so
+  those local telemetry frames are rejected rather than published.
 
 ## Cloud security model
 

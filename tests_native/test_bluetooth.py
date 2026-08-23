@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, patch
 
@@ -78,6 +79,13 @@ def test_payload_rejects_bad_length_crc_tail_and_extra_bytes() -> None:
         transport._payload(bytes(encrypted))
 
 
+def test_pairing_path_rejects_unauthenticated_status_telemetry() -> None:
+    with pytest.raises(transport.WeberBluetoothError, match="unauthenticated"):
+        transport._pairing_payload(_status())
+    with pytest.raises(transport.WeberBluetoothError, match="unauthenticated"):
+        transport._pairing_payload(_appliance_status())
+
+
 class FakeClient:
     """Small connected GATT client with scripted response reads."""
 
@@ -99,17 +107,6 @@ class FakeClient:
 
     async def write_gatt_char(self, uuid: str, data: bytes, response: bool = True) -> None:
         self.writes.append((uuid, bytes(data), response))
-        type_value = transport._payload(bytes(data))[0] if len(data) > 1 else None
-        if uuid == transport.COMMAND_UUID and type_value == 0x07:
-            callback = self.callbacks.get(transport.STATUS_UUID)
-            if callback is not None:
-                callback(transport.STATUS_UUID, bytearray(_appliance_status()))  # type: ignore[operator]
-        if uuid == transport.SESSION_UUID or (
-            uuid == transport.COMMAND_UUID and type_value == 0x05
-        ):
-            callback = self.callbacks.get(transport.STATUS_UUID)
-            if callback is not None:
-                callback(transport.STATUS_UUID, bytearray(_status()))  # type: ignore[operator]
 
     async def disconnect(self) -> None:
         self.disconnected = True
@@ -132,6 +129,40 @@ async def test_pairing_confirms_and_releases_proxy_connection(
     assert result.appliance_id == bytes(range(16)).hex()
     assert client.disconnected
     assert any(uuid == transport.COMMAND_UUID for uuid, _data, _response in client.writes)
+    clear_advertisement_history.assert_called_once_with(  # type: ignore[attr-defined]
+        ANY,
+        ADDRESS,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pairing_ignores_status_frames_without_publishing_them() -> None:
+    client = FakeClient([_status(), _pairing_required(), _pairing_confirmed()])
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(
+            SimpleNamespace(),
+            ADDRESS,
+            IDENTITY,
+            confirmation_timeout=0.5,
+        )
+
+    assert result.appliance_id == bytes(range(16)).hex()
+    assert client.disconnected is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [RuntimeError("failed"), asyncio.CancelledError()])
+async def test_pairing_releases_connection_when_setup_is_interrupted(
+    clear_advertisement_history: object,
+    failure: BaseException,
+) -> None:
+    client = FakeClient()
+    client.write_gatt_char = AsyncMock(side_effect=failure)
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        with pytest.raises(type(failure)):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+
+    assert client.disconnected is True
     clear_advertisement_history.assert_called_once_with(  # type: ignore[attr-defined]
         ANY,
         ADDRESS,
@@ -274,230 +305,6 @@ async def test_connect_explains_why_no_proxy_can_reach_the_hub() -> None:
         ADDRESS,
         transport.bluetooth.BluetoothReachabilityIntent.CONNECTION,
     )
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_reuses_one_proxy_connection() -> None:
-    client = FakeClient()
-    with patch.object(transport, "_connect", AsyncMock(return_value=client)) as connect:
-        session = transport.WeberBluetoothSession(
-            SimpleNamespace(),
-            ADDRESS,
-            IDENTITY.companion_id,
-            10,
-        )
-
-        first = await session.async_read_status(timeout=0.5)
-        second = await session.async_read_status(timeout=0.5)
-
-        assert first["kind"] == "cook_session_status"
-        assert second["kind"] == "cook_session_status"
-        assert [uuid for uuid, _data, _response in client.writes] == [
-            transport.SESSION_UUID,
-            transport.COMMAND_UUID,
-            transport.COMMAND_UUID,
-        ]
-        assert [transport._payload(data)[0] for _uuid, data, _response in client.writes] == [
-            0x70,
-            0x07,
-            0x05,
-        ]
-        assert second["battery_level"] == 64
-        assert second["is_charging"] is True
-        connect.assert_awaited_once_with(
-            session.hass,
-            ADDRESS,
-            max_attempts=transport.SESSION_CONNECT_ATTEMPTS,
-            use_services_cache=True,
-            disconnected_callback=ANY,
-        )
-        assert client.disconnected is False
-
-        await session.async_close()
-
-    assert client.disconnected is True
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_reconnects_after_link_loss() -> None:
-    first_client = FakeClient()
-    second_client = FakeClient()
-    with patch.object(
-        transport,
-        "_connect",
-        AsyncMock(side_effect=[first_client, second_client]),
-    ) as connect:
-        session = transport.WeberBluetoothSession(
-            SimpleNamespace(),
-            ADDRESS,
-            IDENTITY.companion_id,
-            10,
-        )
-        await session.async_read_status(timeout=0.5)
-        first_client.is_connected = False
-
-        status = await session.async_read_status(timeout=0.5)
-
-    assert status["kind"] == "cook_session_status"
-    assert first_client.disconnected is True
-    assert connect.await_args_list[1].kwargs == {
-        "max_attempts": transport.SESSION_CONNECT_ATTEMPTS,
-        "use_services_cache": True,
-        "disconnected_callback": ANY,
-    }
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_prefers_cached_services_on_first_connect() -> None:
-    client = FakeClient()
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-
-    with patch.object(transport, "_connect", AsyncMock(return_value=client)) as connect:
-        status = await session.async_read_status(timeout=0.5)
-
-    assert status["kind"] == "cook_session_status"
-    assert connect.await_args.kwargs == {
-        "max_attempts": transport.SESSION_CONNECT_ATTEMPTS,
-        "use_services_cache": True,
-        "disconnected_callback": ANY,
-    }
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_refreshes_stale_proxy_services() -> None:
-    stale_client = FakeClient()
-    stale_client.start_notify = AsyncMock(
-        side_effect=BleakCharacteristicNotFoundError(transport.STATUS_UUID)
-    )
-    fresh_client = FakeClient()
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-
-    with patch.object(
-        transport,
-        "_connect",
-        AsyncMock(side_effect=[stale_client, fresh_client]),
-    ) as connect:
-        status = await session.async_read_status(timeout=0.5)
-
-    assert status["kind"] == "cook_session_status"
-    assert stale_client.disconnected is True
-    assert connect.await_args_list[0].kwargs["use_services_cache"] is True
-    assert connect.await_args_list[1].kwargs["use_services_cache"] is False
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_explains_missing_fresh_services() -> None:
-    client = FakeClient()
-    client.start_notify = AsyncMock(
-        side_effect=BleakCharacteristicNotFoundError(transport.STATUS_UUID)
-    )
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-
-    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
-        with pytest.raises(transport.WeberBluetoothError, match="could not be discovered"):
-            await session.async_read_status(timeout=0.5)
-
-    assert client.disconnected is True
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_tolerates_optional_notification_failure() -> None:
-    client = FakeClient()
-    original_start_notify = client.start_notify
-
-    async def start_notify(uuid: str, callback: object) -> None:
-        if uuid == transport.NOTIFICATION_UUID:
-            raise RuntimeError("not supported")
-        await original_start_notify(uuid, callback)
-
-    client.start_notify = start_notify  # type: ignore[method-assign]
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-
-    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
-        status = await session.async_read_status(timeout=0.5)
-
-    assert status["kind"] == "cook_session_status"
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_requires_one_status_notification() -> None:
-    client = FakeClient()
-    client.start_notify = AsyncMock(side_effect=RuntimeError("not supported"))
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-
-    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
-        with pytest.raises(transport.WeberBluetoothError, match="usable status notification"):
-            await session.async_read_status(timeout=0.5)
-
-    assert client.disconnected is True
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_normalizes_timeout_and_interruption() -> None:
-    timeout_client = FakeClient()
-    timeout_client.write_gatt_char = AsyncMock()
-    interrupted_client = FakeClient()
-    interrupted_client.write_gatt_char = AsyncMock(side_effect=BleakError("link lost"))
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-
-    with patch.object(
-        transport,
-        "_connect",
-        AsyncMock(side_effect=[timeout_client, interrupted_client]),
-    ):
-        with pytest.raises(transport.WeberBluetoothError, match="fresh probe reading"):
-            await session.async_read_status(timeout=0.001)
-        timeout_client.is_connected = False
-        with pytest.raises(transport.WeberBluetoothError, match="interrupted"):
-            await session.async_read_status(timeout=0.5)
-
-    assert timeout_client.disconnected is True
-    assert interrupted_client.disconnected is True
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_callbacks_and_disconnect_wake() -> None:
-    statuses: list[dict[str, object]] = []
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-    session._status_callback = statuses.append
-
-    session._handle_status(transport.STATUS_UUID, bytearray(_appliance_status()))
-    assert statuses == []
-    assert not session._received.is_set()
-
-    session._handle_status(transport.STATUS_UUID, bytearray(_status()))
-    assert statuses[0]["kind"] == "cook_session_status"
-    assert statuses[0]["battery_level"] == 64
-    assert statuses[0]["is_charging"] is True
-    assert session._received.is_set()
-
-    session._received.clear()
-    corrupted = bytearray(_status())
-    corrupted[-2] ^= 0xFF
-    session._handle_status(transport.STATUS_UUID, corrupted)
-    assert not session._received.is_set()
-
-    session._wake.clear()
-    session._handle_disconnect(FakeClient())
-    assert session._wake.is_set()
-
-
-@pytest.mark.asyncio
-async def test_persistent_session_run_retries_and_closes() -> None:
-    session = transport.WeberBluetoothSession(SimpleNamespace(), ADDRESS, IDENTITY.companion_id, 10)
-    errors: list[str] = []
-
-    async def fail_once() -> dict[str, object]:
-        session._closed = True
-        session.async_wake()
-        raise transport.WeberBluetoothError("sleeping")
-
-    session.async_read_status = fail_once  # type: ignore[method-assign]
-    await session.async_run(lambda _status: None, errors.append)
-
-    assert errors == ["sleeping"]
-    assert session._status_callback is None
-    assert session._closed is True
 
 
 @pytest.mark.asyncio

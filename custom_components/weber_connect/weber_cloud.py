@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 import json
 import re
 import secrets
@@ -10,12 +11,14 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from dataclasses import dataclass
 from typing import Any
 
 API_HOST = "api.walker-cloud.com"
 MESSAGING_HOST = "messaging.walker-cloud.com"
 USER_AGENT = "okhttp/5.3.0"
+MAX_RESPONSE_BYTES = 1024 * 1024
 
 # Application credentials identify the Weber Android client, not an account.
 APP_CLIENT_ID = "qyw4CGeb/i93BrA0KAUuGtPyKImr+nUKc8lHxFdt"
@@ -30,6 +33,40 @@ class WeberCloudError(RuntimeError):
 
 class WeberCloudAuthError(WeberCloudError):
     """Companion credentials were rejected."""
+
+
+def _https_origin(url: str) -> tuple[str, int]:
+    """Return a normalized HTTPS origin or reject an unsafe cloud URL."""
+
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError as exc:
+        raise WeberCloudError("Refused a malformed Weber cloud URL.") from exc
+    host = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme.lower() != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or host not in {API_HOST, MESSAGING_HOST}
+        or port not in {None, 443}
+    ):
+        raise WeberCloudError("Refused an untrusted Weber cloud URL.")
+    return host, 443
+
+
+class _SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep bearer-bearing requests on their original HTTPS origin."""
+
+    def redirect_request(  # type: ignore[no-untyped-def]
+        self, req, fp, code, msg, headers, newurl
+    ) -> urllib.request.Request:
+        if _https_origin(req.full_url) != _https_origin(newurl):
+            raise WeberCloudError("Refused a cross-origin Weber cloud redirect.")
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is None:
+            raise WeberCloudError("Refused an unsupported Weber cloud redirect.")
+        return redirected
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +133,7 @@ class WeberCloudClient:
         self.timeout = timeout
         self._token: str | None = None
         self._token_expiry = 0.0
+        self._opener = urllib.request.build_opener(_SameOriginRedirectHandler())
 
     @property
     def messaging_host(self) -> str:
@@ -112,15 +150,20 @@ class WeberCloudClient:
         self._token_expiry = 0.0
 
     def _open(self, request: urllib.request.Request) -> bytes:
-        if urllib.parse.urlsplit(request.full_url).scheme != "https":
-            raise WeberCloudError("Refused a non-HTTPS Weber cloud request.")
+        _https_origin(request.full_url)
         try:
-            with urllib.request.urlopen(  # nosec B310
-                request, timeout=self.timeout
-            ) as response:
-                body = bytes(response.read())
-                if response.headers.get("Content-Encoding") == "gzip":
-                    body = gzip.decompress(body)
+            with self._opener.open(request, timeout=self.timeout) as response:  # nosec B310
+                body = bytes(response.read(MAX_RESPONSE_BYTES + 1))
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise WeberCloudError("Weber cloud returned an oversized response.")
+                if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                    try:
+                        with gzip.GzipFile(fileobj=io.BytesIO(body)) as compressed:
+                            body = compressed.read(MAX_RESPONSE_BYTES + 1)
+                    except (EOFError, OSError, zlib.error) as exc:
+                        raise WeberCloudError("Weber cloud returned invalid gzip data.") from exc
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        raise WeberCloudError("Weber cloud returned an oversized response.")
                 return body
         except urllib.error.HTTPError as exc:
             message = f"Weber cloud returned HTTP {exc.code}"

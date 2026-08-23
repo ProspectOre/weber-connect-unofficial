@@ -399,27 +399,68 @@ jobs:
               echo "Override label '$OVERRIDE_LABEL' applied by $label_actor ($actor_permission); skipping the review gate for $head_sha."
               reviewed=true
             else
-              # (a) A verdict must name THIS head. The verdict abbreviates the sha,
-              #     so match on its prefix; a pass on an older head does not count.
+              # (a) A verdict must be bound to THIS exact head and explicitly say the
+              #     review passed. Formal reviews carry GitHub's immutable commit_id.
+              #     Issue comments carry no commit metadata, so only a body naming all
+              #     40 hex characters can grant authorization. A short prefix cannot
+              #     grant, because another commit can deliberately be mined with the
+              #     same prefix; an adverse short-prefix verdict still vetoes below.
               reviewed=false
-              for body in \
-                "$(gh api "repos/$REPO/pulls/$pr_number/reviews?per_page=100" --paginate \
-                    --jq '.[] | select(.user.login == env.REVIEW_BOT)
-                              | select(.state != "DISMISSED") | .body' 2>/dev/null || true)" \
-                "$(gh api "repos/$REPO/issues/$pr_number/comments?per_page=100" --paginate \
-                    --jq '.[] | select(.user.login == env.REVIEW_BOT) | .body' 2>/dev/null || true)"
-              do
-                if printf '%s' "$body" | grep -qE "Reviewed commit:[^\`]*\`${head_sha:0:10}"; then
+              if ! review_pages="$(gh api "repos/$REPO/pulls/$pr_number/reviews?per_page=100" \
+                --paginate --slurp)"; then
+                echo "Could not read review verdicts for $head_sha; failing closed."
+              elif ! issue_comment_pages="$(gh api "repos/$REPO/issues/$pr_number/comments?per_page=100" \
+                --paginate --slurp)"; then
+                echo "Could not read top-level review verdicts for $head_sha; failing closed."
+              elif ! verdict_summary="$(jq -sr \
+                --arg bot "$REVIEW_BOT" \
+                --arg head "$head_sha" \
+                --arg prefix "${head_sha:0:10}" '
+                  def body: (.body // "");
+                  def is_finding:
+                    (.state == "CHANGES_REQUESTED")
+                    or (body | test("(?:^|[^A-Z0-9])P[0-3](?:[^A-Z0-9]|$)"; "i"))
+                    or (body | test("\\breview result\\s*:\\s*(?:findings?|fail|failed|blocked|changes requested)\\b"; "i"))
+                    or (body | test("\\b(?:must fix|blocking issue|security finding|review finding)\\b"; "i"))
+                    or (body | test("\\b(?:found|identified|reported)\\b.{0,80}\\b(?:findings?|issues?|bugs?|vulnerabilit(?:y|ies))\\b"; "is"));
+                  def is_clean:
+                    (is_finding | not)
+                    and ((body | test("\\b(?:no (?:reportable )?findings?|zero findings|no issues?|looks good|lgtm|clean review)\\b"; "i"))
+                      or (body | test("\\bdid(?: not|n.t) find\\b.{0,80}\\b(?:issues?|findings?|bugs?|vulnerabilit(?:y|ies))\\b"; "is"))
+                      or (body | test("\\breview result\\s*:\\s*(?:pass|clean|approved)\\b"; "i")));
+                  (.[0] | flatten
+                    | map(select(.user.login == $bot)
+                      | select(.state != "DISMISSED")
+                      | select(.commit_id == $head))) as $formal
+                  | (.[1] | flatten | map(select(.user.login == $bot))) as $bot_comments
+                  | ($bot_comments
+                    | map(select(body | test("Reviewed commit:[^`]*`" + $head + "`"; "i")))) as $exact_comments
+                  # A short marker can never GRANT authorization, but an adverse
+                  # current-prefix verdict still vetoes. Treating negative evidence
+                  # conservatively cannot authorize the prefix-collision attack.
+                  | ($bot_comments
+                    | map(select(body | test("Reviewed commit:[^`]*`(?:" + $head + "|" + $prefix + ")`"; "i")))) as $current_comments
+                  | ($formal + $exact_comments) as $positive_candidates
+                  | ($formal + $current_comments) as $adverse_candidates
+                  | "\([$positive_candidates[] | select(is_clean)] | length) \([$adverse_candidates[] | select(is_finding)] | length)"
+                ' <(printf '%s' "$review_pages") <(printf '%s' "$issue_comment_pages"))"; then
+                echo "Could not classify review verdicts for $head_sha; failing closed."
+              else
+                read -r clean_verdicts adverse_verdicts <<< "$verdict_summary"
+                if [[ "$clean_verdicts" =~ ^[0-9]+$ \
+                  && "$clean_verdicts" -gt 0 \
+                  && "$adverse_verdicts" == "0" ]]; then
                   reviewed=true
-                  break
+                elif [[ "$adverse_verdicts" =~ ^[0-9]+$ \
+                  && "$adverse_verdicts" -gt 0 ]]; then
+                  echo "Review of $head_sha has $adverse_verdicts adverse top-level verdict(s); not arming."
+                else
+                  echo "No positive review verdict is bound to exact head $head_sha; not arming."
                 fi
-              done
+              fi
 
-              # (b) A verdict that REPORTS FINDINGS also names the reviewed commit, so
-              #     the sha alone is not consent — it would arm a PR whose defects were
-              #     just published. Require every inline finding to carry a reply
-              #     (fixed or explicitly dispositioned). Phrasing of the "clean" verdict
-              #     is not a contract, so it is deliberately not matched on.
+              # (b) Even after a positive exact-head verdict, every retained inline
+              #     finding must carry a reply (fixed or explicitly dispositioned).
               if [[ "$reviewed" == "true" ]]; then
                 # FAIL CLOSED on retrieval failure. `|| true` here would turn a
                 # transient API or rate-limit error into an empty findings list,

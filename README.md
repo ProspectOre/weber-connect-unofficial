@@ -17,9 +17,7 @@ Version 3.x is one native Home Assistant integration:
   context;
 - phone + Home Assistant by default: the Weber app may own Bluetooth while
   Home Assistant follows probe temperatures through its own Weber Cloud
-  connection;
-- an optional Home Assistant-only mode that owns one local Bluetooth connection
-  through Home Assistant's adapter or active ESPHome proxy selection.
+  connection.
 
 This project is not affiliated with, endorsed by, or supported by Weber.
 
@@ -28,9 +26,8 @@ This project is not affiliated with, endorsed by, or supported by Weber.
 > companion, paired through an ESPHome
 > proxy, appeared in Weber Cloud in about 12 seconds, and immediately delivered
 > native probe entities while the Weber app was open. The 70-minute app/cloud
-> session, one-hour proxy-only session, proxy reboot, and proxy-only Home
-> Assistant restart also passed. A second proxy was not available, so
-> multi-proxy failover remains explicitly unverified.
+> session also passed. Local Bluetooth is used for physically confirmed setup
+> only; unauthenticated null-session telemetry is rejected.
 
 ## Install
 
@@ -47,8 +44,7 @@ Install Weber Connect Unofficial through HACS:
 4. Before closing the Weber app, turn off Bluetooth on that phone or tablet and
    confirm the hub still appears online through Wi-Fi. Leave Bluetooth off.
    Initial setup always needs Home Assistant internet access and a working
-   hub-to-Weber Cloud connection, including when you intend to select **Home
-   Assistant only** after setup.
+   hub-to-Weber Cloud connection.
 5. Fully close the Weber app on every phone or tablet that uses it, and turn off
    Bluetooth on any other one. This prevents a phone from reclaiming the hub
    while Home Assistant pairs.
@@ -100,11 +96,10 @@ Bluetooth connection available to the Weber app. Recipes continue to be
 started and managed in the Weber app while Home Assistant monitors the built-in
 grill temperature and the controller's available probe slots.
 
-**Home Assistant only** instead keeps one local GATT connection open through
-Home Assistant's selected adapter or active ESPHome proxy. It reconnects only
-after a real link loss. This mode cannot share the hub's Bluetooth connection
-with the Weber app. There is no automatic fallback between cloud and Bluetooth:
-changing modes closes one transport before starting the other.
+Versions through 3.1.2 offered a local null-session telemetry mode. Because the
+observed protocol does not provide a peer-authentication mechanism, that mode is
+retired fail closed. Existing entries that selected it migrate to the
+authenticated cloud companion when reloaded.
 
 Probe entities retain stable slot IDs such as `probe_2_temperature`. Optional
 nicknames keep the physical number visible—for example, **Brisket · Probe 2**—
@@ -125,8 +120,8 @@ repair. Battery level, probe type, and probe state remain attributes on that
 same entity instead of creating redundant entities.
 
 Two additional context entities are enabled by default. **Connection** reports
-**Connected** or **Disconnected** and identifies whether Home Assistant is
-using **Weber Cloud** or **Bluetooth**. **Last successful update** preserves the
+**Connected** or **Disconnected** and identifies **Weber Cloud** as the live
+transport. **Last successful update** preserves the
 time fresh hub data most recently arrived, including while the hub is sleeping
 or powered off.
 
@@ -152,8 +147,7 @@ controls.
 - A connectable Home Assistant Bluetooth adapter or active ESPHome Bluetooth
   proxy in range during setup.
 - Home Assistant internet access and a hub that is already online in Weber
-  Cloud for every initial installation. **Home Assistant only** avoids cloud
-  traffic after setup, not during setup.
+  Cloud for every initial installation and for live telemetry.
 
 For an ESPHome proxy, `bluetooth_proxy.active` must be enabled and a connection
 slot must be available. No proxy address or encryption key is entered into this
@@ -184,12 +178,9 @@ The same report confirmed that this model has two physical probe ports; version
 3.0.4 therefore keeps Probe 3 and Probe 4 absent unless the controller actually
 reports them.
 
-The final candidate was also restarted into **Home Assistant only** with the
-ESPHome proxy as the sole Bluetooth source. After a deliberate proxy power
-cycle, native diagnostics advanced from 10 to 17 successful updates without
-another failed update, retained the live `23.1 °C` probe reading, and reported
-no current error. Returning to **Phone + Home Assistant** then produced six
-cloud updates with zero failures while the official app was open.
+Earlier 3.0 candidates also exercised a proxy-only null-session telemetry path.
+That historical availability result is not a current security claim: the path
+is now disabled because CRC and framing checks do not authenticate the sender.
 
 The exact 3.1.0 candidate was subsequently installed on Home Assistant 2026.8.1
 and exercised against the Weber Connect Hub `2.0.3_7398`. After a full Core
@@ -202,12 +193,11 @@ produced no Weber warning or error log entries.
 The current greenfield transport implementation is held to at least 95%
 combined statement/branch coverage. Import, config flow, transient
 identity generation, entity contracts, protocol frames, persistent-session
-reuse, reconnect behavior, proxy service-cache recovery, diagnostics redaction,
-and transport ownership are covered. Live smoke and config-entry reload tests
-now cover both the persistent WebSocket and persistent proxy-GATT lifecycles.
+cleanup during pairing, diagnostics redaction, and transport ownership are
+covered. Live smoke and config-entry reload tests cover the persistent
+WebSocket lifecycle.
 The final persistent cloud test ran for more than 70 minutes with the Weber app
-open and an active cook. The proxy-only test ran for more than one hour and was
-followed by a successful Home Assistant restart without re-pairing. See
+open and an active cook. See
 [Production readiness](PRODUCTION_READINESS.md) for the measurements and
 remaining unverified scenarios. The corresponding
 [redacted machine-readable evidence](docs/validation/3.1.1-rc-physical.json)
@@ -245,18 +235,12 @@ off, or temporarily unreachable. Wake the hub and inspect **Connection** and
 **Last successful update** on its device page. The integration retries quietly
 and republishes temperatures when fresh data arrives.
 
-### The Weber app cannot connect over Bluetooth
-
-**Home Assistant only** deliberately owns the hub's single Bluetooth
-connection. Change the integration option to **Phone + Home Assistant** and
-allow the config entry to reload before reopening the Weber app.
-
 ### Collecting diagnostics
 
 Open **Settings → Devices & services → Weber Connect Unofficial**, select the
 three-dot menu for the config entry, and download diagnostics. Identifiers and
 stored credentials are redacted. Attach that file, the Home Assistant version,
-hub model and firmware, connection mode, and relevant logs to a
+hub model and firmware, and relevant logs to a
 [GitHub issue](https://github.com/ProspectOre/weber-connect-unofficial/issues).
 
 ## Removing the integration
@@ -282,10 +266,9 @@ Diagnostics redact stored credentials and all hub/companion identifiers. The
 integration never asks for the user's Weber account password and does not copy
 secrets from the official app.
 
-Weber Cloud is private and undocumented. The default mode sends Home
-Assistant's generated identity and read-only current-status requests to Weber.
-**Home Assistant only** mode avoids those requests but cannot share the hub's
-single Bluetooth connection with the phone.
+Weber Cloud is private and undocumented. The integration sends Home Assistant's
+generated identity and read-only current-status requests to Weber. It does not
+accept local null-session status as trusted telemetry.
 
 Registering the private companion happens before physical approval. If setup is
 abandoned after registration, Weber may retain an unused server-side companion
@@ -298,6 +281,7 @@ credential.
 - [Architecture](ARCHITECTURE.md)
 - [ADR 0001: superseded proxy relay](docs/adr/0001-home-assistant-bluetooth-proxy-transport.md)
 - [ADR 0002: native transport lifecycle](docs/adr/0002-native-transport-lifecycle.md)
+- [ADR 0003: authenticated telemetry boundary](docs/adr/0003-authenticated-telemetry-boundary.md)
 - [Production readiness](PRODUCTION_READINESS.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)

@@ -62,7 +62,7 @@ class FakeCloudClient:
 
 
 def _entry(hass: object, *, cloud: bool = True) -> SimpleNamespace:
-    mode = ConnectionMode.PHONE_AND_HOME_ASSISTANT if cloud else ConnectionMode.HOME_ASSISTANT_ONLY
+    mode = ConnectionMode.PHONE_AND_HOME_ASSISTANT.value if cloud else "home_assistant_only"
     return SimpleNamespace(
         data={
             "address": "AA:BB:CC:DD:EE:FF",
@@ -70,7 +70,7 @@ def _entry(hass: object, *, cloud: bool = True) -> SimpleNamespace:
             CONF_CLOUD_PASSWORD: "cloud-password",
             CONF_APPLIANCE_ID: "22" * 16,
         },
-        options={CONF_CONNECTION: {CONF_CONNECTION_MODE: mode.value}},
+        options={CONF_CONNECTION: {CONF_CONNECTION_MODE: mode}},
         entry_id="test-entry",
         unique_id="AA:BB:CC:DD:EE:FF",
         title="Test Weber Hub",
@@ -88,7 +88,7 @@ def _coordinator(hass: object, *, cloud: bool) -> tuple[WeberCoordinator, FakeTr
         patch.object(coordinator_module, "WeberCloudClient", FakeCloudClient),
         patch.object(
             coordinator_module,
-            "WeberCloudSession" if cloud else "WeberBluetoothSession",
+            "WeberCloudSession",
             return_value=transport,
         ),
     ):
@@ -100,16 +100,15 @@ def test_cloud_mode_constructs_only_cloud_transport(hass: object) -> None:
     coordinator, transport = _coordinator(hass, cloud=True)
     assert coordinator.source == "cloud"
     assert coordinator.cloud_session is transport
-    assert coordinator.bluetooth_session is None
     assert coordinator.cloud_client is not None
 
 
-def test_local_mode_constructs_only_bluetooth_transport(hass: object) -> None:
+def test_retired_local_mode_migrates_fail_closed_to_cloud_transport(hass: object) -> None:
     coordinator, transport = _coordinator(hass, cloud=False)
-    assert coordinator.source == "bluetooth"
-    assert coordinator.bluetooth_session is transport
-    assert coordinator.cloud_session is None
-    assert coordinator.cloud_client is None
+    assert coordinator.options.connection_mode is ConnectionMode.PHONE_AND_HOME_ASSISTANT
+    assert coordinator.source == "cloud"
+    assert coordinator.cloud_session is transport
+    assert coordinator.cloud_client is not None
 
 
 @pytest.mark.asyncio
@@ -138,28 +137,6 @@ async def test_status_publishes_grill_and_reported_probe_state_and_clears_failur
     assert coordinator.last_error is None
     assert coordinator.consecutive_failures == 0
     assert coordinator.successful_updates == 1
-
-
-def test_three_local_failures_clear_stale_temperature_to_honest_unknown(
-    hass: object,
-) -> None:
-    coordinator, _transport = _coordinator(hass, cloud=False)
-    coordinator._async_status(
-        {
-            "actual_cavity_temp_c": 110.0,
-            "probes": [{"probe_number": 4, "probe_temp_c": 30.0}],
-        }
-    )
-    last_successful_update = coordinator.data["last_successful_update"]
-    for _ in range(coordinator_module.OFFLINE_FAILURE_THRESHOLD - 1):
-        coordinator._async_error("hub sleeping")
-    assert coordinator.data["probe_4_temperature"] == 30.0
-    coordinator._async_error("hub sleeping")
-    assert coordinator.data["probe_4_temperature"] is None
-    assert coordinator.data["grill_temperature"] is None
-    assert coordinator.data["connected"] is False
-    assert coordinator.data["last_successful_update"] == last_successful_update
-    assert coordinator.failed_updates == coordinator_module.OFFLINE_FAILURE_THRESHOLD
 
 
 def test_three_cloud_failures_retain_only_slow_changing_hub_state(hass: object) -> None:
@@ -210,14 +187,6 @@ def test_three_cloud_failures_retain_only_slow_changing_hub_state(hass: object) 
     assert coordinator.data["device_state"] == "active"
     assert coordinator.consecutive_failures == 0
     assert coordinator.last_error is None
-
-
-def test_local_idle_never_creates_a_repair(hass: object) -> None:
-    coordinator, _transport = _coordinator(hass, cloud=False)
-    for _ in range(20):
-        coordinator._async_error("hub is asleep")
-    issue_id = f"connection_lost_{coordinator.entry.entry_id}"
-    assert ir.async_get(hass).async_get_issue("weber_connect", issue_id) is None
 
 
 def test_cloud_outage_never_creates_a_repair(hass: object) -> None:
@@ -298,16 +267,9 @@ def test_rejected_cloud_credential_creates_distinct_immediate_repair(hass: objec
     assert registry.async_get_issue("weber_connect", credential_issue) is None
 
 
-def test_bluetooth_advertisement_wakes_existing_session_only(hass: object) -> None:
-    coordinator, transport = _coordinator(hass, cloud=False)
-    coordinator._async_bluetooth_advertisement(MagicMock(), MagicMock())
-    coordinator._async_bluetooth_advertisement(MagicMock(), MagicMock())
-    assert transport.wake_count == 2
-
-
 @pytest.mark.asyncio
 async def test_start_and_close_own_exactly_one_transport_task(hass: object) -> None:
-    coordinator, transport = _coordinator(hass, cloud=False)
+    coordinator, transport = _coordinator(hass, cloud=True)
     legacy_issue = f"connection_lost_{coordinator.entry.entry_id}"
     orphaned_legacy_issue = "connection_lost_removed-entry"
     credential_issue = f"credentials_rejected_{coordinator.entry.entry_id}"
@@ -336,23 +298,15 @@ async def test_start_and_close_own_exactly_one_transport_task(hass: object) -> N
         translation_key="credentials_rejected",
     )
     assert ir.async_get(hass).async_get_issue("weber_connect", legacy_issue) is not None
-    cancel_callback = MagicMock()
-    with patch.object(
-        coordinator_module.bluetooth,
-        "async_register_callback",
-        return_value=cancel_callback,
-    ) as register:
-        coordinator.async_start()
-        coordinator.async_start()
+    coordinator.async_start()
+    coordinator.async_start()
     await transport.started.wait()
     assert coordinator._transport_task is not None
     assert ir.async_get(hass).async_get_issue("weber_connect", legacy_issue) is None
     assert ir.async_get(hass).async_get_issue("weber_connect", orphaned_legacy_issue) is None
     assert ir.async_get(hass).async_get_issue("weber_connect", credential_issue) is not None
-    register.assert_called_once()
 
     await coordinator.async_close()
-    cancel_callback.assert_called_once_with()
     assert transport.closed is True
     assert coordinator._transport_task is None
 

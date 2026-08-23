@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
+from custom_components.weber_connect import weber_cloud as cloud
 from custom_components.weber_connect.weber_cloud import (
     CloudConfig,
     WeberCloudAuthError,
@@ -137,22 +138,77 @@ class FakeResponse:
     def __exit__(self, *_args: object) -> None:
         return None
 
-    def read(self) -> bytes:
-        return self.body
+    def read(self, size: int = -1) -> bytes:
+        return self.body if size < 0 else self.body[:size]
 
 
-def test_open_enforces_https_and_decodes_gzip() -> None:
+def test_open_enforces_trusted_https_origins_and_decodes_gzip() -> None:
     client = WeberCloudClient(CloudConfig(DEVICE_ID, "password"))
-    with pytest.raises(WeberCloudError, match="non-HTTPS"):
+    with pytest.raises(WeberCloudError, match="untrusted"):
         client._open(urllib.request.Request("http://example.com"))
+    with pytest.raises(WeberCloudError, match="untrusted"):
+        client._open(urllib.request.Request("https://example.com"))
 
     compressed = gzip.compress(b'{"ok": true}')
-    with patch(
-        "custom_components.weber_connect.weber_cloud.urllib.request.urlopen",
+    with patch.object(
+        client._opener,
+        "open",
         return_value=FakeResponse(compressed, encoding="gzip"),
-    ) as urlopen:
-        assert client._open(urllib.request.Request("https://example.com")) == b'{"ok": true}'
-    assert urlopen.call_args.kwargs["timeout"] == client.timeout
+    ) as open_request:
+        assert (
+            client._open(urllib.request.Request("https://api.walker-cloud.com/test"))
+            == b'{"ok": true}'
+        )
+    assert open_request.call_args.kwargs["timeout"] == client.timeout
+
+
+def test_redirects_must_remain_on_the_exact_https_origin() -> None:
+    handler = cloud._SameOriginRedirectHandler()
+    request = urllib.request.Request("https://api.walker-cloud.com/start")
+    request.add_header("Authorization", "Bearer secret")
+
+    redirected = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        "https://api.walker-cloud.com/next",
+    )
+    assert redirected.get_header("Authorization") == "Bearer secret"
+
+    for target in (
+        "http://api.walker-cloud.com/next",
+        "https://messaging.walker-cloud.com/next",
+        "https://api.walker-cloud.com:444/next",
+        "https://attacker@example.com/next",
+    ):
+        with pytest.raises(WeberCloudError, match=r"redirect|untrusted"):
+            handler.redirect_request(request, None, 302, "Found", {}, target)
+
+
+def test_open_bounds_raw_and_expanded_gzip_responses() -> None:
+    client = WeberCloudClient(CloudConfig(DEVICE_ID, "password"))
+    request = urllib.request.Request("https://api.walker-cloud.com/test")
+
+    for response in (
+        FakeResponse(b"x" * (cloud.MAX_RESPONSE_BYTES + 1)),
+        FakeResponse(
+            gzip.compress(b"x" * (cloud.MAX_RESPONSE_BYTES + 1)),
+            encoding="gzip",
+        ),
+    ):
+        with patch.object(client._opener, "open", return_value=response):
+            with pytest.raises(WeberCloudError, match="oversized"):
+                client._open(request)
+
+    with patch.object(
+        client._opener,
+        "open",
+        return_value=FakeResponse(b"not-gzip", encoding="GZip"),
+    ):
+        with pytest.raises(WeberCloudError, match="invalid gzip"):
+            client._open(request)
 
 
 def test_open_normalizes_http_auth_server_and_network_errors() -> None:
@@ -164,27 +220,21 @@ def test_open_normalizes_http_auth_server_and_network_errors() -> None:
         (500, WeberCloudError),
     ):
         error = urllib.error.HTTPError(
-            "https://example.com",
+            "https://api.walker-cloud.com/test",
             code,
             "error",
             {},
             io.BytesIO(b"detail"),
         )
-        with patch(
-            "custom_components.weber_connect.weber_cloud.urllib.request.urlopen",
-            side_effect=error,
-        ):
+        with patch.object(client._opener, "open", side_effect=error):
             with pytest.raises(error_type, match=str(code)) as raised:
-                client._open(urllib.request.Request("https://example.com"))
+                client._open(urllib.request.Request("https://api.walker-cloud.com/test"))
             assert "detail" not in str(raised.value)
     assert client._token is None
 
-    with patch(
-        "custom_components.weber_connect.weber_cloud.urllib.request.urlopen",
-        side_effect=OSError("offline"),
-    ):
+    with patch.object(client._opener, "open", side_effect=OSError("offline")):
         with pytest.raises(WeberCloudError, match="offline"):
-            client._open(urllib.request.Request("https://example.com"))
+            client._open(urllib.request.Request("https://api.walker-cloud.com/test"))
 
 
 def test_request_payload_rejects_invalid_json_and_scalar_payloads() -> None:
