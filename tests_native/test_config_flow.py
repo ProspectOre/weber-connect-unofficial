@@ -344,15 +344,15 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
     )
     entry.add_to_hass(hass)
     coordinator = SimpleNamespace(
-        initial_state=lambda: {"source": "bluetooth", "connected": False},
+        initial_state=lambda: {"source": "cloud", "connected": False},
         async_set_updated_data=Mock(),
         async_start=lambda: None,
     )
     submitted = {
         CONF_CONNECTION: {
-            CONF_CONNECTION_MODE: ConnectionMode.HOME_ASSISTANT_ONLY.value,
+            CONF_CONNECTION_MODE: ConnectionMode.PHONE_AND_HOME_ASSISTANT.value,
         },
-        CONF_PROBES: {},
+        CONF_PROBES: {"probe_name_1": "Brisket"},
     }
 
     with (
@@ -381,8 +381,8 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
         await hass.async_block_till_done()  # type: ignore[attr-defined]
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert WeberOptions.from_mapping(entry.options) == WeberOptions(
-        connection_mode=ConnectionMode.HOME_ASSISTANT_ONLY
-    )
+    saved = WeberOptions.from_mapping(entry.options)
+    assert saved.connection_mode is ConnectionMode.PHONE_AND_HOME_ASSISTANT
+    assert saved.probe_name(1) == "Brisket"
     coordinator.async_set_updated_data.assert_called_once()
     reload_entry.assert_awaited_once_with(entry.entry_id)

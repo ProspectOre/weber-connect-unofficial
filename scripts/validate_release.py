@@ -227,6 +227,15 @@ def check_workflows() -> None:
         fail("auto-merge workflow is missing the fork review-gate safeguards")
     if not review_stamp < fork_stop < auto_merge_arm:
         fail("fork PRs must receive the review-gate status before auto-merge stops")
+    for exact_head_guard in (
+        '--arg head "$head_sha"',
+        '--arg prefix "${head_sha:0:10}"',
+        "select(.commit_id == $head)",
+        '"Reviewed commit:[^`]*`" + $head + "`"',
+        '&& "$adverse_verdicts" == "0"',
+    ):
+        if exact_head_guard not in auto_merge:
+            fail("auto-merge workflow must require a positive exact-head verdict")
     if (ROOT / ".github" / "workflows" / "publish.yml").exists():
         fail("the native integration must not retain the add-on container publishing workflow")
 

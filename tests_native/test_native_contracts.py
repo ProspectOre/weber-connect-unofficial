@@ -694,13 +694,14 @@ def test_options_have_one_transport_choice_and_stable_probe_names() -> None:
     configured = WeberOptions.from_mapping(
         {
             CONF_CONNECTION: {
-                CONF_CONNECTION_MODE: ConnectionMode.HOME_ASSISTANT_ONLY,
+                CONF_CONNECTION_MODE: "home_assistant_only",
             },
             CONF_PROBES: {f"{CONF_PROBE_NAME_PREFIX}2": " Brisket "},
             "advanced": {"poll_seconds": "120", "local_fallback": True},
         }
     )
-    assert configured.cloud_enabled is False
+    assert configured.connection_mode is ConnectionMode.PHONE_AND_HOME_ASSISTANT
+    assert configured.cloud_enabled is True
     assert configured.probe_name(2) == "Brisket"
     assert "advanced" not in configured.as_dict()
     assert configured.as_dict()[CONF_PROBES][f"{CONF_PROBE_NAME_PREFIX}2"] == "Brisket"
