@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [synchronize]
   push:
     branches: [main]
 
@@ -21,6 +22,7 @@ jobs:
       github.event_name != 'pull_request'
       || (github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
     runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 25
@@ -87,6 +89,7 @@ jobs:
       github.event_name != 'pull_request'
       || (github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
     runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 15
@@ -109,6 +112,7 @@ jobs:
       github.event_name != 'pull_request'
       || (github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
     runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 15
@@ -148,6 +152,7 @@ jobs:
       && (github.event_name != 'pull_request'
       || (github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))
     needs: [validate, hassfest, hacs]
     runs-on: [self-hosted, macOS, ARM64, weber, mbp]

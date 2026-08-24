@@ -6,7 +6,7 @@ name: Claude Review
 # Codex flow as the unset default.
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [synchronize]
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -25,6 +25,7 @@ jobs:
       && github.event.pull_request.draft == false
       && github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     steps:
