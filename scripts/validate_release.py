@@ -237,6 +237,8 @@ def check_workflows() -> None:
         '&& "${#unique_prefix}" -le 10',
         "^## Review result: No issues found",
         "^Codex Review: Didn[^A-Za-z0-9]t find any major issues",
+        "codex_boilerplate",
+        'normalized_body == ("## Review result: No issues found.',
         '&& "$adverse_verdicts" == "0"',
     ):
         if exact_head_guard not in auto_merge:

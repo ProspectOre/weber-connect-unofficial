@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001 -- the connector boilerplate contains its exact information glyph.
 """Executable contracts for the privileged review-verdict classifier."""
 
 from __future__ import annotations
@@ -74,6 +75,29 @@ def _comment(body: str) -> dict[str, object]:
     return {"user": {"login": BOT}, "body": body}
 
 
+def _codex_clean_body(marker: str, compliment: str = "Nice work!") -> str:
+    return f"""Codex Review: Didn't find any major issues. {compliment}
+
+**Reviewed commit:** `{marker}`
+
+<details> <summary>ℹ️ About Codex in GitHub</summary>
+<br/>
+
+[Your team has set up Codex to review pull requests in this repo](https://chatgpt.com/codex/cloud/settings/general). Reviews are triggered when you
+- Open a pull request for review
+- Mark a draft as ready
+- Comment "@codex review".
+
+If Codex has suggestions, it will comment; otherwise it will react with 👍.
+
+
+
+
+Codex can also answer questions or update the PR. Try commenting "@codex address that feedback".
+
+</details>"""
+
+
 def test_only_explicit_positive_contracts_grant(tmp_path: Path) -> None:
     clean = "## Review result: No issues found.\n\n**Reviewed commit:** `" + HEAD + "`"
     assert _classify(tmp_path, reviews=[_formal(clean)]) == "1 0"
@@ -91,17 +115,26 @@ def test_negated_and_qualified_clean_words_fail_closed(tmp_path: Path) -> None:
         assert _classify(tmp_path, reviews=[_formal(body)]) == "0 0"
 
 
-def test_codex_short_clean_marker_requires_unique_full_head_binding(tmp_path: Path) -> None:
-    body = (
-        "Codex Review: Didn't find any major issues. Nice work!\n\n"
-        f"**Reviewed commit:** `{HEAD[:10]}`"
+def test_clean_heading_with_later_caveat_fails_closed(tmp_path: Path) -> None:
+    qualified_claude = (
+        "## Review result: No issues found.\n\n"
+        "One concern: redirects retain the Authorization header.\n\n"
+        f"**Reviewed commit:** `{HEAD}`"
     )
+    assert _classify(tmp_path, reviews=[_formal(qualified_claude)]) == "0 0"
+
+    qualified_codex = _codex_clean_body(HEAD[:10]).replace(
+        "\n<details>", "\nOne concern: redirects retain the Authorization header.\n\n<details>"
+    )
+    assert _classify(tmp_path, comments=[_comment(qualified_codex)], short_head=HEAD) == "0 0"
+
+
+def test_codex_short_clean_marker_requires_unique_full_head_binding(tmp_path: Path) -> None:
+    body = _codex_clean_body(HEAD[:10])
     assert _classify(tmp_path, comments=[_comment(body)]) == "0 0"
     assert _classify(tmp_path, comments=[_comment(body)], short_head=HEAD) == "1 0"
 
 
 def test_codex_full_clean_marker_remains_supported(tmp_path: Path) -> None:
-    body = (
-        f"Codex Review: Didn't find any major issues. Keep it up!\n\n**Reviewed commit:** `{HEAD}`"
-    )
+    body = _codex_clean_body(HEAD, "Keep it up!")
     assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
