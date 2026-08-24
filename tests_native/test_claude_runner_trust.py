@@ -33,5 +33,5 @@ def test_macos_ci_uses_runner_local_python_environment() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "if: runner.os == 'Linux'" in workflow
-    assert "python3 -m venv \"$RUNNER_TEMP/weber-venv\"" in workflow
+    assert 'python3 -m venv "$RUNNER_TEMP/weber-venv"' in workflow
     assert 'echo "$RUNNER_TEMP/weber-venv/bin" >> "$GITHUB_PATH"' in workflow
