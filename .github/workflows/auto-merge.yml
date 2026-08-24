@@ -329,54 +329,62 @@ jobs:
           # auto-merge unreachable. The workflow_run trigger makes same-repository PRs
           # converge when CI finishes even if the review verdict arrived first.
           if [[ "$is_cross_repo" != "true" ]]; then
-          if ! ci_check="$(GH_TOKEN="$STATUS_TOKEN" gh api \
-            "repos/$REPO/commits/$head_sha/check-runs?check_name=ci&filter=latest&per_page=100" \
+          # A head can back multiple PRs against different bases. Filter workflow
+          # runs by this PR before choosing the newest ID; selecting globally first
+          # lets a newer run for the other base hide this PR's valid run forever.
+          if ! ci_run_candidates="$(PR_NUMBER="$pr_number" GH_TOKEN="$STATUS_TOKEN" gh api \
+            "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$head_sha&per_page=100" \
+            --paginate \
+            --jq '
+              # CI_RUN_IDENTITY_FILTER_BEGIN
+              .workflow_runs[]
+              | select(any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber)))
+              | [.id, .head_sha, .event, (.conclusion // "pending"), .path]
+              | @tsv
+              # CI_RUN_IDENTITY_FILTER_END
+            ')"; then
+            echo "Could not read CI runs associated with PR $pr_number; leaving auto-merge disabled."
+            exit 1
+          fi
+          ci_run_identity="$(printf '%s\n' "$ci_run_candidates" | sort -t$'\t' -k1,1nr | sed -n '1p')"
+          if [[ -z "$ci_run_identity" ]]; then
+            echo "No exact-head CI run is associated with PR $pr_number; leaving auto-merge disabled."
+            exit 0
+          fi
+          IFS=$'\t' read -r ci_run_id ci_run_head ci_run_event ci_run_conclusion ci_run_path <<< "$ci_run_identity"
+          if [[ ! "$ci_run_id" =~ ^[1-9][0-9]*$ \
+            || "$ci_run_head" != "$head_sha" \
+            || "$ci_run_event" != "pull_request" \
+            || "$ci_run_path" != ".github/workflows/ci.yml" ]]; then
+            echo "Associated CI candidate has an invalid workflow identity; leaving auto-merge disabled."
+            exit 1
+          fi
+          if [[ "$ci_run_conclusion" != "success" ]]; then
+            echo "Newest exact-head CI run for PR $pr_number is '${ci_run_conclusion:-pending}'; leaving auto-merge disabled."
+            exit 0
+          fi
+          if ! ci_check="$(CI_RUN_ID="$ci_run_id" GH_TOKEN="$STATUS_TOKEN" gh api \
+            "repos/$REPO/commits/$head_sha/check-runs?check_name=ci&filter=all&per_page=100" \
             --jq '[.check_runs[]
-                    | select(.name == "ci" and .app.slug == "github-actions")]
-                  | sort_by(.completed_at) | last
-                  | if . == null then "" else [.head_sha, .conclusion, .details_url] | @tsv end')"; then
-            echo "Could not read the aggregate CI check for $head_sha; leaving auto-merge disabled."
+                    | select(.name == "ci" and .app.slug == "github-actions")
+                    | select(.details_url | startswith("https://github.com/" + env.REPO + "/actions/runs/" + env.CI_RUN_ID + "/job/"))]
+                  | sort_by(.id) | last
+                  | if . == null then "" else [.head_sha, (.conclusion // "pending"), .details_url] | @tsv end')"; then
+            echo "Could not read the aggregate CI check for run $ci_run_id; leaving auto-merge disabled."
             exit 1
           fi
           IFS=$'\t' read -r ci_check_head ci_conclusion ci_details_url <<< "$ci_check"
           if [[ "$ci_check_head" != "$head_sha" || "$ci_conclusion" != "success" ]]; then
-            echo "Exact-head aggregate CI is '${ci_conclusion:-missing}' for $head_sha; leaving auto-merge disabled."
+            echo "Exact-head aggregate CI is '${ci_conclusion:-missing}' for run $ci_run_id; leaving auto-merge disabled."
             exit 0
           fi
           case "$ci_details_url" in
-            "https://github.com/$REPO/actions/runs/"[0-9]*/job/[0-9]*) ;;
+            "https://github.com/$REPO/actions/runs/$ci_run_id/job/"[0-9]*) ;;
             *)
               echo "Aggregate CI check has an unexpected run URL; leaving auto-merge disabled."
               exit 1
               ;;
           esac
-          ci_run_id="${ci_details_url#"https://github.com/$REPO/actions/runs/"}"
-          ci_run_id="${ci_run_id%%/*}"
-          if [[ ! "$ci_run_id" =~ ^[1-9][0-9]*$ ]]; then
-            echo "Aggregate CI check did not identify a canonical workflow run; leaving auto-merge disabled."
-            exit 1
-          fi
-          if ! ci_run_identity="$(PR_NUMBER="$pr_number" GH_TOKEN="$STATUS_TOKEN" gh api \
-            "repos/$REPO/actions/runs/$ci_run_id" \
-            --jq '
-              # CI_RUN_IDENTITY_FILTER_BEGIN
-              [.head_sha, .event, .conclusion, .path,
-               any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber))]
-              | @tsv
-              # CI_RUN_IDENTITY_FILTER_END
-            ')"; then
-            echo "Could not verify aggregate CI workflow identity; leaving auto-merge disabled."
-            exit 1
-          fi
-          IFS=$'\t' read -r ci_run_head ci_run_event ci_run_conclusion ci_run_path ci_run_matches_pr <<< "$ci_run_identity"
-          if [[ "$ci_run_head" != "$head_sha" \
-            || "$ci_run_event" != "pull_request" \
-            || "$ci_run_conclusion" != "success" \
-            || "$ci_run_path" != ".github/workflows/ci.yml" \
-            || "$ci_run_matches_pr" != "true" ]]; then
-            echo "Aggregate check is not a successful exact-head CI run associated with PR $pr_number; leaving auto-merge disabled."
-            exit 1
-          fi
           fi
           # SAME_REPOSITORY_CI_GATE_END
           auto_merge_enabled="$(gh pr view "$pr_ref" --json autoMergeRequest --jq '.autoMergeRequest != null')"

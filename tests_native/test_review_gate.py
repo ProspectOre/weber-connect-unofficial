@@ -32,7 +32,7 @@ def _ci_run_identity_filter() -> str:
     return textwrap.dedent(workflow[begin:end])
 
 
-def _identify_ci_run(payload: dict[str, object], *, pr_number: int) -> list[str]:
+def _select_ci_run(payload: dict[str, object], *, pr_number: int) -> list[str]:
     completed = subprocess.run(
         ["jq", "-r", _ci_run_identity_filter()],
         input=json.dumps(payload),
@@ -41,7 +41,8 @@ def _identify_ci_run(payload: dict[str, object], *, pr_number: int) -> list[str]
         text=True,
         env={**os.environ, "PR_NUMBER": str(pr_number)},
     )
-    return completed.stdout.rstrip("\n").split("\t")
+    candidates = [line.split("\t") for line in completed.stdout.splitlines()]
+    return max(candidates, key=lambda candidate: int(candidate[0]), default=[])
 
 
 def _classify(
@@ -168,46 +169,116 @@ def test_auto_merge_requires_a_real_exact_head_ci_success() -> None:
     assert "workflows: [CI]" in workflow
     assert "actions: read" in workflow
     assert "checks: read" in workflow
-    assert "check-runs?check_name=ci&filter=latest&per_page=100" in workflow
+    assert "actions/workflows/ci.yml/runs?event=pull_request&head_sha=$head_sha" in workflow
+    assert "check-runs?check_name=ci&filter=all&per_page=100" in workflow
     assert 'select(.name == "ci" and .app.slug == "github-actions")' in workflow
     assert 'GH_TOKEN="$STATUS_TOKEN" gh api' in workflow
+    assert 'CI_RUN_ID="$ci_run_id"' in workflow
     assert '"$ci_check_head" != "$head_sha" || "$ci_conclusion" != "success"' in workflow
     assert '"$ci_run_event" != "pull_request"' in workflow
     assert '"$ci_run_conclusion" != "success"' in workflow
     assert '"$ci_run_path" != ".github/workflows/ci.yml"' in workflow
     assert 'PR_NUMBER="$pr_number"' in workflow
     assert "any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber))" in workflow
-    assert '"$ci_run_matches_pr" != "true"' in workflow
+    assert "sort -t$'\\t' -k1,1nr" in workflow
 
 
-def test_ci_run_identity_rejects_same_head_run_for_another_pr() -> None:
-    run = {
-        "head_sha": HEAD,
-        "event": "pull_request",
-        "conclusion": "success",
-        "path": ".github/workflows/ci.yml",
-        "pull_requests": [{"number": 49}],
+def test_ci_run_selection_filters_pr_before_recency() -> None:
+    runs = {
+        "workflow_runs": [
+            {
+                "id": 200,
+                "head_sha": HEAD,
+                "event": "pull_request",
+                "conclusion": "success",
+                "path": ".github/workflows/ci.yml",
+                "pull_requests": [{"number": 50}],
+            },
+            {
+                "id": 100,
+                "head_sha": HEAD,
+                "event": "pull_request",
+                "conclusion": "success",
+                "path": ".github/workflows/ci.yml",
+                "pull_requests": [{"number": 49}],
+            },
+        ]
     }
 
-    assert _identify_ci_run(run, pr_number=49)[-1] == "true"
-    assert _identify_ci_run(run, pr_number=50) == [
+    assert _select_ci_run(runs, pr_number=49) == [
+        "100",
         HEAD,
         "pull_request",
         "success",
         ".github/workflows/ci.yml",
-        "false",
     ]
 
 
-def test_ci_run_identity_rejects_missing_pr_association() -> None:
-    run = {
-        "head_sha": HEAD,
-        "event": "pull_request",
-        "conclusion": "success",
-        "path": ".github/workflows/ci.yml",
+def test_ci_run_selection_prefers_newest_current_pr_run() -> None:
+    runs = {
+        "workflow_runs": [
+            {
+                "id": 100,
+                "head_sha": HEAD,
+                "event": "pull_request",
+                "conclusion": "failure",
+                "path": ".github/workflows/ci.yml",
+                "pull_requests": [{"number": 49}],
+            },
+            {
+                "id": 300,
+                "head_sha": HEAD,
+                "event": "pull_request",
+                "conclusion": "success",
+                "path": ".github/workflows/ci.yml",
+                "pull_requests": [{"number": 49}],
+            },
+        ]
     }
 
-    assert _identify_ci_run(run, pr_number=50)[-1] == "false"
+    assert _select_ci_run(runs, pr_number=49)[0] == "300"
+
+
+def test_ci_run_selection_does_not_fall_back_while_newest_is_pending() -> None:
+    runs = {
+        "workflow_runs": [
+            {
+                "id": 100,
+                "head_sha": HEAD,
+                "event": "pull_request",
+                "conclusion": "success",
+                "path": ".github/workflows/ci.yml",
+                "pull_requests": [{"number": 49}],
+            },
+            {
+                "id": 300,
+                "head_sha": HEAD,
+                "event": "pull_request",
+                "conclusion": None,
+                "path": ".github/workflows/ci.yml",
+                "pull_requests": [{"number": 49}],
+            },
+        ]
+    }
+
+    assert _select_ci_run(runs, pr_number=49)[3] == "pending"
+
+
+def test_ci_run_selection_rejects_missing_current_pr_association() -> None:
+    runs = {
+        "workflow_runs": [
+            {
+                "id": 200,
+                "head_sha": HEAD,
+                "event": "pull_request",
+                "conclusion": "success",
+                "path": ".github/workflows/ci.yml",
+                "pull_requests": [{"number": 50}],
+            }
+        ]
+    }
+
+    assert _select_ci_run(runs, pr_number=49) == []
 
 
 def test_fork_review_stamp_bypasses_ci_but_cannot_reach_auto_merge() -> None:
@@ -215,7 +286,7 @@ def test_fork_review_stamp_bypasses_ci_but_cannot_reach_auto_merge() -> None:
 
     ci_gate_start = workflow.index("# SAME_REPOSITORY_CI_GATE_BEGIN")
     ci_gate_end = workflow.index("# SAME_REPOSITORY_CI_GATE_END")
-    ci_lookup = workflow.index("check-runs?check_name=ci&filter=latest&per_page=100")
+    ci_lookup = workflow.index("actions/workflows/ci.yml/runs?event=pull_request")
     evaluate = workflow.index("\n          evaluate_evidence\n")
     review_stamp = workflow.index("if ! stamp_review_gate success")
     fork_stop = workflow.index('if [[ "$is_cross_repo" == "true" ]]; then', review_stamp)
