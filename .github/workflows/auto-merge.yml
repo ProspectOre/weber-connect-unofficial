@@ -24,6 +24,12 @@ on:
   # to re-run the workflow.
   pull_request_review_comment:
     types: [created, edited, deleted]
+  # A clean review can arrive before CI finishes. Re-evaluate when the aggregate
+  # workflow completes so the gate can require a real successful check rather
+  # than treating GitHub's skipped-job "success" as validation.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pull_request:
@@ -50,7 +56,7 @@ concurrency:
   # issue_comment payloads carry no pull_request, so without issue.number two PRs'
   # verdicts landing together would share the default-branch key and cancel each
   # other — leaving the first permanently unarmed with no later event to retry it.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number || inputs.pull_request || github.ref }}
   # NOT cancel-in-progress. This workflow's job is to CONVERGE on the true state
   # of a PR, and the events that feed it arrive in bursts (a verdict plus several
   # inline replies land within seconds). Cancelling means the surviving run is
@@ -62,6 +68,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
+  checks: read
   contents: write
   pull-requests: write
   # The verdict and the override's audit trail are read through issue endpoints
@@ -88,6 +96,7 @@ jobs:
     # Draft PRs are still excluded: the script re-checks `isDraft` from the API.
     if: >-
       github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number != null)
       || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)
       || github.event.pull_request.draft == false
     steps:
@@ -114,6 +123,7 @@ jobs:
           EVENT_PR_URL: ${{ github.event.pull_request.html_url }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_IS_PR: ${{ github.event.issue.pull_request != null }}
+          EVENT_WORKFLOW_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
           REVIEW_BOT: ${{ vars.REVIEW_PROVIDER == 'claude' && 'claude[bot]' || 'chatgpt-codex-connector[bot]' }}
           OVERRIDE_LABEL: auto-merge-now
           # The status context stamped on each reviewed head. Adding this name to a
@@ -157,6 +167,15 @@ jobs:
               exit 1
             fi
             pr_ref="https://github.com/$REPO/pull/$INPUT_PR"
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            # workflow_run is a base-workflow metadata event. Never check out its
+            # triggering head; use only the associated PR number, then resolve the
+            # current head from GitHub below. An empty association is not a PR run.
+            if [[ ! "${EVENT_WORKFLOW_PR_NUMBER:-}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Completed CI run is not associated with a pull request; nothing to evaluate."
+              exit 0
+            fi
+            pr_ref="https://github.com/$REPO/pull/$EVENT_WORKFLOW_PR_NUMBER"
           elif [[ -n "${EVENT_ISSUE_NUMBER:-}" ]]; then
             # issue_comment fires with an ISSUE payload; ignore plain issues.
             if [[ "${EVENT_IS_PR:-}" != "true" ]]; then
@@ -296,6 +315,55 @@ jobs:
           # failure this gate exists to prevent. Refuse to proceed instead.
           if [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Could not resolve a valid head sha ('$head_sha'); failing closed."
+            exit 1
+          fi
+
+          # GitHub reports a skipped job as successful for required-check purposes.
+          # That is useful for ordinary conditional jobs, but unsafe here: the PR
+          # trust guard intentionally skips every head-code job for bots and forks.
+          # Require the aggregate check itself to have literally succeeded, and bind
+          # it to this exact head plus the canonical CI workflow identity. The
+          # workflow_run trigger above makes this converge when CI finishes even if
+          # the review verdict arrived first. Missing, queued, skipped, cancelled,
+          # and failed checks all leave auto-merge disabled.
+          if ! ci_check="$(GH_TOKEN="$STATUS_TOKEN" gh api \
+            "repos/$REPO/commits/$head_sha/check-runs?check_name=ci&filter=latest&per_page=100" \
+            --jq '[.check_runs[]
+                    | select(.name == "ci" and .app.slug == "github-actions")]
+                  | sort_by(.completed_at) | last
+                  | if . == null then "" else [.head_sha, .conclusion, .details_url] | @tsv end')"; then
+            echo "Could not read the aggregate CI check for $head_sha; leaving auto-merge disabled."
+            exit 1
+          fi
+          IFS=$'\t' read -r ci_check_head ci_conclusion ci_details_url <<< "$ci_check"
+          if [[ "$ci_check_head" != "$head_sha" || "$ci_conclusion" != "success" ]]; then
+            echo "Exact-head aggregate CI is '${ci_conclusion:-missing}' for $head_sha; leaving auto-merge disabled."
+            exit 0
+          fi
+          case "$ci_details_url" in
+            "https://github.com/$REPO/actions/runs/"[0-9]*/job/[0-9]*) ;;
+            *)
+              echo "Aggregate CI check has an unexpected run URL; leaving auto-merge disabled."
+              exit 1
+              ;;
+          esac
+          ci_run_id="${ci_details_url#"https://github.com/$REPO/actions/runs/"}"
+          ci_run_id="${ci_run_id%%/*}"
+          if [[ ! "$ci_run_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Aggregate CI check did not identify a canonical workflow run; leaving auto-merge disabled."
+            exit 1
+          fi
+          if ! ci_run_identity="$(GH_TOKEN="$STATUS_TOKEN" gh api "repos/$REPO/actions/runs/$ci_run_id" \
+            --jq '[.head_sha, .event, .conclusion, .path] | @tsv')"; then
+            echo "Could not verify aggregate CI workflow identity; leaving auto-merge disabled."
+            exit 1
+          fi
+          IFS=$'\t' read -r ci_run_head ci_run_event ci_run_conclusion ci_run_path <<< "$ci_run_identity"
+          if [[ "$ci_run_head" != "$head_sha" \
+            || "$ci_run_event" != "pull_request" \
+            || "$ci_run_conclusion" != "success" \
+            || "$ci_run_path" != ".github/workflows/ci.yml" ]]; then
+            echo "Aggregate check is not a successful exact-head pull_request run of .github/workflows/ci.yml; leaving auto-merge disabled."
             exit 1
           fi
           auto_merge_enabled="$(gh pr view "$pr_ref" --json autoMergeRequest --jq '.autoMergeRequest != null')"

@@ -138,3 +138,19 @@ def test_codex_short_clean_marker_requires_unique_full_head_binding(tmp_path: Pa
 def test_codex_full_clean_marker_remains_supported(tmp_path: Path) -> None:
     body = _codex_clean_body(HEAD, "Keep it up!")
     assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
+
+
+def test_auto_merge_requires_a_real_exact_head_ci_success() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "workflow_run:" in workflow
+    assert "workflows: [CI]" in workflow
+    assert "actions: read" in workflow
+    assert "checks: read" in workflow
+    assert "check-runs?check_name=ci&filter=latest&per_page=100" in workflow
+    assert 'select(.name == "ci" and .app.slug == "github-actions")' in workflow
+    assert 'GH_TOKEN="$STATUS_TOKEN" gh api' in workflow
+    assert '"$ci_check_head" != "$head_sha" || "$ci_conclusion" != "success"' in workflow
+    assert '"$ci_run_event" != "pull_request"' in workflow
+    assert '"$ci_run_conclusion" != "success"' in workflow
+    assert '"$ci_run_path" != ".github/workflows/ci.yml"' in workflow

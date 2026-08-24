@@ -35,3 +35,14 @@ def test_macos_ci_uses_runner_local_python_environment() -> None:
     assert "if: runner.os == 'Linux'" in workflow
     assert 'python3 -m venv "$RUNNER_TEMP/weber-venv"' in workflow
     assert 'echo "$RUNNER_TEMP/weber-venv/bin" >> "$GITHUB_PATH"' in workflow
+
+
+def test_macos_validators_are_pinned_and_do_not_require_docker() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "docker run" not in workflow
+    assert "759e4658f40b3ccb671d418b8a0ed95224bf4561" in workflow
+    assert "3249355704d1a716e637d4d044b6cb4ae72dc271" in workflow
+    assert "e6b196171fbcb3cb3eced2c48e789f3dc946b59f7490487df16d8d4e47a85fc4" in workflow
+    assert workflow.count("8 * 1024 * 1024") == 3
+    assert workflow.count("6 * 1024 * 1024") == 2
