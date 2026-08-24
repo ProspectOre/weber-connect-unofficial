@@ -318,14 +318,17 @@ jobs:
             exit 1
           fi
 
-          # GitHub reports a skipped job as successful for required-check purposes.
-          # That is useful for ordinary conditional jobs, but unsafe here: the PR
-          # trust guard intentionally skips every head-code job for bots and forks.
-          # Require the aggregate check itself to have literally succeeded, and bind
-          # it to this exact head plus the canonical CI workflow identity. The
-          # workflow_run trigger above makes this converge when CI finishes even if
-          # the review verdict arrived first. Missing, queued, skipped, cancelled,
-          # and failed checks all leave auto-merge disabled.
+          # SAME_REPOSITORY_CI_GATE_BEGIN. GitHub reports a skipped job as successful
+          # for required-check purposes. That is useful for ordinary conditional jobs,
+          # but unsafe for auto-merge: the trust guard intentionally skips every
+          # head-code job for bots and forks. Require the aggregate check itself to
+          # have literally succeeded before a same-repository PR can be armed, and
+          # bind it to this exact head plus the canonical CI workflow identity. Forks
+          # bypass only this execution gate so a reviewed head can receive the status
+          # needed for an explicit maintainer merge; the fork stop below still makes
+          # auto-merge unreachable. The workflow_run trigger makes same-repository PRs
+          # converge when CI finishes even if the review verdict arrived first.
+          if [[ "$is_cross_repo" != "true" ]]; then
           if ! ci_check="$(GH_TOKEN="$STATUS_TOKEN" gh api \
             "repos/$REPO/commits/$head_sha/check-runs?check_name=ci&filter=latest&per_page=100" \
             --jq '[.check_runs[]
@@ -366,6 +369,8 @@ jobs:
             echo "Aggregate check is not a successful exact-head pull_request run of .github/workflows/ci.yml; leaving auto-merge disabled."
             exit 1
           fi
+          fi
+          # SAME_REPOSITORY_CI_GATE_END
           auto_merge_enabled="$(gh pr view "$pr_ref" --json autoMergeRequest --jq '.autoMergeRequest != null')"
 
           # STAMP THE VERDICT ONTO THE HEAD, so enforcement outlives this run.

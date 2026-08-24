@@ -154,3 +154,19 @@ def test_auto_merge_requires_a_real_exact_head_ci_success() -> None:
     assert '"$ci_run_event" != "pull_request"' in workflow
     assert '"$ci_run_conclusion" != "success"' in workflow
     assert '"$ci_run_path" != ".github/workflows/ci.yml"' in workflow
+
+
+def test_fork_review_stamp_bypasses_ci_but_cannot_reach_auto_merge() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    ci_gate_start = workflow.index("# SAME_REPOSITORY_CI_GATE_BEGIN")
+    ci_gate_end = workflow.index("# SAME_REPOSITORY_CI_GATE_END")
+    ci_lookup = workflow.index("check-runs?check_name=ci&filter=latest&per_page=100")
+    evaluate = workflow.index("\n          evaluate_evidence\n")
+    review_stamp = workflow.index("if ! stamp_review_gate success")
+    fork_stop = workflow.index('if [[ "$is_cross_repo" == "true" ]]; then', review_stamp)
+    auto_merge_arm = workflow.index('gh pr merge "$pr_ref" --auto --squash')
+
+    assert 'if [[ "$is_cross_repo" != "true" ]]; then' in workflow[ci_gate_start:ci_gate_end]
+    assert ci_gate_start < ci_lookup < ci_gate_end < evaluate
+    assert evaluate < review_stamp < fork_stop < auto_merge_arm
