@@ -26,9 +26,9 @@ permissions:
 jobs:
   update-runner-policy:
     name: Update hosted runner policy
-    # This job decides whether hosted runners may be used, so it must not
-    # depend on the self-hosted fleet it is responsible for falling back from.
-    runs-on: ubuntu-latest
+    # Hosted runner usage is disabled for this repository. Keep the policy
+    # refresh on the repo-scoped runner so the monitor itself consumes $0.
+    runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 10
     steps:
       - name: Update repository runner variables
@@ -130,7 +130,9 @@ jobs:
               used = float(billing.get("total_minutes_used") or 0)
               paid = float(billing.get("total_paid_minutes_used") or 0)
               percent = (used / included * 100.0) if included > 0 else 100.0
-              hosted_ok = included > 0 and percent < threshold and paid <= 0
+              # This repository is local-runner-only. Billing is still sampled
+              # for visibility, but the monitor must never re-enable hosted jobs.
+              hosted_ok = False
           else:
               status = "billing_unavailable"
               hosted_ok = False
