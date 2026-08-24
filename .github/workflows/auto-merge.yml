@@ -287,6 +287,8 @@ jobs:
           # checked below. Same-repository PRs are armed later; fork PRs are left for
           # an explicit maintainer merge after receiving the same per-head status.
           head_sha="$(gh pr view "$pr_ref" --json headRefOid --jq '.headRefOid')"
+          head_repo_owner="$(gh pr view "$pr_ref" --json headRepositoryOwner --jq '.headRepositoryOwner.login')"
+          head_repo_name="$(gh pr view "$pr_ref" --json headRepository --jq '.headRepository.name')"
           pr_number="$(gh pr view "$pr_ref" --json number --jq '.number')"
           # The sha is interpolated into the verdict-matching pattern below. An
           # empty or malformed value would reduce that pattern to "any Reviewed
@@ -401,11 +403,41 @@ jobs:
             else
               # (a) A verdict must be bound to THIS exact head and explicitly say the
               #     review passed. Formal reviews carry GitHub's immutable commit_id.
-              #     Issue comments carry no commit metadata, so only a body naming all
-              #     40 hex characters can grant authorization. A short prefix cannot
-              #     grant, because another commit can deliberately be mined with the
-              #     same prefix; an adverse short-prefix verdict still vetoes below.
+              #     Issue comments carry no commit metadata, so a body naming all 40
+              #     hex characters grants directly. Codex currently names ten; that
+              #     form grants only when GitHub says ten characters uniquely identify
+              #     this exact object. An adverse current-prefix verdict still vetoes.
               reviewed=false
+              # Codex's clean issue-comment contract currently names only ten hex
+              # characters. Query the exact full object in the PR HEAD repository and
+              # use GitHub's platform-computed minimum unique abbreviation. This avoids
+              # interpreting the prefix as a branch or tag name; ten characters grant
+              # only when the repository's unique abbreviation is no longer than ten.
+              # Claude formal reviews already carry immutable commit_id metadata.
+              short_comment_head=""
+              if [[ "$REVIEW_BOT" == "chatgpt-codex-connector[bot]" ]]; then
+                # GraphQL variables in the query are intentionally literal.
+                # shellcheck disable=SC2016
+                if unique_head="$(gh api graphql \
+                  -f owner="$head_repo_owner" \
+                  -f name="$head_repo_name" \
+                  -f oid="$head_sha" \
+                  -f query='query($owner:String!,$name:String!,$oid:GitObjectID!){repository(owner:$owner,name:$name){object(oid:$oid){oid abbreviatedOid}}}' \
+                  --jq '.data.repository.object | [.oid, .abbreviatedOid] | @tsv' 2>/dev/null)"; then
+                  read -r resolved_head unique_prefix <<< "$unique_head"
+                else
+                  resolved_head=""
+                  unique_prefix=""
+                fi
+                if [[ "$resolved_head" == "$head_sha" \
+                  && "$unique_prefix" =~ ^[0-9a-f]+$ \
+                  && "${#unique_prefix}" -le 10 \
+                  && "${head_sha:0:${#unique_prefix}}" == "$unique_prefix" ]]; then
+                  short_comment_head="$head_sha"
+                else
+                  echo "Codex's short review marker is not unique for $head_sha; it cannot grant authorization."
+                fi
+              fi
               if ! review_pages="$(gh api "repos/$REPO/pulls/$pr_number/reviews?per_page=100" \
                 --paginate --slurp)"; then
                 echo "Could not read review verdicts for $head_sha; failing closed."
@@ -415,7 +447,9 @@ jobs:
               elif ! verdict_summary="$(jq -sr \
                 --arg bot "$REVIEW_BOT" \
                 --arg head "$head_sha" \
-                --arg prefix "${head_sha:0:10}" '
+                --arg prefix "${head_sha:0:10}" \
+                --arg short_head "$short_comment_head" '
+                  # REVIEW_VERDICT_FILTER_BEGIN
                   def body: (.body // "");
                   def is_finding:
                     (.state == "CHANGES_REQUESTED")
@@ -425,9 +459,8 @@ jobs:
                     or (body | test("\\b(?:found|identified|reported)\\b.{0,80}\\b(?:findings?|issues?|bugs?|vulnerabilit(?:y|ies))\\b"; "is"));
                   def is_clean:
                     (is_finding | not)
-                    and ((body | test("\\b(?:no (?:reportable )?findings?|zero findings|no issues?|looks good|lgtm|clean review)\\b"; "i"))
-                      or (body | test("\\bdid(?: not|n.t) find\\b.{0,80}\\b(?:issues?|findings?|bugs?|vulnerabilit(?:y|ies))\\b"; "is"))
-                      or (body | test("\\breview result\\s*:\\s*(?:pass|clean|approved)\\b"; "i")));
+                    and ((body | test("^## Review result: No issues found\\.\\r?\\n"; "i"))
+                      or (body | test("^Codex Review: Didn[^A-Za-z0-9]t find any major issues\\.[^\\r\\n]*\\r?\\n"; "i")));
                   (.[0] | flatten
                     | map(select(.user.login == $bot)
                       | select(.state != "DISMISSED")
@@ -435,14 +468,21 @@ jobs:
                   | (.[1] | flatten | map(select(.user.login == $bot))) as $bot_comments
                   | ($bot_comments
                     | map(select(body | test("Reviewed commit:[^`]*`" + $head + "`"; "i")))) as $exact_comments
-                  # A short marker can never GRANT authorization, but an adverse
-                  # current-prefix verdict still vetoes. Treating negative evidence
-                  # conservatively cannot authorize the prefix-collision attack.
+                  # The short marker grants only after GitHub uniquely resolved it to
+                  # this full head above. Matching the closing backtick keeps a full
+                  # marker out of this bucket and makes the two trust paths explicit.
+                  | ($bot_comments
+                    | map(select(($short_head == $head)
+                      and (body | test("Reviewed commit:[^`]*`" + $prefix + "`"; "i"))))) as $resolved_short_comments
+                  # An unresolved short marker can never grant authorization, but an
+                  # adverse current-prefix verdict still vetoes. Treating negative
+                  # evidence conservatively cannot authorize a prefix collision.
                   | ($bot_comments
                     | map(select(body | test("Reviewed commit:[^`]*`(?:" + $head + "|" + $prefix + ")`"; "i")))) as $current_comments
-                  | ($formal + $exact_comments) as $positive_candidates
+                  | ($formal + $exact_comments + $resolved_short_comments) as $positive_candidates
                   | ($formal + $current_comments) as $adverse_candidates
                   | "\([$positive_candidates[] | select(is_clean)] | length) \([$adverse_candidates[] | select(is_finding)] | length)"
+                  # REVIEW_VERDICT_FILTER_END
                 ' <(printf '%s' "$review_pages") <(printf '%s' "$issue_comment_pages"))"; then
                 echo "Could not classify review verdicts for $head_sha; failing closed."
               else
