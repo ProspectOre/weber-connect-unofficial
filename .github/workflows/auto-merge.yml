@@ -356,17 +356,25 @@ jobs:
             echo "Aggregate CI check did not identify a canonical workflow run; leaving auto-merge disabled."
             exit 1
           fi
-          if ! ci_run_identity="$(GH_TOKEN="$STATUS_TOKEN" gh api "repos/$REPO/actions/runs/$ci_run_id" \
-            --jq '[.head_sha, .event, .conclusion, .path] | @tsv')"; then
+          if ! ci_run_identity="$(PR_NUMBER="$pr_number" GH_TOKEN="$STATUS_TOKEN" gh api \
+            "repos/$REPO/actions/runs/$ci_run_id" \
+            --jq '
+              # CI_RUN_IDENTITY_FILTER_BEGIN
+              [.head_sha, .event, .conclusion, .path,
+               any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber))]
+              | @tsv
+              # CI_RUN_IDENTITY_FILTER_END
+            ')"; then
             echo "Could not verify aggregate CI workflow identity; leaving auto-merge disabled."
             exit 1
           fi
-          IFS=$'\t' read -r ci_run_head ci_run_event ci_run_conclusion ci_run_path <<< "$ci_run_identity"
+          IFS=$'\t' read -r ci_run_head ci_run_event ci_run_conclusion ci_run_path ci_run_matches_pr <<< "$ci_run_identity"
           if [[ "$ci_run_head" != "$head_sha" \
             || "$ci_run_event" != "pull_request" \
             || "$ci_run_conclusion" != "success" \
-            || "$ci_run_path" != ".github/workflows/ci.yml" ]]; then
-            echo "Aggregate check is not a successful exact-head pull_request run of .github/workflows/ci.yml; leaving auto-merge disabled."
+            || "$ci_run_path" != ".github/workflows/ci.yml" \
+            || "$ci_run_matches_pr" != "true" ]]; then
+            echo "Aggregate check is not a successful exact-head CI run associated with PR $pr_number; leaving auto-merge disabled."
             exit 1
           fi
           fi

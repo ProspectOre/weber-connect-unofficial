@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import textwrap
@@ -21,6 +22,26 @@ def _verdict_filter() -> str:
     begin = workflow.index("\n", begin) + 1
     end = workflow.index("# REVIEW_VERDICT_FILTER_END", begin)
     return textwrap.dedent(workflow[begin:end])
+
+
+def _ci_run_identity_filter() -> str:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    begin = workflow.index("# CI_RUN_IDENTITY_FILTER_BEGIN")
+    begin = workflow.index("\n", begin) + 1
+    end = workflow.index("# CI_RUN_IDENTITY_FILTER_END", begin)
+    return textwrap.dedent(workflow[begin:end])
+
+
+def _identify_ci_run(payload: dict[str, object], *, pr_number: int) -> list[str]:
+    completed = subprocess.run(
+        ["jq", "-r", _ci_run_identity_filter()],
+        input=json.dumps(payload),
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PR_NUMBER": str(pr_number)},
+    )
+    return completed.stdout.rstrip("\n").split("\t")
 
 
 def _classify(
@@ -154,6 +175,39 @@ def test_auto_merge_requires_a_real_exact_head_ci_success() -> None:
     assert '"$ci_run_event" != "pull_request"' in workflow
     assert '"$ci_run_conclusion" != "success"' in workflow
     assert '"$ci_run_path" != ".github/workflows/ci.yml"' in workflow
+    assert 'PR_NUMBER="$pr_number"' in workflow
+    assert "any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber))" in workflow
+    assert '"$ci_run_matches_pr" != "true"' in workflow
+
+
+def test_ci_run_identity_rejects_same_head_run_for_another_pr() -> None:
+    run = {
+        "head_sha": HEAD,
+        "event": "pull_request",
+        "conclusion": "success",
+        "path": ".github/workflows/ci.yml",
+        "pull_requests": [{"number": 49}],
+    }
+
+    assert _identify_ci_run(run, pr_number=49)[-1] == "true"
+    assert _identify_ci_run(run, pr_number=50) == [
+        HEAD,
+        "pull_request",
+        "success",
+        ".github/workflows/ci.yml",
+        "false",
+    ]
+
+
+def test_ci_run_identity_rejects_missing_pr_association() -> None:
+    run = {
+        "head_sha": HEAD,
+        "event": "pull_request",
+        "conclusion": "success",
+        "path": ".github/workflows/ci.yml",
+    }
+
+    assert _identify_ci_run(run, pr_number=50)[-1] == "false"
 
 
 def test_fork_review_stamp_bypasses_ci_but_cannot_reach_auto_merge() -> None:
