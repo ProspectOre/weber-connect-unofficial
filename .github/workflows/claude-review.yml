@@ -6,7 +6,7 @@ name: Claude Review
 # Codex flow as the unset default.
 on:
   pull_request:
-    types: [synchronize]
+    types: [opened, synchronize, ready_for_review]
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}

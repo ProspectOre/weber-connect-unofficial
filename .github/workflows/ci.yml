@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    types: [synchronize]
+    types: [opened, synchronize, ready_for_review]
   push:
     branches: [main]
 
@@ -20,7 +20,8 @@ jobs:
     # pull requests are hard-stopped and never execute submitted code locally.
     if: >-
       github.event_name != 'pull_request'
-      || (github.event.pull_request.head.repo.full_name == github.repository
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
@@ -104,7 +105,8 @@ jobs:
     name: Hassfest
     if: >-
       github.event_name != 'pull_request'
-      || (github.event.pull_request.head.repo.full_name == github.repository
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
@@ -187,7 +189,8 @@ jobs:
     name: HACS
     if: >-
       github.event_name != 'pull_request'
-      || (github.event.pull_request.head.repo.full_name == github.repository
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
@@ -280,7 +283,8 @@ jobs:
     if: >-
       always()
       && (github.event_name != 'pull_request'
-      || (github.event.pull_request.head.repo.full_name == github.repository
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))
