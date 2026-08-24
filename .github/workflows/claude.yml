@@ -33,13 +33,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
+          ACTOR_LOGIN: ${{ github.actor }}
           PR_NUMBER: ${{ github.event.issue.number }}
           PR_URL: ${{ github.event.issue.pull_request.url }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           trusted=false
-          if [[ "$EVENT_NAME" != "issue_comment" || -z "$PR_URL" ]]; then
+          actor_permission=""
+          if ! actor_permission="$(gh api "repos/$REPOSITORY/collaborators/$ACTOR_LOGIN/permission" --jq '.permission')"; then
+            echo "Could not verify $ACTOR_LOGIN's repository permission; refusing the privileged action."
+          elif [[ "$actor_permission" != "admin" \
+            && "$actor_permission" != "maintain" \
+            && "$actor_permission" != "push" \
+            && "$actor_permission" != "write" ]]; then
+            echo "$ACTOR_LOGIN has $actor_permission permission; write access is required."
+          elif [[ "$EVENT_NAME" != "issue_comment" || -z "$PR_URL" ]]; then
             trusted=true
           elif pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")" \
             && jq -e --arg repository "$REPOSITORY" '

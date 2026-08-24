@@ -43,6 +43,11 @@ def test_trusted_pr_issue_comments_use_metadata_preflight() -> None:
 
     assert "github.event.issue.pull_request == null" not in workflow
     assert "Authorize the event target" in workflow
+    assert "ACTOR_LOGIN: ${{ github.actor }}" in workflow
+    assert "collaborators/$ACTOR_LOGIN/permission" in workflow
+    assert '"$actor_permission" != "maintain"' in workflow
+    assert '"$actor_permission" != "push"' in workflow
+    assert '"$actor_permission" != "write"' in workflow
     assert ".head.repo.full_name == $repository" in workflow
     assert '.user.type != "Bot"' in workflow
     assert '.author_association == "OWNER"' in workflow
