@@ -15,7 +15,7 @@ jobs:
     # Trigger only for repository insiders: the mention must come from an
     # owner, member, or collaborator, on top of the action's own actor check.
     if: |
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request == null && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.type != 'Bot' && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.type != 'Bot' && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
@@ -27,13 +27,41 @@ jobs:
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
+      - name: Authorize the event target
+        id: target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          trusted=false
+          if [[ "$EVENT_NAME" != "issue_comment" || -z "$PR_URL" ]]; then
+            trusted=true
+          elif pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")" \
+            && jq -e --arg repository "$REPOSITORY" '
+              .head.repo.full_name == $repository
+              and .user.type != "Bot"
+              and (.author_association == "OWNER"
+                or .author_association == "MEMBER"
+                or .author_association == "COLLABORATOR")
+            ' <<<"$pr" >/dev/null; then
+            trusted=true
+          fi
+          echo "trusted=$trusted" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
+        if: steps.target.outputs.trusted == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: Run Claude Code
+        if: steps.target.outputs.trusted == 'true'
         id: claude
         uses: anthropics/claude-code-action@5ee796a55f92566ecd7e39d70dd613abcbea0d7c # v1
         with:
