@@ -24,6 +24,12 @@ on:
   # to re-run the workflow.
   pull_request_review_comment:
     types: [created, edited, deleted]
+  # A clean review can arrive before CI finishes. Re-evaluate when the aggregate
+  # workflow completes so the gate can require a real successful check rather
+  # than treating GitHub's skipped-job "success" as validation.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pull_request:
@@ -46,22 +52,9 @@ on:
         required: true
         type: string
 
-concurrency:
-  # issue_comment payloads carry no pull_request, so without issue.number two PRs'
-  # verdicts landing together would share the default-branch key and cancel each
-  # other — leaving the first permanently unarmed with no later event to retry it.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref }}
-  # NOT cancel-in-progress. This workflow's job is to CONVERGE on the true state
-  # of a PR, and the events that feed it arrive in bursts (a verdict plus several
-  # inline replies land within seconds). Cancelling means the surviving run is
-  # whichever fired last rather than whichever saw the most, and every cancelled
-  # run also surfaces as a FAILED check on the PR — indistinguishable from a real
-  # break at a glance. Runs are seconds long and every path is idempotent (it
-  # re-reads head, verdict, and findings, and both arm and withdraw are no-ops
-  # when already in that state), so queueing them is strictly safer than racing.
-  cancel-in-progress: false
-
 permissions:
+  actions: read
+  checks: read
   contents: write
   pull-requests: write
   # The verdict and the override's audit trail are read through issue endpoints
@@ -82,12 +75,31 @@ jobs:
     # label that is true fleet-wide, because per-repo variation belongs in the repo
     # vars below, not in forked copies of the file.
     runs-on: ${{ vars.USE_HOSTED_RUNNERS != 'false' && vars.USE_HOSTED_LINUX != 'false' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","mbp"]') }}
+    # A completed CI run can be attached to more than one pull request when a
+    # head is reused across bases. Fan out the re-evaluation so every attached
+    # PR gets its own exact-head decision; non-workflow_run events still use one
+    # harmless matrix item because they resolve the PR from their own payload.
+    strategy:
+      fail-fast: false
+      matrix:
+        pr_number: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests.*.number || fromJSON('[0]') }}
+    # issue_comment payloads carry no pull_request, so without issue.number two PRs'
+    # verdicts landing together would share the default-branch key and cancel each
+    # other — leaving the first permanently unarmed with no later event to retry it.
+    # A workflow_run matrix child must use its own PR number: one completed CI run
+    # can be associated with several PRs, and each child has independent state.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' && matrix.pr_number || github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.ref }}
+      # NOT cancel-in-progress. This workflow converges on each PR's true state;
+      # queueing bursts is safer than letting a later run race an earlier verdict.
+      cancel-in-progress: false
     # `issue_comment` carries `issue.pull_request` but NO top-level
     # `pull_request`, so `github.event.pull_request.draft == false` is false and
     # the job is skipped outright — the verdict path would never even start.
     # Draft PRs are still excluded: the script re-checks `isDraft` from the API.
     if: >-
       github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number != null)
       || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)
       || github.event.pull_request.draft == false
     steps:
@@ -114,6 +126,7 @@ jobs:
           EVENT_PR_URL: ${{ github.event.pull_request.html_url }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_IS_PR: ${{ github.event.issue.pull_request != null }}
+          EVENT_WORKFLOW_PR_NUMBER: ${{ matrix.pr_number }}
           REVIEW_BOT: ${{ vars.REVIEW_PROVIDER == 'claude' && 'claude[bot]' || 'chatgpt-codex-connector[bot]' }}
           OVERRIDE_LABEL: auto-merge-now
           # The status context stamped on each reviewed head. Adding this name to a
@@ -157,6 +170,15 @@ jobs:
               exit 1
             fi
             pr_ref="https://github.com/$REPO/pull/$INPUT_PR"
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            # workflow_run is a base-workflow metadata event. Never check out its
+            # triggering head; use only the associated PR number, then resolve the
+            # current head from GitHub below. An empty association is not a PR run.
+            if [[ ! "${EVENT_WORKFLOW_PR_NUMBER:-}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Completed CI run is not associated with a pull request; nothing to evaluate."
+              exit 0
+            fi
+            pr_ref="https://github.com/$REPO/pull/$EVENT_WORKFLOW_PR_NUMBER"
           elif [[ -n "${EVENT_ISSUE_NUMBER:-}" ]]; then
             # issue_comment fires with an ISSUE payload; ignore plain issues.
             if [[ "${EVENT_IS_PR:-}" != "true" ]]; then
@@ -287,6 +309,8 @@ jobs:
           # checked below. Same-repository PRs are armed later; fork PRs are left for
           # an explicit maintainer merge after receiving the same per-head status.
           head_sha="$(gh pr view "$pr_ref" --json headRefOid --jq '.headRefOid')"
+          head_repo_owner="$(gh pr view "$pr_ref" --json headRepositoryOwner --jq '.headRepositoryOwner.login')"
+          head_repo_name="$(gh pr view "$pr_ref" --json headRepository --jq '.headRepository.name')"
           pr_number="$(gh pr view "$pr_ref" --json number --jq '.number')"
           # The sha is interpolated into the verdict-matching pattern below. An
           # empty or malformed value would reduce that pattern to "any Reviewed
@@ -296,6 +320,76 @@ jobs:
             echo "Could not resolve a valid head sha ('$head_sha'); failing closed."
             exit 1
           fi
+
+          # SAME_REPOSITORY_CI_GATE_BEGIN. GitHub reports a skipped job as successful
+          # for required-check purposes. That is useful for ordinary conditional jobs,
+          # but unsafe for auto-merge: the trust guard intentionally skips every
+          # head-code job for bots and forks. Require the aggregate check itself to
+          # have literally succeeded before a same-repository PR can be armed, and
+          # bind it to this exact head plus the canonical CI workflow identity. Forks
+          # bypass only this execution gate so a reviewed head can receive the status
+          # needed for an explicit maintainer merge; the fork stop below still makes
+          # auto-merge unreachable. The workflow_run trigger makes same-repository PRs
+          # converge when CI finishes even if the review verdict arrived first.
+          if [[ "$is_cross_repo" != "true" ]]; then
+          # A head can back multiple PRs against different bases. Filter workflow
+          # runs by this PR before choosing the newest ID; selecting globally first
+          # lets a newer run for the other base hide this PR's valid run forever.
+          if ! ci_run_candidates="$(PR_NUMBER="$pr_number" GH_TOKEN="$STATUS_TOKEN" gh api \
+            "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$head_sha&per_page=100" \
+            --paginate \
+            --jq '
+              # CI_RUN_IDENTITY_FILTER_BEGIN
+              .workflow_runs[]
+              | select(any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber)))
+              | [.id, .head_sha, .event, (.conclusion // "pending"), .path]
+              | @tsv
+              # CI_RUN_IDENTITY_FILTER_END
+            ')"; then
+            echo "Could not read CI runs associated with PR $pr_number; leaving auto-merge disabled."
+            exit 1
+          fi
+          ci_run_identity="$(printf '%s\n' "$ci_run_candidates" | sort -t$'\t' -k1,1nr | sed -n '1p')"
+          if [[ -z "$ci_run_identity" ]]; then
+            echo "No exact-head CI run is associated with PR $pr_number; leaving auto-merge disabled."
+            exit 0
+          fi
+          IFS=$'\t' read -r ci_run_id ci_run_head ci_run_event ci_run_conclusion ci_run_path <<< "$ci_run_identity"
+          if [[ ! "$ci_run_id" =~ ^[1-9][0-9]*$ \
+            || "$ci_run_head" != "$head_sha" \
+            || "$ci_run_event" != "pull_request" \
+            || "$ci_run_path" != ".github/workflows/ci.yml" ]]; then
+            echo "Associated CI candidate has an invalid workflow identity; leaving auto-merge disabled."
+            exit 1
+          fi
+          if [[ "$ci_run_conclusion" != "success" ]]; then
+            echo "Newest exact-head CI run for PR $pr_number is '${ci_run_conclusion:-pending}'; leaving auto-merge disabled."
+            exit 0
+          fi
+          if ! ci_check="$(CI_RUN_ID="$ci_run_id" GH_TOKEN="$STATUS_TOKEN" gh api \
+            "repos/$REPO/commits/$head_sha/check-runs?check_name=ci&filter=all&per_page=100" \
+            --jq '[.check_runs[]
+                    | select(.name == "ci" and .app.slug == "github-actions")
+                    | select(.details_url | startswith("https://github.com/" + env.REPO + "/actions/runs/" + env.CI_RUN_ID + "/job/"))]
+                  | sort_by(.id) | last
+                  | if . == null then "" else [.head_sha, (.conclusion // "pending"), .details_url] | @tsv end')"; then
+            echo "Could not read the aggregate CI check for run $ci_run_id; leaving auto-merge disabled."
+            exit 1
+          fi
+          IFS=$'\t' read -r ci_check_head ci_conclusion ci_details_url <<< "$ci_check"
+          if [[ "$ci_check_head" != "$head_sha" || "$ci_conclusion" != "success" ]]; then
+            echo "Exact-head aggregate CI is '${ci_conclusion:-missing}' for run $ci_run_id; leaving auto-merge disabled."
+            exit 0
+          fi
+          case "$ci_details_url" in
+            "https://github.com/$REPO/actions/runs/$ci_run_id/job/"[0-9]*) ;;
+            *)
+              echo "Aggregate CI check has an unexpected run URL; leaving auto-merge disabled."
+              exit 1
+              ;;
+          esac
+          fi
+          # SAME_REPOSITORY_CI_GATE_END
           auto_merge_enabled="$(gh pr view "$pr_ref" --json autoMergeRequest --jq '.autoMergeRequest != null')"
 
           # STAMP THE VERDICT ONTO THE HEAD, so enforcement outlives this run.
@@ -401,11 +495,41 @@ jobs:
             else
               # (a) A verdict must be bound to THIS exact head and explicitly say the
               #     review passed. Formal reviews carry GitHub's immutable commit_id.
-              #     Issue comments carry no commit metadata, so only a body naming all
-              #     40 hex characters can grant authorization. A short prefix cannot
-              #     grant, because another commit can deliberately be mined with the
-              #     same prefix; an adverse short-prefix verdict still vetoes below.
+              #     Issue comments carry no commit metadata, so a body naming all 40
+              #     hex characters grants directly. Codex currently names ten; that
+              #     form grants only when GitHub says ten characters uniquely identify
+              #     this exact object. An adverse current-prefix verdict still vetoes.
               reviewed=false
+              # Codex's clean issue-comment contract currently names only ten hex
+              # characters. Query the exact full object in the PR HEAD repository and
+              # use GitHub's platform-computed minimum unique abbreviation. This avoids
+              # interpreting the prefix as a branch or tag name; ten characters grant
+              # only when the repository's unique abbreviation is no longer than ten.
+              # Claude formal reviews already carry immutable commit_id metadata.
+              short_comment_head=""
+              if [[ "$REVIEW_BOT" == "chatgpt-codex-connector[bot]" ]]; then
+                # GraphQL variables in the query are intentionally literal.
+                # shellcheck disable=SC2016
+                if unique_head="$(gh api graphql \
+                  -f owner="$head_repo_owner" \
+                  -f name="$head_repo_name" \
+                  -f oid="$head_sha" \
+                  -f query='query($owner:String!,$name:String!,$oid:GitObjectID!){repository(owner:$owner,name:$name){object(oid:$oid){oid abbreviatedOid}}}' \
+                  --jq '.data.repository.object | [.oid, .abbreviatedOid] | @tsv' 2>/dev/null)"; then
+                  read -r resolved_head unique_prefix <<< "$unique_head"
+                else
+                  resolved_head=""
+                  unique_prefix=""
+                fi
+                if [[ "$resolved_head" == "$head_sha" \
+                  && "$unique_prefix" =~ ^[0-9a-f]+$ \
+                  && "${#unique_prefix}" -le 10 \
+                  && "${head_sha:0:${#unique_prefix}}" == "$unique_prefix" ]]; then
+                  short_comment_head="$head_sha"
+                else
+                  echo "Codex's short review marker is not unique for $head_sha; it cannot grant authorization."
+                fi
+              fi
               if ! review_pages="$(gh api "repos/$REPO/pulls/$pr_number/reviews?per_page=100" \
                 --paginate --slurp)"; then
                 echo "Could not read review verdicts for $head_sha; failing closed."
@@ -415,8 +539,25 @@ jobs:
               elif ! verdict_summary="$(jq -sr \
                 --arg bot "$REVIEW_BOT" \
                 --arg head "$head_sha" \
-                --arg prefix "${head_sha:0:10}" '
+                --arg prefix "${head_sha:0:10}" \
+                --arg short_head "$short_comment_head" '
+                  # REVIEW_VERDICT_FILTER_BEGIN
                   def body: (.body // "");
+                  def normalized_body:
+                    body
+                    | gsub("\r\n"; "\n")
+                    | gsub("[ \t]+\n"; "\n")
+                    | sub("[ \t\n]+$"; "");
+                  def codex_boilerplate:
+                    "<details> <summary>ℹ️ About Codex in GitHub</summary>\n"
+                    + "<br/>\n\n"
+                    + "[Your team has set up Codex to review pull requests in this repo](https://chatgpt.com/codex/cloud/settings/general). Reviews are triggered when you\n"
+                    + "- Open a pull request for review\n"
+                    + "- Mark a draft as ready\n"
+                    + "- Comment \"@codex review\".\n\n"
+                    + "If Codex has suggestions, it will comment; otherwise it will react with 👍.\n\n\n\n\n"
+                    + "Codex can also answer questions or update the PR. Try commenting \"@codex address that feedback\".\n\n"
+                    + "</details>";
                   def is_finding:
                     (.state == "CHANGES_REQUESTED")
                     or (body | test("(?:^|[^A-Z0-9])P[0-3](?:[^A-Z0-9]|$)"; "i"))
@@ -425,9 +566,13 @@ jobs:
                     or (body | test("\\b(?:found|identified|reported)\\b.{0,80}\\b(?:findings?|issues?|bugs?|vulnerabilit(?:y|ies))\\b"; "is"));
                   def is_clean:
                     (is_finding | not)
-                    and ((body | test("\\b(?:no (?:reportable )?findings?|zero findings|no issues?|looks good|lgtm|clean review)\\b"; "i"))
-                      or (body | test("\\bdid(?: not|n.t) find\\b.{0,80}\\b(?:issues?|findings?|bugs?|vulnerabilit(?:y|ies))\\b"; "is"))
-                      or (body | test("\\breview result\\s*:\\s*(?:pass|clean|approved)\\b"; "i")));
+                    and ((normalized_body == ("## Review result: No issues found.\n\n**Reviewed commit:** `" + $head + "`"))
+                      or ((normalized_body | split("\n")) as $lines
+                        | ($lines[0] | test("^Codex Review: Didn[^A-Za-z0-9]t find any major issues\\.(?: (?:Swish!|Nice work!|Keep it up!|Hooray!|Bravo\\.|Another round soon, please!))?$"; "i"))
+                        and ($lines[1] == "")
+                        and ($lines[2] | test("^\\*\\*Reviewed commit:\\*\\* `(?:" + $head + "|" + $prefix + ")`$"; "i"))
+                        and ($lines[3] == "")
+                        and (($lines[4:] | join("\n")) == codex_boilerplate)));
                   (.[0] | flatten
                     | map(select(.user.login == $bot)
                       | select(.state != "DISMISSED")
@@ -435,14 +580,21 @@ jobs:
                   | (.[1] | flatten | map(select(.user.login == $bot))) as $bot_comments
                   | ($bot_comments
                     | map(select(body | test("Reviewed commit:[^`]*`" + $head + "`"; "i")))) as $exact_comments
-                  # A short marker can never GRANT authorization, but an adverse
-                  # current-prefix verdict still vetoes. Treating negative evidence
-                  # conservatively cannot authorize the prefix-collision attack.
+                  # The short marker grants only after GitHub uniquely resolved it to
+                  # this full head above. Matching the closing backtick keeps a full
+                  # marker out of this bucket and makes the two trust paths explicit.
+                  | ($bot_comments
+                    | map(select(($short_head == $head)
+                      and (body | test("Reviewed commit:[^`]*`" + $prefix + "`"; "i"))))) as $resolved_short_comments
+                  # An unresolved short marker can never grant authorization, but an
+                  # adverse current-prefix verdict still vetoes. Treating negative
+                  # evidence conservatively cannot authorize a prefix collision.
                   | ($bot_comments
                     | map(select(body | test("Reviewed commit:[^`]*`(?:" + $head + "|" + $prefix + ")`"; "i")))) as $current_comments
-                  | ($formal + $exact_comments) as $positive_candidates
+                  | ($formal + $exact_comments + $resolved_short_comments) as $positive_candidates
                   | ($formal + $current_comments) as $adverse_candidates
                   | "\([$positive_candidates[] | select(is_clean)] | length) \([$adverse_candidates[] | select(is_finding)] | length)"
+                  # REVIEW_VERDICT_FILTER_END
                 ' <(printf '%s' "$review_pages") <(printf '%s' "$issue_comment_pages"))"; then
                 echo "Could not classify review verdicts for $head_sha; failing closed."
               else

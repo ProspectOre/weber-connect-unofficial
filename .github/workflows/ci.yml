@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, ready_for_review]
   push:
     branches: [main]
 
@@ -15,14 +16,42 @@ concurrency:
 jobs:
   validate:
     name: Native integration
-    runs-on: ubuntu-latest
+    # Persistent runners accept only trusted same-repository branches. Fork
+    # pull requests are hard-stopped and never execute submitted code locally.
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
+    runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require local disk headroom
+        run: |
+          set -euo pipefail
+          available_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')"
+          minimum_kb=$((8 * 1024 * 1024))
+          if (( available_kb < minimum_kb )); then
+            echo "Local runner has ${available_kb} KiB free; 8 GiB is required before validation."
+            exit 1
+          fi
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: runner.os == 'Linux'
         with:
           python-version: "3.14"
           cache: pip
+      - name: Configure local Python
+        if: runner.os != 'Linux'
+        run: |
+          set -euo pipefail
+          python3 -c 'import sys; assert sys.version_info[:2] == (3, 14), sys.version'
+          python3 -m venv "$RUNNER_TEMP/weber-venv"
+          echo "$RUNNER_TEMP/weber-venv/bin" >> "$GITHUB_PATH"
       - name: Install validation runtime
         run: |
           python -m pip install --upgrade pip
@@ -61,6 +90,10 @@ jobs:
         run: >-
           pip-audit --requirement requirements-runtime.txt
           --no-deps --disable-pip
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.25.x"
+          cache: false
       - name: Lint workflows
         env:
           GOBIN: ${{ runner.temp }}/bin
@@ -70,27 +103,193 @@ jobs:
 
   hassfest:
     name: Hassfest
-    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
+    runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb
+        if: runner.os == 'Linux'
+      # The pinned container digest used by the old macOS path is the 2026.8.3
+      # image, built from this exact Home Assistant Core commit. Use its source
+      # directly so the persistent Mac runner needs no Docker VM.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: runner.os != 'Linux'
+        with:
+          repository: home-assistant/core
+          ref: 759e4658f40b3ccb671d418b8a0ed95224bf4561 # 2026.8.3
+          path: .validators/home-assistant-core
+          persist-credentials: false
+          sparse-checkout: |
+            homeassistant
+            script
+            requirements.txt
+            requirements_test.txt
+            requirements_test_pre_commit.txt
+            pyproject.toml
+      - name: Configure local Hassfest runtime
+        if: runner.os != 'Linux'
+        run: |
+          set -euo pipefail
+          available_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')"
+          minimum_kb=$((8 * 1024 * 1024))
+          if (( available_kb < minimum_kb )); then
+            echo "Local runner has ${available_kb} KiB free; 8 GiB is required before Hassfest."
+            exit 1
+          fi
+          python3 -c 'import sys; assert sys.version_info[:2] == (3, 14), sys.version'
+          python3 -m venv "$RUNNER_TEMP/weber-hassfest-venv"
+          echo "$RUNNER_TEMP/weber-hassfest-venv/bin" >> "$GITHUB_PATH"
+      - name: Install pinned Hassfest runtime
+        if: runner.os != 'Linux'
+        working-directory: .validators/home-assistant-core
+        run: |
+          python -m pip install --requirement requirements.txt \
+            pipdeptree==2.26.1 \
+            tqdm==4.67.1 \
+            ruff==0.16.0
+          available_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')"
+          if (( available_kb < 6 * 1024 * 1024 )); then
+            echo "Local runner fell below the 6 GiB validation floor."
+            exit 1
+          fi
+      - name: Run Hassfest validation
+        if: runner.os != 'Linux'
+        working-directory: .validators/home-assistant-core
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.validators/home-assistant-core
+        run: >-
+          python -m script.hassfest --action validate
+          --integration-path "$GITHUB_WORKSPACE/custom_components/weber_connect"
+      - name: Remove local Hassfest runtime
+        if: always() && runner.os != 'Linux'
+        run: |
+          set -euo pipefail
+          for target in \
+            "$RUNNER_TEMP/weber-hassfest-venv" \
+            "$GITHUB_WORKSPACE/.validators/home-assistant-core"; do
+            case "$target" in
+              "$RUNNER_TEMP"/weber-hassfest-venv|"$GITHUB_WORKSPACE"/.validators/home-assistant-core) ;;
+              *) echo "Refusing unexpected cleanup target: $target"; exit 1 ;;
+            esac
+            if [[ -e "$target" ]]; then
+              find "$target" -depth -delete
+            fi
+          done
 
   hacs:
     name: HACS
-    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
+    runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Keep the canonical HACS action for Linux runners and release-contract
+      # validation. GitHub does not support Docker container actions on macOS.
       - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        if: runner.os == 'Linux'
         with:
           category: integration
+      # The pinned HACS image records this exact integration source revision.
+      # Run that source directly on macOS and pin the frontend wheel it embeds.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: runner.os != 'Linux'
+        with:
+          repository: hacs/integration
+          ref: 3249355704d1a716e637d4d044b6cb4ae72dc271
+          path: .validators/hacs
+          persist-credentials: false
+          sparse-checkout: |
+            action
+            custom_components/hacs
+            requirements_action.txt
+      - name: Configure local HACS runtime
+        if: runner.os != 'Linux'
+        run: |
+          set -euo pipefail
+          available_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')"
+          minimum_kb=$((8 * 1024 * 1024))
+          if (( available_kb < minimum_kb )); then
+            echo "Local runner has ${available_kb} KiB free; 8 GiB is required before HACS."
+            exit 1
+          fi
+          python3 -c 'import sys; assert sys.version_info[:2] == (3, 14), sys.version'
+          python3 -m venv "$RUNNER_TEMP/weber-hacs-venv"
+          echo "$RUNNER_TEMP/weber-hacs-venv/bin" >> "$GITHUB_PATH"
+      - name: Install pinned HACS runtime
+        if: runner.os != 'Linux'
+        run: |
+          set -euo pipefail
+          python -m pip install --requirement .validators/hacs/requirements_action.txt
+          frontend="$RUNNER_TEMP/hacs_frontend-20250128065759-py3-none-any.whl"
+          curl --fail --location --retry 3 \
+            --output "$frontend" \
+            https://github.com/hacs/frontend/releases/download/20250128065759/hacs_frontend-20250128065759-py3-none-any.whl
+          printf '%s  %s\n' \
+            e6b196171fbcb3cb3eced2c48e789f3dc946b59f7490487df16d8d4e47a85fc4 \
+            "$frontend" | shasum --algorithm 256 --check
+          python -m pip install --no-deps \
+            --target .validators/hacs/custom_components/hacs \
+            "$frontend"
+          available_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')"
+          if (( available_kb < 6 * 1024 * 1024 )); then
+            echo "Local runner fell below the 6 GiB validation floor."
+            exit 1
+          fi
+      - name: Run HACS validation
+        if: runner.os != 'Linux'
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          CATEGORY: integration
+          PYTHONPATH: ${{ github.workspace }}/.validators/hacs
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python .validators/hacs/action/action.py
+      - name: Remove local HACS runtime
+        if: always() && runner.os != 'Linux'
+        run: |
+          set -euo pipefail
+          for target in \
+            "$RUNNER_TEMP/weber-hacs-venv" \
+            "$RUNNER_TEMP/hacs_frontend-20250128065759-py3-none-any.whl" \
+            "$GITHUB_WORKSPACE/.validators/hacs"; do
+            case "$target" in
+              "$RUNNER_TEMP"/weber-hacs-venv|"$RUNNER_TEMP"/hacs_frontend-20250128065759-py3-none-any.whl|"$GITHUB_WORKSPACE"/.validators/hacs) ;;
+              *) echo "Refusing unexpected cleanup target: $target"; exit 1 ;;
+            esac
+            if [[ -e "$target" ]]; then
+              find "$target" -depth -delete
+            fi
+          done
 
   ci:
     name: ci
-    if: always()
+    if: >-
+      always()
+      && (github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))
     needs: [validate, hassfest, hacs]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     timeout-minutes: 5
     steps:
       - name: Require every release gate

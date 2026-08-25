@@ -16,10 +16,10 @@ jobs:
     # owner, member, or collaborator, on top of the action's own actor check.
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.type != 'Bot' && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.type != 'Bot' && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, weber, mbp]
     permissions:
       contents: write
       pull-requests: write
@@ -27,12 +27,55 @@ jobs:
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
+      - name: Authorize the event target
+        id: target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR_LOGIN: ${{ github.actor }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          command -v gh >/dev/null 2>&1 || {
+            echo "GitHub CLI (gh) is not on PATH for this runner."
+            exit 1
+          }
+          trusted=false
+          actor_permission=""
+          if ! actor_permission="$(gh api "repos/$REPOSITORY/collaborators/$ACTOR_LOGIN/permission" --jq '.permission')"; then
+            echo "Could not verify $ACTOR_LOGIN's repository permission; refusing the privileged action."
+          elif [[ "$actor_permission" != "admin" \
+            && "$actor_permission" != "maintain" \
+            && "$actor_permission" != "push" \
+            && "$actor_permission" != "write" ]]; then
+            echo "$ACTOR_LOGIN has $actor_permission permission; write access is required."
+          elif [[ "$EVENT_NAME" != "issue_comment" || -z "$PR_URL" ]]; then
+            trusted=true
+          elif pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")" \
+            && jq -e --arg repository "$REPOSITORY" '
+              .head.repo.full_name == $repository
+              and .user.type != "Bot"
+              and (.author_association == "OWNER"
+                or .author_association == "MEMBER"
+                or .author_association == "COLLABORATOR")
+            ' <<<"$pr" >/dev/null; then
+            trusted=true
+          fi
+          echo "trusted=$trusted" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
+        if: steps.target.outputs.trusted == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Claude Code
+        if: steps.target.outputs.trusted == 'true'
         id: claude
         uses: anthropics/claude-code-action@5ee796a55f92566ecd7e39d70dd613abcbea0d7c # v1
         with:
@@ -49,4 +92,3 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr *)'
-

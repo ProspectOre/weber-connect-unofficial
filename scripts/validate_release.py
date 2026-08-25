@@ -230,12 +230,20 @@ def check_workflows() -> None:
     for exact_head_guard in (
         '--arg head "$head_sha"',
         '--arg prefix "${head_sha:0:10}"',
+        '--arg short_head "$short_comment_head"',
         "select(.commit_id == $head)",
         '"Reviewed commit:[^`]*`" + $head + "`"',
+        "abbreviatedOid",
+        '&& "${#unique_prefix}" -le 10',
+        "^Codex Review: Didn[^A-Za-z0-9]t find any major issues",
+        "codex_boilerplate",
+        'normalized_body == ("## Review result: No issues found.',
         '&& "$adverse_verdicts" == "0"',
     ):
         if exact_head_guard not in auto_merge:
             fail("auto-merge workflow must require a positive exact-head verdict")
+    if "looks good|lgtm|clean review" in auto_merge:
+        fail("auto-merge workflow must not authorize broad clean-language substrings")
     if (ROOT / ".github" / "workflows" / "publish.yml").exists():
         fail("the native integration must not retain the add-on container publishing workflow")
 
