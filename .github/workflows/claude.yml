@@ -39,6 +39,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          command -v gh >/dev/null 2>&1 || {
+            echo "GitHub CLI (gh) is not on PATH for this runner."
+            exit 1
+          }
           trusted=false
           actor_permission=""
           if ! actor_permission="$(gh api "repos/$REPOSITORY/collaborators/$ACTOR_LOGIN/permission" --jq '.permission')"; then

@@ -54,6 +54,15 @@ def test_trusted_pr_issue_comments_use_metadata_preflight() -> None:
     assert workflow.count("if: steps.target.outputs.trusted == 'true'") == 2
 
 
+def test_claude_preflight_bootstraps_brew_path_before_gh() -> None:
+    workflow = _workflow("claude.yml")
+
+    path_setup = 'export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"'
+    assert path_setup in workflow
+    assert "command -v gh >/dev/null 2>&1" in workflow
+    assert workflow.index(path_setup) < workflow.index('gh api "repos/$REPOSITORY')
+
+
 def test_ci_and_review_lifecycle_keep_every_trust_guard() -> None:
     for name, expected_count in (("ci.yml", 4), ("claude-review.yml", 1)):
         workflow = _workflow(name)
