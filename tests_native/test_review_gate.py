@@ -183,6 +183,22 @@ def test_auto_merge_requires_a_real_exact_head_ci_success() -> None:
     assert "sort -t$'\\t' -k1,1nr" in workflow
 
 
+def test_workflow_run_rechecks_every_associated_pr() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    associated = {"workflow_run": {"pull_requests": [{"number": 50}, {"number": 51}]}}
+
+    assert [row["number"] for row in associated["workflow_run"]["pull_requests"]] == [50, 51]
+    assert (
+        "pr_number: ${{ github.event_name == 'workflow_run' "
+        "&& github.event.workflow_run.pull_requests.*.number || fromJSON('[0]') }}"
+    ) in workflow
+    assert "EVENT_WORKFLOW_PR_NUMBER: ${{ matrix.pr_number }}" in workflow
+    assert (
+        "EVENT_WORKFLOW_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}"
+        not in workflow
+    )
+
+
 def test_ci_run_selection_filters_pr_before_recency() -> None:
     runs = {
         "workflow_runs": [

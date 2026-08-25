@@ -90,6 +90,14 @@ jobs:
     # label that is true fleet-wide, because per-repo variation belongs in the repo
     # vars below, not in forked copies of the file.
     runs-on: ${{ vars.USE_HOSTED_RUNNERS != 'false' && vars.USE_HOSTED_LINUX != 'false' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","mbp"]') }}
+    # A completed CI run can be attached to more than one pull request when a
+    # head is reused across bases. Fan out the re-evaluation so every attached
+    # PR gets its own exact-head decision; non-workflow_run events still use one
+    # harmless matrix item because they resolve the PR from their own payload.
+    strategy:
+      fail-fast: false
+      matrix:
+        pr_number: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests.*.number || fromJSON('[0]') }}
     # `issue_comment` carries `issue.pull_request` but NO top-level
     # `pull_request`, so `github.event.pull_request.draft == false` is false and
     # the job is skipped outright — the verdict path would never even start.
@@ -123,7 +131,7 @@ jobs:
           EVENT_PR_URL: ${{ github.event.pull_request.html_url }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
           EVENT_IS_PR: ${{ github.event.issue.pull_request != null }}
-          EVENT_WORKFLOW_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          EVENT_WORKFLOW_PR_NUMBER: ${{ matrix.pr_number }}
           REVIEW_BOT: ${{ vars.REVIEW_PROVIDER == 'claude' && 'claude[bot]' || 'chatgpt-codex-connector[bot]' }}
           OVERRIDE_LABEL: auto-merge-now
           # The status context stamped on each reviewed head. Adding this name to a
