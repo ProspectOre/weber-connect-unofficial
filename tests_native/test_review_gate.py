@@ -194,6 +194,12 @@ def test_workflow_run_rechecks_every_associated_pr() -> None:
     ) in workflow
     assert "EVENT_WORKFLOW_PR_NUMBER: ${{ matrix.pr_number }}" in workflow
     assert (
+        "group: ${{ github.workflow }}-${{ github.event_name == 'workflow_run' "
+        "&& matrix.pr_number || github.event.pull_request.number || "
+        "github.event.issue.number || inputs.pull_request || github.ref }}"
+    ) in workflow
+    assert workflow.count("concurrency:") == 1
+    assert (
         "EVENT_WORKFLOW_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}"
         not in workflow
     )
