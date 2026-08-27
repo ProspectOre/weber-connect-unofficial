@@ -219,14 +219,13 @@ def check_workflows() -> None:
         fail("CI must enforce at least 95% native integration coverage")
     if "--cov-branch" not in ci:
         fail("CI must include branch coverage in the 95% release floor")
-    auto_merge = (ROOT / ".github" / "workflows" / "auto-merge.yml").read_text(encoding="utf-8")
-    review_stamp = auto_merge.find("if ! stamp_review_gate success")
-    fork_stop = auto_merge.find('if [[ "$is_cross_repo" == "true" ]]; then')
-    auto_merge_arm = auto_merge.find('gh pr merge "$pr_ref" --auto --squash')
-    if -1 in (review_stamp, fork_stop, auto_merge_arm):
-        fail("auto-merge workflow is missing the fork review-gate safeguards")
-    if not review_stamp < fork_stop < auto_merge_arm:
-        fail("fork PRs must receive the review-gate status before auto-merge stops")
+    review_gate = (ROOT / ".github" / "workflows" / "auto-merge.yml").read_text(encoding="utf-8")
+    review_stamp = review_gate.find("if ! stamp_review_gate success")
+    manual_merge = review_gate.find("an explicit maintainer merge is required")
+    if -1 in (review_stamp, manual_merge) or review_stamp > manual_merge:
+        fail("review gate must stamp the exact head before requiring a maintainer merge")
+    if 'gh pr merge "$pr_ref" --auto' in review_gate:
+        fail("review gate must authorize, not execute, merges")
     for exact_head_guard in (
         '--arg head "$head_sha"',
         '--arg prefix "${head_sha:0:10}"',
@@ -240,10 +239,10 @@ def check_workflows() -> None:
         'normalized_body == ("## Review result: No issues found.',
         '&& "$adverse_verdicts" == "0"',
     ):
-        if exact_head_guard not in auto_merge:
-            fail("auto-merge workflow must require a positive exact-head verdict")
-    if "looks good|lgtm|clean review" in auto_merge:
-        fail("auto-merge workflow must not authorize broad clean-language substrings")
+        if exact_head_guard not in review_gate:
+            fail("review-gate workflow must require a positive exact-head verdict")
+    if "looks good|lgtm|clean review" in review_gate:
+        fail("review-gate workflow must not authorize broad clean-language substrings")
     if (ROOT / ".github" / "workflows" / "publish.yml").exists():
         fail("the native integration must not retain the add-on container publishing workflow")
 

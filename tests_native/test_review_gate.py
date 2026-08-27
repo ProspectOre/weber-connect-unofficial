@@ -52,7 +52,7 @@ def _classify(
     comments: list[dict[str, object]] | None = None,
     short_head: str = "",
 ) -> str:
-    assert shutil.which("jq"), "the auto-merge runtime requires jq"
+    assert shutil.which("jq"), "the review-gate runtime requires jq"
     review_pages = tmp_path / "reviews.json"
     comment_pages = tmp_path / "comments.json"
     review_pages.write_text(json.dumps([reviews or []]), encoding="utf-8")
@@ -162,7 +162,12 @@ def test_codex_full_clean_marker_remains_supported(tmp_path: Path) -> None:
     assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
 
 
-def test_auto_merge_requires_a_real_exact_head_ci_success() -> None:
+def test_codex_clean_marker_allows_nonsemantic_flavor_text(tmp_path: Path) -> None:
+    body = _codex_clean_body(HEAD, "More of your lovely PRs please.")
+    assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
+
+
+def test_review_gate_requires_a_real_exact_head_ci_success() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "workflow_run:" in workflow
@@ -303,7 +308,7 @@ def test_ci_run_selection_rejects_missing_current_pr_association() -> None:
     assert _select_ci_run(runs, pr_number=49) == []
 
 
-def test_fork_review_stamp_bypasses_ci_but_cannot_reach_auto_merge() -> None:
+def test_fork_review_stamp_bypasses_ci_and_all_merges_remain_manual() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     ci_gate_start = workflow.index("# SAME_REPOSITORY_CI_GATE_BEGIN")
@@ -311,9 +316,9 @@ def test_fork_review_stamp_bypasses_ci_but_cannot_reach_auto_merge() -> None:
     ci_lookup = workflow.index("actions/workflows/ci.yml/runs?event=pull_request")
     evaluate = workflow.index("\n          evaluate_evidence\n")
     review_stamp = workflow.index("if ! stamp_review_gate success")
-    fork_stop = workflow.index('if [[ "$is_cross_repo" == "true" ]]; then', review_stamp)
-    auto_merge_arm = workflow.index('gh pr merge "$pr_ref" --auto --squash')
+    manual_merge = workflow.index("an explicit maintainer merge is required", review_stamp)
 
     assert 'if [[ "$is_cross_repo" != "true" ]]; then' in workflow[ci_gate_start:ci_gate_end]
     assert ci_gate_start < ci_lookup < ci_gate_end < evaluate
-    assert evaluate < review_stamp < fork_stop < auto_merge_arm
+    assert evaluate < review_stamp < manual_merge
+    assert 'gh pr merge "$pr_ref" --auto' not in workflow
