@@ -177,6 +177,9 @@ def test_codex_clean_marker_rejects_semantic_flavor_text(tmp_path: Path) -> None
     body = _codex_clean_body(HEAD, "One concern: redirects retain the Authorization header.")
     assert _classify(tmp_path, comments=[_comment(body)]) == "0 0"
 
+    body = _codex_clean_body(HEAD, "YouAre on a roll.")
+    assert _classify(tmp_path, comments=[_comment(body)]) == "0 0"
+
 
 def test_review_gate_requires_a_real_exact_head_ci_success() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
