@@ -1,4 +1,4 @@
-name: Enable PR Auto-Merge
+name: Codex Review Gate
 
 on:
   pull_request_target:
@@ -66,8 +66,8 @@ permissions:
   statuses: write
 
 jobs:
-  enable-auto-merge:
-    name: enable-auto-merge
+  evaluate-review:
+    name: evaluate-review
     # The self-hosted fallback asks for `mbp`, the one label the whole runner fleet
     # carries. It previously asked for `ci`, which only this repo's runner happens to
     # have: in any other repo the expression resolved to a label set matching no
@@ -103,7 +103,7 @@ jobs:
       || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)
       || github.event.pull_request.draft == false
     steps:
-      - name: Enable squash auto-merge
+      - name: Evaluate exact-head review evidence
         env:
           # Use a PAT (AUTO_MERGE_PAT) so the eventual merge push is attributed
           # to a real user, not github-actions[bot]. Pushes by GITHUB_TOKEN do
@@ -568,7 +568,7 @@ jobs:
                     (is_finding | not)
                     and ((normalized_body == ("## Review result: No issues found.\n\n**Reviewed commit:** `" + $head + "`"))
                       or ((normalized_body | split("\n")) as $lines
-                        | ($lines[0] | test("^Codex Review: Didn[^A-Za-z0-9]t find any major issues\\.(?: (?:Swish!|Nice work!|Keep it up!|Hooray!|Bravo\\.|Another round soon, please!))?$"; "i"))
+                        | ($lines[0] | test("^Codex Review: Didn[^A-Za-z0-9]t find any major issues\\.(?: (?:Swish!|Nice work!|Keep them coming!|Keep it up!|Hooray!|Bravo\\.|Another round soon, please!|More of your lovely PRs please\\.|You\\x27re on a roll\\.|:\\+1:|:rocket:))?$"; "i"))
                         and ($lines[1] == "")
                         and ($lines[2] | test("^\\*\\*Reviewed commit:\\*\\* `(?:" + $head + "|" + $prefix + ")`$"; "i"))
                         and ($lines[3] == "")
@@ -738,75 +738,4 @@ jobs:
             exit 1
           fi
 
-          # Fork authors control their head repository, so do not leave an automatic
-          # merge armed across that trust boundary. The review decision still belongs
-          # to this exact head SHA, though: stamp the required gate above, then require
-          # a maintainer to perform the merge explicitly. Exiting before evaluation
-          # used to leave fork PRs permanently blocked because branch protection
-          # required a status this workflow refused to create.
-          if [[ "$is_cross_repo" == "true" ]]; then
-            echo "Cross-repository pull request cleared; leaving auto-merge disabled for an explicit maintainer merge."
-            exit 0
-          fi
-
-          if [[ "$auto_merge_enabled" == "true" ]]; then
-            echo "Head $head_sha is cleared and auto-merge is already enabled."
-            exit 0
-          fi
-
-          # Re-read the revocable evidence as late as possible: a reply deleted or
-          # the override removed between the first evaluation and here would
-          # otherwise arm from a snapshot that no longer holds.
-          evaluate_evidence
-          if [[ "$reviewed" != "true" ]]; then
-            echo "Evidence changed while evaluating; not arming."
-            # Take the stamp back with it — this sha was marked cleared moments ago.
-            if ! stamp_review_gate pending "Review evidence for ${head_sha:0:10} was withdrawn"; then
-              echo "Could not withdraw the '$REVIEW_GATE_CONTEXT' status for $head_sha."
-            fi
-            exit 0
-          fi
-
-          echo "Head $head_sha is cleared; arming auto-merge."
-          # Bind the arm to the head we actually cleared. Between reading head_sha
-          # and this call, commit B can land: the arm would then apply to B on the
-          # strength of a review of A, and B could merge on green checks before the
-          # queued synchronize run withdraws it. --match-head-commit makes GitHub
-          # refuse the request unless the head is still the reviewed one.
-          gh pr merge "$pr_ref" --auto --squash --delete-branch --match-head-commit "$head_sha"
-
-          # ...and verify AFTER arming. The window cannot be closed entirely — GitHub
-          # offers no compare-and-swap on auto-merge — so it is bounded from both
-          # sides: re-check immediately, and withdraw if anything the arm rests on
-          # moved while it was being placed. A queued run would eventually correct it,
-          # but the PR could merge before that run starts.
-          #
-          # THE HEAD IS PART OF WHAT IT RESTS ON, and it must be re-read rather than
-          # trusted from the cached value. `--match-head-commit` is a precondition on
-          # the arming request alone; once placed, the arm survives later pushes —
-          # GitHub only drops it when someone WITHOUT write access pushes, and every
-          # writer here has it. A commit landing in this window therefore inherits an
-          # arm justified by a review of its parent and can merge the moment its own
-          # checks go green, which is the unreviewed merge this whole gate exists to
-          # prevent, entered from the far side. An unreadable head is treated like a
-          # moved one: an arm that cannot be justified comes off.
-          evaluate_evidence
-          if ! post_arm_head="$(gh pr view "$pr_ref" --json headRefOid --jq '.headRefOid')"; then
-            echo "Could not re-read the head after arming; disabling auto-merge again."
-            gh pr merge "$pr_ref" --disable-auto
-            exit 1
-          fi
-          if [[ "$post_arm_head" != "$head_sha" ]]; then
-            echo "Head moved from $head_sha to $post_arm_head during arming; disabling auto-merge again."
-            gh pr merge "$pr_ref" --disable-auto
-            exit 1
-          fi
-          if [[ "$reviewed" != "true" ]]; then
-            echo "Evidence was withdrawn during arming; disabling auto-merge again."
-            gh pr merge "$pr_ref" --disable-auto
-            if ! stamp_review_gate pending "Review evidence for ${head_sha:0:10} was withdrawn"; then
-              echo "Could not withdraw the '$REVIEW_GATE_CONTEXT' status for $head_sha."
-            fi
-            exit 1
-          fi
-          echo "Evidence still holds after arming $head_sha."
+          echo "Head $head_sha cleared the review gate; an explicit maintainer merge is required."

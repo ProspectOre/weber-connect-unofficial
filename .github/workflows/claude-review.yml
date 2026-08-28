@@ -71,5 +71,5 @@ jobs:
             and then a numbered list giving file:line, the defect, and a
             concrete failure scenario for every finding. A findings body must
             NEVER contain the phrase "Reviewed commit" — this repository's
-            auto-merge gate treats that phrase as an affirmative verdict. If
+            review gate treats that phrase as an affirmative verdict. If
             you cannot complete the review, post nothing.
