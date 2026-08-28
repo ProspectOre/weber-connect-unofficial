@@ -568,7 +568,7 @@ jobs:
                     (is_finding | not)
                     and ((normalized_body == ("## Review result: No issues found.\n\n**Reviewed commit:** `" + $head + "`"))
                       or ((normalized_body | split("\n")) as $lines
-                        | ($lines[0] | test("^Codex Review: Didn[^A-Za-z0-9]t find any major issues\\.(?: .*)?$"; "i"))
+                        | ($lines[0] | test("^Codex Review: Didn[^A-Za-z0-9]t find any major issues\\.(?: (?:Swish!|Nice work!|Keep it up!|Hooray!|Bravo\\.|Another round soon, please!|More of your lovely PRs please\\.|You.re on a roll\\.|:\\+1:))?$"; "i"))
                         and ($lines[1] == "")
                         and ($lines[2] | test("^\\*\\*Reviewed commit:\\*\\* `(?:" + $head + "|" + $prefix + ")`$"; "i"))
                         and ($lines[3] == "")
