@@ -169,6 +169,9 @@ def test_codex_clean_marker_allows_nonsemantic_flavor_text(tmp_path: Path) -> No
     body = _codex_clean_body(HEAD, "You're on a roll.")
     assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
 
+    body = _codex_clean_body(HEAD, ":rocket:")
+    assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
+
 
 def test_codex_clean_marker_rejects_semantic_flavor_text(tmp_path: Path) -> None:
     body = _codex_clean_body(HEAD, "One concern: redirects retain the Authorization header.")
