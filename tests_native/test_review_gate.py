@@ -166,6 +166,9 @@ def test_codex_clean_marker_allows_nonsemantic_flavor_text(tmp_path: Path) -> No
     body = _codex_clean_body(HEAD, "More of your lovely PRs please.")
     assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
 
+    body = _codex_clean_body(HEAD, "Keep them coming!")
+    assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
+
     body = _codex_clean_body(HEAD, "You're on a roll.")
     assert _classify(tmp_path, comments=[_comment(body)]) == "1 0"
 
