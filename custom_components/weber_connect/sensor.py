@@ -25,7 +25,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import WeberCoordinator
-from .entity import WeberEntity
+from .entity import WeberEntity, known_probe_numbers
 from .models import WeberRuntimeData
 from .state import ACTIVE_SESSION_STATES
 
@@ -418,6 +418,7 @@ async def async_setup_entry(
         or description.key in {f"probe_{number}_temperature" for number in BASE_PROBE_NUMBERS}
     )
 
+    known_numbers = known_probe_numbers(hass, entry)
     added_dynamic_sensor_keys: set[str] = set()
 
     def _async_add_dynamic_sensors() -> None:
@@ -434,7 +435,9 @@ async def async_setup_entry(
             reported_probe_numbers = ()
         for number in OPTIONAL_PROBE_NUMBERS:
             key = f"probe_{number}_temperature"
-            if key in added_dynamic_sensor_keys or number not in reported_probe_numbers:
+            if key in added_dynamic_sensor_keys or (
+                number not in reported_probe_numbers and number not in known_numbers
+            ):
                 continue
             descriptions.append(next(row for row in SENSORS if row.key == key))
             descriptions.append(READING_STATUS_SENSORS[number])

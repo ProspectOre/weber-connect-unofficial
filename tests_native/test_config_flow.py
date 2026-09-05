@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable, Generator
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import AsyncMock, Mock, patch
@@ -33,6 +35,7 @@ from custom_components.weber_connect.weber_cloud import CloudConfig
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
+_STRINGS_PATH = Path(__file__).resolve().parents[1] / "custom_components" / DOMAIN / "strings.json"
 
 
 @pytest.fixture(autouse=True)
@@ -506,6 +509,9 @@ async def test_reauth_retry_stays_locked_to_original_hub(hass: Any) -> None:
     flow = hass.config_entries.flow._progress[result["flow_id"]]
     menu = await flow.async_step_pairing_failed()
     assert menu["menu_options"] == ["retry_pairing", "start_over"]
+    strings = json.loads(await hass.async_add_executor_job(_STRINGS_PATH.read_text))
+    labels = strings["config"]["step"]["pairing_failed"]["menu_options"]
+    assert all(labels.get(option) for option in menu["menu_options"])
     for retry in (flow.async_step_start_over, flow.async_step_choose_hub):
         result = await retry()
         assert result["step_id"] == "reauth_confirm"

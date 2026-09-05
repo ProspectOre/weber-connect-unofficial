@@ -267,7 +267,7 @@ def test_sensor_surface_supports_grill_up_to_four_probes_and_last_update() -> No
 
 
 @pytest.mark.asyncio
-async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> None:
+async def test_sensor_platform_adds_grill_probe_and_last_update_entities(hass: object) -> None:
     listeners: list[object] = []
     coordinator = SimpleNamespace(
         data={},
@@ -285,7 +285,7 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
     )
     batches: list[list[WeberSensor]] = []
     await async_setup_sensor_entry(
-        SimpleNamespace(),
+        hass,
         entry,
         lambda entities: batches.append(list(entities)),
     )
@@ -328,7 +328,7 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
 
 
 @pytest.mark.asyncio
-async def test_sensor_platform_adds_all_reported_dynamic_telemetry() -> None:
+async def test_sensor_platform_adds_all_reported_dynamic_telemetry(hass: object) -> None:
     coordinator = SimpleNamespace(
         data={
             "battery_level": 64,
@@ -385,7 +385,7 @@ async def test_sensor_platform_adds_all_reported_dynamic_telemetry() -> None:
     batches: list[list[WeberSensor]] = []
 
     await async_setup_sensor_entry(
-        SimpleNamespace(),
+        hass,
         entry,
         lambda entities: batches.append(list(entities)),
     )
@@ -432,7 +432,7 @@ async def test_sensor_platform_adds_all_reported_dynamic_telemetry() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sensor_platform_ignores_idle_probe_zero_countdown() -> None:
+async def test_sensor_platform_ignores_idle_probe_zero_countdown(hass: object) -> None:
     coordinator = SimpleNamespace(
         data={
             "reported_probe_numbers": (1,),
@@ -457,7 +457,7 @@ async def test_sensor_platform_ignores_idle_probe_zero_countdown() -> None:
     batches: list[list[WeberSensor]] = []
 
     await async_setup_sensor_entry(
-        SimpleNamespace(),
+        hass,
         entry,
         lambda entities: batches.append(list(entities)),
     )
@@ -756,3 +756,41 @@ def test_retained_sensor_exposes_connection_context_and_last_update() -> None:
         assert attributes["reading_status"] == "connection_lost"
         assert attributes["last_successful_update"] == "2026-09-04T12:00:00+00:00"
     assert WeberSensor(coordinator, entry, descriptions["battery_level"]).native_value == 64
+
+
+@pytest.mark.parametrize("suffix", ["temperature", "reading_status"])
+async def test_known_optional_probe_recovers_after_restart(hass: object, suffix: str) -> None:
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="hub", data={"address": "AA:BB:CC:DD:EE:FF"})
+    entry.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create(
+        "sensor", DOMAIN, f"hub_probe_4_{suffix}", config_entry=entry
+    )
+    listeners = []
+    coordinator = SimpleNamespace(
+        data=normalize_state(None, source="cloud", connected=False),
+        options=WeberOptions(),
+        last_update_success=True,
+        async_add_listener=lambda listener: listeners.append(listener) or MagicMock(),
+    )
+    entry.runtime_data = SimpleNamespace(coordinator=coordinator)
+    entities = []
+    await async_setup_sensor_entry(hass, entry, lambda batch: entities.extend(batch))
+    sensors = {entity.entity_description.key: entity for entity in entities}
+    assert "probe_3_reading_status" not in sensors
+    assert sensors["probe_4_reading_status"].available
+    assert sensors["probe_4_reading_status"].native_value == "waiting"
+    assert sensors["probe_4_temperature"].native_value is None
+    for state, expected in (({}, "no_reading"), ({"device_state": "off"}, "device_off")):
+        coordinator.data = normalize_state(state, source="cloud", connected=True)
+        listeners[0]()
+        assert sensors["probe_4_reading_status"].native_value == expected
+    coordinator.data = normalize_state(
+        {"probes": [{"probe_number": 4, "probe_temp_c": 25.0}]}, source="cloud", connected=True
+    )
+    listeners[0]()
+    assert sensors["probe_4_temperature"].native_value == 25.0
+    assert sensors["probe_4_reading_status"].native_value == "reading"
+    assert len(entities) == len({entity.entity_description.key for entity in entities})

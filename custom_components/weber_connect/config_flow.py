@@ -15,7 +15,6 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import section
-from homeassistant.helpers import entity_registry as er
 
 from .bluetooth import WeberBluetoothError, async_pair, generate_identity
 from .const import (
@@ -28,6 +27,7 @@ from .const import (
     DOMAIN,
     WEBER_COMPANY_IDS,
 )
+from .entity import known_probe_numbers
 from .models import CompanionIdentity, PairingResult
 from .options import WeberOptions
 from .weber_cloud import (
@@ -620,13 +620,7 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
             probes.update(user_input.get(CONF_PROBES, {}))
             return self.async_create_entry(title="", data=current)
 
-        numbers = {1, 2}
-        registry = er.async_get(self.hass)
-        identity = self.config_entry.unique_id or self.config_entry.entry_id
-        for entity in er.async_entries_for_config_entry(registry, self.config_entry.entry_id):
-            for number in (3, 4):
-                if entity.unique_id == f"{identity}_probe_{number}_temperature":
-                    numbers.add(number)
+        numbers = known_probe_numbers(self.hass, self.config_entry)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(

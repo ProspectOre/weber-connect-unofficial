@@ -30,7 +30,8 @@
         "description": "**{reason}**\n\nKeep the Weber app closed and phone or tablet Bluetooth off. Wake the hub, then try again. You will be prompted to approve on the physical hub. Existing integration settings have not been changed.",
         "menu_options": {
           "retry_pairing": "Try pairing again",
-          "choose_hub": "Choose another hub"
+          "choose_hub": "Choose another hub",
+          "start_over": "Start pairing over"
         }
       },
       "cloud_preparation_failed": {
