@@ -384,3 +384,18 @@ def test_reconnect_marks_retained_readings_then_recovers(hass: object) -> None:
     coordinator._async_status({"probes": [{"probe_number": 1, "probe_temp_c": 31.0}]})
     assert coordinator.data["reading_status"] == "receiving"
     assert coordinator.data["probe_1_reading_status"] == "reading"
+
+
+def test_startup_outage_keeps_waiting_until_first_reading(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    for _ in range(coordinator_module.OFFLINE_FAILURE_THRESHOLD + 4):
+        coordinator._async_error("startup request failed")
+        assert coordinator.data["reading_status"] == "waiting"
+        assert coordinator.data["last_successful_update"] is None
+        assert all(
+            coordinator.data[f"probe_{number}_reading_status"] == "waiting"
+            for number in range(1, 5)
+        )
+    coordinator._async_status({"probes": [{"probe_number": 1, "probe_temp_c": 30.0}]})
+    coordinator._async_error("later interruption")
+    assert coordinator.data["reading_status"] == "reconnecting"
