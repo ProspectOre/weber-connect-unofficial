@@ -149,6 +149,12 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_error = message
         self.failed_updates += 1
         self.consecutive_failures += 1
+        if self.consecutive_failures < OFFLINE_FAILURE_THRESHOLD:
+            pending = dict(self.data or self.initial_state())
+            pending["reading_status"] = "reconnecting"
+            for number in range(1, 5):
+                pending[f"probe_{number}_reading_status"] = "reconnecting"
+            self.async_set_updated_data(pending)
         if self.consecutive_failures >= OFFLINE_FAILURE_THRESHOLD:
             offline_state = normalize_state(
                 None,

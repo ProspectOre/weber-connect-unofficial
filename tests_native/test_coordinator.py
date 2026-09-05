@@ -370,3 +370,17 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     assert diagnostics["cloud_socket_received_types"] == [0x80]
     assert "state" not in diagnostics
     assert "cloud_history_schema" not in diagnostics
+
+
+def test_reconnect_marks_retained_readings_then_recovers(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator._async_status({"probes": [{"probe_number": 1, "probe_temp_c": 30.0}]})
+    timestamp = coordinator.data["last_successful_update"]
+    coordinator._async_error("temporary interruption")
+    assert coordinator.data["reading_status"] == "reconnecting"
+    assert coordinator.data["probe_1_reading_status"] == "reconnecting"
+    assert coordinator.data["probe_1_temperature"] == 30.0
+    assert coordinator.data["last_successful_update"] == timestamp
+    coordinator._async_status({"probes": [{"probe_number": 1, "probe_temp_c": 31.0}]})
+    assert coordinator.data["reading_status"] == "receiving"
+    assert coordinator.data["probe_1_reading_status"] == "reading"

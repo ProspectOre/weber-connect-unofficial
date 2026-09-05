@@ -11,6 +11,17 @@ firmware, region, adapter, account, router, or ESPHome version.
 > sender. Proxy-only telemetry rows below are retained as historical 3.0
 > availability evidence, not as current release gates or security claims.
 
+## Next-update acceptance
+
+The reading-status and in-place pairing recovery update requires a physical
+Home Assistant UI pass before release. Validate first-update waiting, missing
+probe readings, a temporary cloud interruption, sustained loss, and recovery;
+confirm retained battery/Wi-Fi values show interruption context. Check setup and
+settings on mobile and desktop, including a two-port controller when available.
+Exercise same-hub credential replacement and cancellation with named entities
+and an existing automation, then confirm entity IDs and references remain intact.
+Automated flow tests do not substitute for this hardware and visual acceptance.
+
 ## Automated gates
 
 Every release pull request must pass:

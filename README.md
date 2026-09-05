@@ -103,7 +103,10 @@ authenticated cloud companion when reloaded.
 
 Probe entities retain stable slot IDs such as `probe_2_temperature`. Optional
 nicknames keep the physical number visible—for example, **Brisket · Probe 2**—
-without changing the entity's identity.
+without changing the entity's identity. Settings show Probe 1 and Probe 2,
+plus any additional probe slots already registered for that hub. Previously
+saved names are retained even when their fields are hidden. Weber Cloud is
+used automatically; there is no connection-mode selector.
 
 The device page starts with **Probe 1** and **Probe 2**, which are common to the
 supported controllers. **Probe 3** and **Probe 4** are added only after the
@@ -118,6 +121,20 @@ normal idle state, not a sign that the integration or Home Assistant is
 offline. Routine disconnects recover quietly without raising a Home Assistant
 repair. Battery level, probe type, and probe state remain attributes on that
 same entity instead of creating redundant entities.
+
+Reading-status entities explain whether Home Assistant is waiting for its first
+update, receiving updates, reconnecting, or has lost the connection. Each
+supported probe also has a reading-status entity. **No probe reading reported**
+means fresh telemetry contains no temperature for that slot; it does not claim
+that the probe is unplugged. **Hub reports powered off** is used only when the
+received device state explicitly says so. An unreachable hub is never assumed
+to be sleeping.
+
+During interruptions, sensor attributes include the last successful update
+alongside the reading status, including on retained battery and Wi-Fi values.
+This timestamp describes the last received appliance update, not a separate
+measurement time for each field. The dedicated **Last successful update** entity
+tracks live updates without adding timestamp-only history records to every sensor.
 
 Two additional context entities are enabled by default. **Connection** reports
 **Connected** or **Disconnected** and identifies **Weber Cloud** as the live
@@ -234,6 +251,16 @@ the setup flow's cloud retry action.
 off, or temporarily unreachable. Wake the hub and inspect **Connection** and
 **Last successful update** on its device page. The integration retries quietly
 and republishes temperatures when fresh data arrives.
+
+### Weber rejects the private connection
+
+Open the credential repair and continue, then open the integration's
+reauthentication prompt in **Settings → Devices & services**. Follow the setup
+steps and approve the replacement companion on the same physical hub. Home
+Assistant keeps the existing entry, entity IDs, probe names, and automation
+references. It replaces the stored connection only after physical pairing and
+the cloud association check succeed. Cancelling or failing recovery leaves the
+existing configuration intact. Physical approval is still required.
 
 ### Collecting diagnostics
 

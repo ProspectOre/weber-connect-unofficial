@@ -2,9 +2,9 @@
   "title": "Weber Connect Unofficial",
   "config": {
     "progress": {
-      "preparing_companion": "**Preparing a private Weber connection.** Home Assistant is registering its new companion with Weber before Bluetooth pairing. This usually takes only a few seconds and ensures the hub can link it during approval.",
-      "approve_hub": "**Connecting to {name} through {path}.** A Bluetooth proxy may need up to 90 seconds to open the connection. Approval happens on the physical hub, not in the Weber app. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted. This screen advances automatically after approval.",
-      "finishing_setup": "**Checking Weber Cloud · {remaining} remaining.** The hub approved Home Assistant. Home Assistant is waiting for Weber to make the new connection available so the Weber app and Home Assistant can work at the same time. This screen updates automatically; no action is needed."
+      "preparing_companion": "**Step 1 of 3 \u00b7 Preparing your connection.** This usually takes a few seconds. No action is needed yet.",
+      "approve_hub": "**Step 2 of 3 \u00b7 Approve on {name}.** Connecting through {path}. An active proxy may take up to 90 seconds.\n\n**Standalone hub:** when all four probe lights turn on, press down once on the top/display within 60 seconds.\n\n**Grill controller:** press its dial or confirmation control when prompted.\n\nThis screen advances automatically after approval.",
+      "finishing_setup": "**Step 3 of 3 \u00b7 Connecting to Weber Cloud \u00b7 {remaining} remaining.** Physical approval is complete. No further button press is needed; this screen advances automatically."
     },
     "step": {
       "user": {
@@ -23,11 +23,11 @@
       },
       "confirm": {
         "title": "Connect {name}",
-        "description": "Initial setup requires working internet access and the hub to be online in Weber Cloud. In the Weber app, first confirm the hub is online while the phone or tablet's Bluetooth is off. Then fully close the Weber app, leave Bluetooth off on every phone or tablet that uses it, and wake {name}. Home Assistant will connect through **{path}**; an active proxy may need up to 90 seconds. Approval happens on the physical hub, not in the Weber app. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted. The final Weber Cloud check can take up to five minutes."
+        "description": "Initial setup requires working internet access from Home Assistant.\n\nBefore continuing:\n\n1. Turn off Bluetooth on your phone or tablet. In the Weber app, confirm **{name} is still online through Wi-Fi**.\n2. Fully close the app and leave Bluetooth off on every phone or tablet that uses the hub.\n3. Wake the hub. Home Assistant will connect through **{path}**.\n\nNext, you will approve the connection on the physical hub. The final online check can take up to five minutes."
       },
       "pairing_failed": {
         "title": "Pairing did not finish",
-        "description": "**What happened:** {reason}\n\nNo Home Assistant integration entry was saved. Approval happens on the physical hub, not in the Weber app. Keep the app closed and phone or tablet Bluetooth off, wake the hub, then try pairing again with the same prepared private connection. On a standalone Smart Grilling Hub, wait for all four probe indicators to light, then press down once on the top/display within 60 seconds. On a grill controller, press its dial or confirmation control when prompted.",
+        "description": "**{reason}**\n\nKeep the Weber app closed and phone or tablet Bluetooth off. Wake the hub, then try again. You will be prompted to approve on the physical hub. Existing integration settings have not been changed.",
         "menu_options": {
           "retry_pairing": "Try pairing again",
           "choose_hub": "Choose another hub"
@@ -45,7 +45,7 @@
         "title": "The hub is paired, but Weber Cloud has not linked it",
         "description": "Local pairing succeeded. Home Assistant reached Weber Cloud and checked automatically for up to five minutes, but the new connection was not given access to this hub. You do not need to approve the hub again. Turn off phone or tablet Bluetooth and confirm the hub is online in the Weber app; if it is offline there too, restore the hub's Wi-Fi before checking again.",
         "menu_options": {
-          "retry_cloud": "Check Weber Cloud again — up to 5 minutes",
+          "retry_cloud": "Check Weber Cloud again \u2014 up to 5 minutes",
           "start_over": "Start over"
         }
       },
@@ -53,16 +53,20 @@
         "title": "Weber Cloud could not be reached",
         "description": "Local pairing succeeded, but Home Assistant could not complete the online check. The hub does not need approval again. Confirm Home Assistant has internet access. With phone or tablet Bluetooth off, also confirm the hub is online in the Weber app; if it is offline there too, restore the hub's Wi-Fi. Then try again.",
         "menu_options": {
-          "retry_cloud": "Try the online check again — up to 5 minutes",
+          "retry_cloud": "Try the online check again \u2014 up to 5 minutes",
           "start_over": "Start over"
         }
       },
       "setup_failed": {
         "title": "Setup did not finish",
-        "description": "Home Assistant encountered an unexpected problem and did not create the integration entry. Check the Home Assistant logs for the exact cause before starting over.",
+        "description": "Setup could not finish. Existing integration settings have not been changed. Check the Home Assistant logs for the cause, then start over.",
         "menu_options": {
           "start_over": "Start over"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect {name}",
+        "description": "Pair a new private connection with this same hub. Your device, entity IDs, probe names, dashboards, and automations will be kept. The current configuration stays in place until pairing and the Weber Cloud check both succeed."
       }
     },
     "create_entry": {
@@ -70,22 +74,17 @@
     },
     "abort": {
       "already_configured": "This Weber hub is already configured.",
-      "already_in_progress": "Setup is already open for this Weber hub. Close this window and continue the existing setup."
+      "already_in_progress": "Setup is already open for this Weber hub. Close this window and continue the existing setup.",
+      "reauth_successful": "Connection replaced. Turn Bluetooth back on and reopen the Weber app. Your existing device and entities have been kept.",
+      "wrong_hub": "The paired appliance does not match this integration. Nothing was changed. Retry with the original hub."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Weber Connect settings",
-        "description": "The recommended defaults let the Weber app and Home Assistant work together.",
+        "description": "Give each probe a food name, such as Brisket. Its physical probe number stays visible. Home Assistant receives readings through Weber Cloud while you continue using the Weber app.",
         "sections": {
-          "connection": {
-            "name": "Connection",
-            "description": "Home Assistant receives status through its authenticated Weber Cloud companion. Local Bluetooth is used only for physically confirmed setup; unauthenticated local telemetry is not accepted.",
-            "data": {
-              "connection_mode": "Use with"
-            }
-          },
           "probes": {
             "name": "Probe names",
             "description": "Optional nicknames appear beside the permanent probe number.",
@@ -100,13 +99,6 @@
       }
     }
   },
-  "selector": {
-    "connection_mode": {
-      "options": {
-        "phone_and_home_assistant": "Phone + Home Assistant"
-      }
-    }
-  },
   "issues": {
     "credentials_rejected": {
       "title": "{name} needs to be paired again",
@@ -114,7 +106,7 @@
         "step": {
           "confirm": {
             "title": "Pair {name} again",
-            "description": "Weber rejected Home Assistant's generated companion credential. This is different from a temporary internet or hub Wi-Fi outage. Continue to remove this integration entry, then add **Weber Connect Unofficial** again and approve the new Home Assistant companion on the hub. Your Weber email and password are never required."
+            "description": "Weber rejected the private connection for {name}. Continue to start pairing recovery, then open the integration\u2019s reauthentication prompt in Devices & services. Approve the replacement connection on the same physical hub. Your existing device, entity IDs, names, dashboards, and automations will be kept."
           }
         }
       }
@@ -245,7 +237,31 @@
         "name": "Probe {number}"
       },
       "probe_temperature_named": {
-        "name": "{nickname} · Probe {number}"
+        "name": "{nickname} \u00b7 Probe {number}"
+      },
+      "reading_status": {
+        "name": "Reading status",
+        "state": {
+          "receiving": "Receiving updates",
+          "reading": "Reading available",
+          "waiting": "Waiting for first update",
+          "reconnecting": "Reconnecting \u2014 readings may be old",
+          "connection_lost": "Connection lost",
+          "no_reading": "No probe reading reported",
+          "device_off": "Hub reports powered off"
+        }
+      },
+      "probe_reading_status": {
+        "name": "Probe {number} reading status",
+        "state": {
+          "receiving": "Receiving updates",
+          "reading": "Reading available",
+          "waiting": "Waiting for first update",
+          "reconnecting": "Reconnecting \u2014 readings may be old",
+          "connection_lost": "Connection lost",
+          "no_reading": "No probe reading reported",
+          "device_off": "Hub reports powered off"
+        }
       }
     }
   }

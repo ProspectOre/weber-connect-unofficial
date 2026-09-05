@@ -294,6 +294,9 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
         "probe_1_temperature",
         "probe_2_temperature",
         "last_successful_update",
+        "reading_status",
+        "probe_1_reading_status",
+        "probe_2_reading_status",
     }
 
     coordinator.data["grill_temperature"] = 121.5
@@ -310,6 +313,7 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
         "battery_level",
         "grill_temperature",
         "probe_4_temperature",
+        "probe_4_reading_status",
     ]
 
     coordinator.data["reported_probe_numbers"] = (1, 2, 3, 4)
@@ -317,7 +321,10 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities() -> No
     listener()
 
     assert len(batches) == 3
-    assert [entity.entity_description.key for entity in batches[2]] == ["probe_3_temperature"]
+    assert [entity.entity_description.key for entity in batches[2]] == [
+        "probe_3_temperature",
+        "probe_3_reading_status",
+    ]
 
 
 @pytest.mark.asyncio
@@ -710,3 +717,42 @@ def test_options_have_one_transport_choice_and_stable_probe_names() -> None:
     assert invalid.connection_mode is ConnectionMode.PHONE_AND_HOME_ASSISTANT
     with pytest.raises(ValueError, match="between 1 and 4"):
         invalid.probe_name(5)
+
+
+@pytest.mark.parametrize(
+    ("raw", "connected", "last_update", "expected"),
+    [
+        (None, False, None, "waiting"),
+        (None, False, "2026-09-04T12:00:00+00:00", "connection_lost"),
+        ({"probes": []}, True, None, "no_reading"),
+        ({"device_state": "off"}, True, None, "device_off"),
+        ({"device_state": "idle"}, True, None, "no_reading"),
+        ({"probes": [{"probe_number": 1, "probe_temp_c": 0.0}]}, True, None, "reading"),
+    ],
+)
+def test_reading_status_does_not_infer_unplugged_or_sleeping(
+    raw: dict | None, connected: bool, last_update: str | None, expected: str
+) -> None:
+    state = normalize_state(
+        raw, source="cloud", connected=connected, last_successful_update=last_update
+    )
+    assert state["probe_1_reading_status"] == expected
+    assert state["probe_1_state"] is None
+
+
+def test_retained_sensor_exposes_connection_context_and_last_update() -> None:
+    data = normalize_state(
+        None, source="cloud", connected=False, last_successful_update="2026-09-04T12:00:00+00:00"
+    )
+    data["battery_level"] = 64
+    coordinator = SimpleNamespace(data=data, options=WeberOptions(), last_update_success=True)
+    entry = SimpleNamespace(
+        unique_id="hub", entry_id="entry", title="Patio", data={"address": "AA:BB:CC:DD:EE:FF"}
+    )
+    descriptions = {row.key: row for row in SENSORS}
+    for key in ("battery_level", "wifi_connection_status", "probe_1_temperature"):
+        sensor = WeberSensor(coordinator, entry, descriptions[key])
+        attributes = sensor.extra_state_attributes
+        assert attributes["reading_status"] == "connection_lost"
+        assert attributes["last_successful_update"] == "2026-09-04T12:00:00+00:00"
+    assert WeberSensor(coordinator, entry, descriptions["battery_level"]).native_value == 64

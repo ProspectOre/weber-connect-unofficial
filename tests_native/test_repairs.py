@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -25,7 +27,7 @@ async def test_repair_rejects_retired_connection_issue_and_invalid_data(hass: ob
 
 
 @pytest.mark.asyncio
-async def test_credential_repair_removes_rejected_entry(hass: object) -> None:
+async def test_credential_repair_starts_reauth_without_removing_entry(hass: object) -> None:
     entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id="rejected-hub")
     entry.add_to_hass(hass)
     flow = await async_create_fix_flow(
@@ -38,6 +40,8 @@ async def test_credential_repair_removes_rejected_entry(hass: object) -> None:
     result = await flow.async_step_init()
     assert result["type"] is FlowResultType.FORM
 
-    result = await flow.async_step_confirm({})
+    with patch.object(type(entry), "async_start_reauth") as start:
+        result = await flow.async_step_confirm({})
+    start.assert_called_once_with(hass)
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert hass.config_entries.async_get_entry(entry.entry_id) is None
+    assert hass.config_entries.async_get_entry(entry.entry_id) is entry

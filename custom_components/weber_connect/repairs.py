@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 
 
 class CredentialRepairFlow(RepairsFlow):
-    """Remove a rejected generated companion so it can be paired again."""
+    """Start pairing recovery without removing the existing entry."""
 
     def __init__(self, entry_id: str) -> None:
         self._entry_id = entry_id
@@ -20,8 +20,8 @@ class CredentialRepairFlow(RepairsFlow):
         self, user_input: dict[str, str] | None = None
     ) -> RepairsFlowResult:
         if user_input is not None:
-            if self.hass.config_entries.async_get_entry(self._entry_id) is not None:
-                await self.hass.config_entries.async_remove(self._entry_id)
+            if (entry := self.hass.config_entries.async_get_entry(self._entry_id)) is not None:
+                entry.async_start_reauth(self.hass)
             return self.async_create_entry(data={})
         return self.async_show_form(step_id="confirm", data_schema=vol.Schema({}))
 
