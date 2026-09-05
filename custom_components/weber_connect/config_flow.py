@@ -15,27 +15,21 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import section
-from homeassistant.helpers.selector import (
-    SelectSelector,
-    SelectSelectorConfig,
-    SelectSelectorMode,
-)
 
 from .bluetooth import WeberBluetoothError, async_pair, generate_identity
 from .const import (
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
-    CONF_CONNECTION,
-    CONF_CONNECTION_MODE,
     CONF_MESSAGE_VERSION,
     CONF_PROBE_NAME_PREFIX,
     CONF_PROBES,
     DOMAIN,
     WEBER_COMPANY_IDS,
 )
+from .entity import known_probe_numbers
 from .models import CompanionIdentity, PairingResult
-from .options import ConnectionMode, WeberOptions
+from .options import WeberOptions
 from .weber_cloud import (
     CloudConfig,
     WeberCloudClient,
@@ -93,6 +87,27 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._cloud_progress_task: asyncio.Task[None] | None = None
         self._cloud_deadline: float | None = None
         self._entry_data: dict[str, Any] | None = None
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        """Pair a replacement companion for the same entry and physical hub."""
+
+        entry = self._get_reauth_entry()
+        self._address = str(entry.data[CONF_ADDRESS])
+        self._name = entry.title
+        await self.async_set_unique_id(entry.unique_id)
+        self.context["title_placeholders"] = {"name": self._name}
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return await self.async_step_confirm()
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders={"name": self._name},
+        )
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -445,7 +460,9 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_menu(
             step_id="pairing_failed",
-            menu_options=["retry_pairing", "choose_hub"],
+            menu_options=["retry_pairing", "start_over"]
+            if self.source == config_entries.SOURCE_REAUTH
+            else ["retry_pairing", "choose_hub"],
             description_placeholders={"reason": self._pairing_failure_reason},
         )
 
@@ -522,6 +539,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Return to discovery without leaving a dead-end flow."""
 
         self._reset_setup()
+        if self.source == config_entries.SOURCE_REAUTH:
+            return await self.async_step_reauth(dict(self._get_reauth_entry().data))
         return await self.async_step_user()
 
     async def async_step_start_over(
@@ -530,6 +549,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Restart discovery and generate a fresh identity on the next attempt."""
 
         self._reset_setup()
+        if self.source == config_entries.SOURCE_REAUTH:
+            return await self.async_step_reauth(dict(self._get_reauth_entry().data))
         return await self.async_step_user()
 
     def _reset_setup(self) -> None:
@@ -573,6 +594,14 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._entry_data is None:
             return await self.async_step_setup_failed()
+        if self.source == config_entries.SOURCE_REAUTH:
+            entry = self._get_reauth_entry()
+            if (
+                self._entry_data[CONF_ADDRESS] != entry.data[CONF_ADDRESS]
+                or self._entry_data[CONF_APPLIANCE_ID] != entry.data[CONF_APPLIANCE_ID]
+            ):
+                return self.async_abort(reason="wrong_hub")
+            return self.async_update_reload_and_abort(entry, data_updates=self._entry_data)
         return self.async_create_entry(title=self._name, data=self._entry_data)
 
     @staticmethod
@@ -584,33 +613,18 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
     """Present a small set of user-facing settings in native sections."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
         current = WeberOptions.from_mapping(self.config_entry.options).as_dict()
-        connection = current[CONF_CONNECTION]
         probes = current[CONF_PROBES]
+        if user_input is not None:
+            # Preserve names for temporarily absent or previously discovered slots.
+            probes.update(user_input.get(CONF_PROBES, {}))
+            return self.async_create_entry(title="", data=current)
+
+        numbers = known_probe_numbers(self.hass, self.config_entry)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_CONNECTION): section(
-                        vol.Schema(
-                            {
-                                vol.Required(
-                                    CONF_CONNECTION_MODE,
-                                    default=connection[CONF_CONNECTION_MODE],
-                                ): SelectSelector(
-                                    SelectSelectorConfig(
-                                        options=[mode.value for mode in ConnectionMode],
-                                        mode=SelectSelectorMode.DROPDOWN,
-                                        translation_key="connection_mode",
-                                    )
-                                ),
-                            }
-                        ),
-                        {"collapsed": False},
-                    ),
                     vol.Required(CONF_PROBES): section(
                         vol.Schema(
                             {
@@ -618,10 +632,10 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
                                     f"{CONF_PROBE_NAME_PREFIX}{number}",
                                     default=probes[f"{CONF_PROBE_NAME_PREFIX}{number}"],
                                 ): vol.All(str, vol.Length(max=40))
-                                for number in range(1, 5)
+                                for number in sorted(numbers)
                             }
                         ),
-                        {"collapsed": True},
+                        {"collapsed": False},
                     ),
                 }
             ),

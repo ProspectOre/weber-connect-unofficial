@@ -427,7 +427,9 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
         OptionsFlow,
         "config_entry",
         new_callable=PropertyMock,
-        return_value=SimpleNamespace(options=WeberOptions().as_dict()),
+        return_value=SimpleNamespace(
+            options=WeberOptions().as_dict(), unique_id="hub", entry_id="entry"
+        ),
     ):
         form = await options.async_step_init()
     assert form["type"] is FlowResultType.FORM
@@ -437,6 +439,14 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
         },
         CONF_PROBES: {},
     }
-    with patch.object(options, "async_create_entry", return_value={"type": "created"}) as create:
+    with (
+        patch.object(
+            OptionsFlow,
+            "config_entry",
+            new_callable=PropertyMock,
+            return_value=SimpleNamespace(options=WeberOptions().as_dict()),
+        ),
+        patch.object(options, "async_create_entry", return_value={"type": "created"}) as create,
+    ):
         assert await options.async_step_init(submitted) == {"type": "created"}
-        create.assert_called_once_with(title="", data=submitted)
+        create.assert_called_once_with(title="", data=WeberOptions().as_dict())

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add reading-status entities for the hub and supported probes, distinguishing
+  initial waiting, missing readings, reconnecting, and lost updates without
+  guessing whether an unreachable hub is sleeping or a probe is unplugged.
+- Show last-update context on sensor attributes during interruptions while
+  avoiding timestamp-only history records for unchanged live telemetry.
+- Replace removal-based credential repair with same-hub reauthentication that
+  preserves the config entry, entity identities, options, and automation references.
+- Simplify setup into three progress stages and show nickname settings only for
+  baseline and previously discovered probe slots; remove the single-choice
+  connection selector and preserve names for hidden slots.
+
 - Require positive review evidence bound to the exact pull-request head before
   the automated merge gate can clear.
 - Restrict Weber REST requests and redirects to trusted HTTPS origins and cap

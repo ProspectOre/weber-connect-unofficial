@@ -25,7 +25,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import WeberCoordinator
-from .entity import WeberEntity
+from .entity import WeberEntity, known_probe_numbers
 from .models import WeberRuntimeData
 from .state import ACTIVE_SESSION_STATES
 
@@ -253,6 +253,33 @@ SENSORS: tuple[WeberSensorDescription, ...] = (
     ),
 )
 
+READING_STATUS_OPTIONS = [
+    "receiving",
+    "reading",
+    "waiting",
+    "reconnecting",
+    "connection_lost",
+    "no_reading",
+    "device_off",
+]
+READING_STATUS_SENSORS = (
+    _enum_sensor(
+        "reading_status", "reading_status", READING_STATUS_OPTIONS, icon="mdi:information-outline"
+    ),
+    *(
+        replace(
+            _enum_sensor(
+                f"probe_{number}_reading_status",
+                "probe_reading_status",
+                READING_STATUS_OPTIONS,
+                icon="mdi:thermometer-probe",
+            ),
+            translation_placeholders={"number": str(number)},
+        )
+        for number in range(1, 5)
+    ),
+)
+
 BASE_PROBE_NUMBERS = (1, 2)
 OPTIONAL_PROBE_NUMBERS = (3, 4)
 
@@ -385,11 +412,13 @@ async def async_setup_entry(
     coordinator = runtime.coordinator
     async_add_entities(
         WeberSensor(coordinator, entry, description)
-        for description in SENSORS
+        for description in (*SENSORS, *READING_STATUS_SENSORS[:3])
         if description.key == "last_successful_update"
+        or description.key.endswith("reading_status")
         or description.key in {f"probe_{number}_temperature" for number in BASE_PROBE_NUMBERS}
     )
 
+    known_numbers = known_probe_numbers(hass, entry)
     added_dynamic_sensor_keys: set[str] = set()
 
     def _async_add_dynamic_sensors() -> None:
@@ -406,9 +435,12 @@ async def async_setup_entry(
             reported_probe_numbers = ()
         for number in OPTIONAL_PROBE_NUMBERS:
             key = f"probe_{number}_temperature"
-            if key in added_dynamic_sensor_keys or number not in reported_probe_numbers:
+            if key in added_dynamic_sensor_keys or (
+                number not in reported_probe_numbers and number not in known_numbers
+            ):
                 continue
             descriptions.append(next(row for row in SENSORS if row.key == key))
+            descriptions.append(READING_STATUS_SENSORS[number])
 
         for number in reported_probe_numbers:
             if type(number) is not int or number not in range(1, 5):
@@ -529,6 +561,23 @@ class WeberSensor(WeberEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
+        attributes = self._telemetry_attributes()
+        data = self.coordinator.data
+        if "reading_status" not in data:
+            return attributes
+        key = self.entity_description.key
+        status = data.get("reading_status")
+        if key.startswith("probe_"):
+            status = data.get(f"probe_{key.split('_')[1]}_reading_status", status)
+        context = {**(attributes or {}), "reading_status": status}
+        # The dedicated timestamp entity tracks live updates. Attach the fixed
+        # last-received time during interruptions without recording unchanged
+        # battery/temperature values again on every ten-second update.
+        if data.get("reading_status") != "receiving":
+            context["last_successful_update"] = data.get("last_successful_update")
+        return context
+
+    def _telemetry_attributes(self) -> dict[str, Any] | None:
         key = self.entity_description.key
         attributes_fn = self.entity_description.attributes_fn
         if attributes_fn is not None:

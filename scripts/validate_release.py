@@ -136,7 +136,7 @@ def check_translations() -> None:
         "fully close the weber app",
         "initial setup requires working internet access",
         "active proxy",
-        "phone_and_home_assistant",
+        "weber cloud",
     ):
         if phrase not in text:
             fail(f"setup copy is missing required guidance: {phrase}")

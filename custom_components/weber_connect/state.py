@@ -53,6 +53,9 @@ def normalize_state(
     state: dict[str, Any] = {
         "updated_at": _utc_now(),
         "connected": connected,
+        "reading_status": "receiving"
+        if connected
+        else ("connection_lost" if last_successful_update else "waiting"),
         "source": source,
         "last_successful_update": last_successful_update,
         "grill_temperature": grill_temp,
@@ -95,7 +98,16 @@ def normalize_state(
         state[f"probe_{number}_time_elapsed"] = probe.get("time_elapsed_s")
         state[f"probe_{number}_prompt_time_remaining"] = probe.get("prompt_time_remaining_s")
         state[f"probe_{number}_prompt_time_elapsed"] = probe.get("prompt_time_elapsed_s")
-        state[f"probe_{number}_state"] = probe.get("state") or "Not connected"
+        state[f"probe_{number}_state"] = probe.get("state")
+        state[f"probe_{number}_reading_status"] = (
+            state["reading_status"]
+            if not connected
+            else "reading"
+            if probe.get("probe_temp_c") is not None
+            else "device_off"
+            if raw.get("device_state") == "off"
+            else "no_reading"
+        )
         state[f"probe_{number}_type"] = probe.get("probe_type")
         state[f"probe_{number}_serial_number"] = probe.get("serial_number")
         state[f"probe_{number}_sku"] = probe.get("sku")

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable, Generator
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import AsyncMock, Mock, patch
@@ -12,6 +14,8 @@ import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.weber_connect import async_setup_entry
@@ -21,8 +25,6 @@ from custom_components.weber_connect.const import (
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
-    CONF_CONNECTION,
-    CONF_CONNECTION_MODE,
     CONF_PROBES,
     DOMAIN,
 )
@@ -33,6 +35,7 @@ from custom_components.weber_connect.weber_cloud import CloudConfig
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
+_STRINGS_PATH = Path(__file__).resolve().parents[1] / "custom_components" / DOMAIN / "strings.json"
 
 
 @pytest.fixture(autouse=True)
@@ -349,9 +352,6 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
         async_start=lambda: None,
     )
     submitted = {
-        CONF_CONNECTION: {
-            CONF_CONNECTION_MODE: ConnectionMode.PHONE_AND_HOME_ASSISTANT.value,
-        },
         CONF_PROBES: {"probe_name_1": "Brisket"},
     }
 
@@ -386,3 +386,135 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
     assert saved.probe_name(1) == "Brisket"
     coordinator.async_set_updated_data.assert_called_once()
     reload_entry.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.parametrize("wrong_hub", [False, True])
+async def test_reauth_preserves_entry_and_requires_same_appliance(
+    hass: Any, wrong_hub: bool
+) -> None:
+    """A completed pairing replaces credentials only for the original appliance."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Patio grill",
+        unique_id=ADDRESS,
+        data={
+            CONF_ADDRESS: ADDRESS,
+            CONF_APPLIANCE_ID: "44" * 16,
+            CONF_COMPANION_ID: "old",
+            CONF_CLOUD_PASSWORD: "old-password",
+        },
+        options=WeberOptions(probe_names=("Brisket", "", "", "Spare")).as_dict(),
+    )
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, ADDRESS)}, name="Patio grill"
+    )
+    registered = er.async_get(hass).async_get_or_create(
+        "sensor", DOMAIN, f"{ADDRESS}_probe_1_temperature", config_entry=entry, device_id=device.id
+    )
+    registered = er.async_get(hass).async_update_entity(registered.entity_id, name="Brisket")
+    original_data, original_options = dict(entry.data), dict(entry.options)
+    appliance = "55" * 16 if wrong_hub else "44" * 16
+    FakeCloudClient.associated_appliance_id = appliance
+    with (
+        patch("custom_components.weber_connect.config_flow.WeberCloudClient", FakeCloudClient),
+        patch(
+            "custom_components.weber_connect.config_flow.async_pair",
+            new=AsyncMock(return_value=PairingResult(message_version=10, appliance_id=appliance)),
+        ),
+        patch.object(
+            hass.config_entries, "async_reload", new=AsyncMock(return_value=True)
+        ) as reload,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+            data=dict(entry.data),
+        )
+        assert result["step_id"] == "reauth_confirm"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        assert result["step_id"] == "confirm"
+        assert dict(entry.data) == original_data
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        result = await _finish_progress(hass, result)
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == ("wrong_hub" if wrong_hub else "reauth_successful")
+    assert hass.config_entries.async_get_entry(entry.entry_id) is entry
+    assert entry.title == "Patio grill" and entry.unique_id == ADDRESS
+    assert dict(entry.options) == original_options
+    assert er.async_get(hass).async_get(registered.entity_id) == registered
+    assert dr.async_get(hass).async_get(device.id) == device
+    if wrong_hub:
+        assert dict(entry.data) == original_data
+        reload.assert_not_called()
+    else:
+        assert entry.data[CONF_COMPANION_ID] != "old"
+        reload.assert_awaited_once_with(entry.entry_id)
+
+
+async def test_cancel_reauth_keeps_original_configuration(hass: Any) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=ADDRESS,
+        data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: "original"},
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=dict(entry.data),
+    )
+    hass.config_entries.flow.async_abort(result["flow_id"])
+    assert hass.config_entries.async_get_entry(entry.entry_id) is entry
+    assert entry.data[CONF_APPLIANCE_ID] == "original"
+
+
+async def test_options_use_registered_slots_and_preserve_hidden_names(hass: Any) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=ADDRESS,
+        data={},
+        options=WeberOptions(probe_names=("", "", "Hidden", "Spare")).as_dict(),
+    )
+    entry.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create(
+        "sensor", DOMAIN, f"{ADDRESS}_probe_4_temperature", config_entry=entry
+    )
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    schema = result["data_schema"]
+    validated = schema({CONF_PROBES: {}})
+    assert set(validated[CONF_PROBES]) == {"probe_name_1", "probe_name_2", "probe_name_4"}
+    with patch.object(hass.config_entries, "async_reload", new=AsyncMock(return_value=True)):
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_PROBES: {"probe_name_1": "Brisket"}}
+        )
+        await hass.async_block_till_done()
+    saved = WeberOptions.from_mapping(entry.options)
+    assert saved.probe_names == ("Brisket", "", "Hidden", "Spare")
+
+
+async def test_reauth_retry_stays_locked_to_original_hub(hass: Any) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=ADDRESS,
+        data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: "original"},
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=dict(entry.data),
+    )
+    flow = hass.config_entries.flow._progress[result["flow_id"]]
+    menu = await flow.async_step_pairing_failed()
+    assert menu["menu_options"] == ["retry_pairing", "start_over"]
+    strings = json.loads(await hass.async_add_executor_job(_STRINGS_PATH.read_text))
+    labels = strings["config"]["step"]["pairing_failed"]["menu_options"]
+    assert all(labels.get(option) for option in menu["menu_options"])
+    for retry in (flow.async_step_start_over, flow.async_step_choose_hub):
+        result = await retry()
+        assert result["step_id"] == "reauth_confirm"
+        assert flow._address == ADDRESS
+        assert flow._identity is None
+    hass.config_entries.flow.async_abort(flow.flow_id)
