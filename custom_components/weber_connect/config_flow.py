@@ -91,7 +91,30 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Pair a replacement companion for the same entry and physical hub."""
 
-        entry = self._get_reauth_entry()
+        return await self._async_begin_repair()
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the owner replace a connection without deleting a healthy entry."""
+
+        return await self._async_begin_repair()
+
+    def _get_repair_entry(self) -> config_entries.ConfigEntry:
+        """Resolve the entry through Home Assistant's source-specific guard."""
+
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            return self._get_reconfigure_entry()
+        return self._get_reauth_entry()
+
+    async def _async_begin_repair(self) -> ConfigFlowResult:
+        """Lock either replacement flow to its original hub."""
+
+        entry = self._get_repair_entry()
+        if self._async_in_progress(
+            include_uninitialized=True, match_context={"entry_id": entry.entry_id}
+        ):
+            return self.async_abort(reason="already_in_progress")
         self._address = str(entry.data[CONF_ADDRESS])
         self._name = entry.title
         await self.async_set_unique_id(entry.unique_id)
@@ -461,7 +484,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_menu(
             step_id="pairing_failed",
             menu_options=["retry_pairing", "start_over"]
-            if self.source == config_entries.SOURCE_REAUTH
+            if self.source in (config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE)
             else ["retry_pairing", "choose_hub"],
             description_placeholders={"reason": self._pairing_failure_reason},
         )
@@ -539,8 +562,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Return to discovery without leaving a dead-end flow."""
 
         self._reset_setup()
-        if self.source == config_entries.SOURCE_REAUTH:
-            return await self.async_step_reauth(dict(self._get_reauth_entry().data))
+        if self.source in (config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE):
+            return await self._async_begin_repair()
         return await self.async_step_user()
 
     async def async_step_start_over(
@@ -549,8 +572,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Restart discovery and generate a fresh identity on the next attempt."""
 
         self._reset_setup()
-        if self.source == config_entries.SOURCE_REAUTH:
-            return await self.async_step_reauth(dict(self._get_reauth_entry().data))
+        if self.source in (config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE):
+            return await self._async_begin_repair()
         return await self.async_step_user()
 
     def _reset_setup(self) -> None:
@@ -594,8 +617,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._entry_data is None:
             return await self.async_step_setup_failed()
-        if self.source == config_entries.SOURCE_REAUTH:
-            entry = self._get_reauth_entry()
+        if self.source in (config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE):
+            entry = self._get_repair_entry()
             if (
                 self._entry_data[CONF_ADDRESS] != entry.data[CONF_ADDRESS]
                 or self._entry_data[CONF_APPLIANCE_ID] != entry.data[CONF_APPLIANCE_ID]
