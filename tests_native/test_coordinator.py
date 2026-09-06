@@ -37,6 +37,9 @@ class FakeTransport:
         self.release = asyncio.Event()
         self.received_types = [0x80]
         self.error_kind = "connection"
+        self.socket_connections = 2
+        self.fast_recoveries = 1
+        self.last_error_type = "TimeoutError"
 
     async def async_run(self, status_callback: object, error_callback: object) -> None:
         self.status_callback = status_callback
@@ -368,6 +371,9 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     assert diagnostics["software_version"] == "2.0.3_7398"
     assert diagnostics["probe_slots"][0]["temperature_c"] == 63.5
     assert diagnostics["cloud_socket_received_types"] == [0x80]
+    assert diagnostics["cloud_socket_connections"] == 2
+    assert diagnostics["cloud_socket_fast_recoveries"] == 1
+    assert diagnostics["cloud_socket_last_error_type"] == "TimeoutError"
     assert "state" not in diagnostics
     assert "cloud_history_schema" not in diagnostics
 

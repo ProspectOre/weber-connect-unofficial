@@ -252,6 +252,32 @@ off, or temporarily unreachable. Wake the hub and inspect **Connection** and
 **Last successful update** on its device page. The integration retries quietly
 and republishes temperatures when fresh data arrives.
 
+### Keep Activity focused on changes
+
+The **Last successful update** sensor stays precise on every successful poll.
+To keep those timestamp changes out of Activity while retaining the live sensor
+and its History, merge this into your existing `configuration.yaml` logbook
+filter (replace the example entity ID with your hub's actual entity ID):
+
+```yaml
+logbook:
+  exclude:
+    entities:
+      - sensor.weber_connect_hub_last_successful_update
+```
+
+Keep existing exclusions and use only one `logbook:` section. Check the Home
+Assistant configuration, then restart to apply the filter. Connection and probe
+reading-status transitions remain visible. This filters Activity without
+deleting recorded history or changing the polling cadence.
+
+Established sockets that drop between polls get one immediate reconnect attempt.
+Only a fresh cooking/probe status completes recovery; appliance-only traffic
+does not refresh temperature timestamps. Persistent failures still enter the
+normal reconnect backoff and stale-reading states. Diagnostics include socket
+connection and fast-recovery counts and the last failure's exception type to
+help distinguish short relay disconnects from timeouts.
+
 ### Weber rejects the private connection
 
 Open the credential repair and continue, then open the integration's

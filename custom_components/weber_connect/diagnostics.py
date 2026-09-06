@@ -107,4 +107,7 @@ async def async_get_config_entry_diagnostics(
             if coordinator.cloud_session is not None
             else []
         ),
+        "cloud_socket_connections": coordinator.cloud_session.socket_connections,
+        "cloud_socket_fast_recoveries": coordinator.cloud_session.fast_recoveries,
+        "cloud_socket_last_error_type": coordinator.cloud_session.last_error_type,
     }
