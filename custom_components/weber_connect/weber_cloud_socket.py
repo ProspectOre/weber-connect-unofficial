@@ -13,7 +13,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import InvalidStatus
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from .const import CLOUD_OFFLINE_RETAINED_KEYS
 from .saber_frames import parse_appliance_status_payload, parse_cook_session_status_payload
@@ -129,6 +129,9 @@ class WeberCloudSession:
         self._wake = asyncio.Event()
         self.received_types: list[int] = []
         self.error_kind = "connection"
+        self.last_error_type: str | None = None
+        self.socket_connections = 0
+        self.fast_recoveries = 0
         self._appliance_status: dict[str, Any] = {}
 
     def _next_sequence(self) -> int:
@@ -180,6 +183,7 @@ class WeberCloudSession:
                 ) from exc
             raise
         self._subscribed = False
+        self.socket_connections += 1
         return self._connection
 
     async def _async_close_connection(self) -> None:
@@ -284,6 +288,24 @@ class WeberCloudSession:
     async def async_request_status(self) -> dict[str, Any]:
         """Request one current status without rebuilding the socket."""
 
+        had_connection = self._connection is not None
+        try:
+            return await self._async_request_status_once()
+        except (ConnectionClosed, OSError) as exc:
+            # A relay can close an established socket between polls. Recover
+            # once before publishing a failure for a momentary disconnect.
+            # Timeouts already get one subscription renewal below; do not
+            # extend that deadline or hide credential/protocol failures.
+            if not had_connection or isinstance(exc, TimeoutError):
+                raise
+            await self._async_close_connection()
+            status = await self._async_request_status_once()
+            self.fast_recoveries += 1
+            return status
+
+    async def _async_request_status_once(self) -> dict[str, Any]:
+        """Poll once, renewing an idle subscription at most once."""
+
         if self._connection is not None and await self.hass.async_add_executor_job(
             self.cloud_client.token_needs_refresh
         ):
@@ -330,7 +352,11 @@ class WeberCloudSession:
                         if isinstance(exc, WeberCloudCredentialError)
                         else "connection"
                     )
-                    error_callback(f"Weber Cloud connection failed: {exc}")
+                    self.last_error_type = type(exc).__name__
+                    detail = str(exc) or "No response before the connection deadline"
+                    error_callback(
+                        f"Weber Cloud connection failed ({self.last_error_type}): {detail}"
+                    )
                     delay = RECONNECT_DELAYS[min(delay_index, len(RECONNECT_DELAYS) - 1)]
                     delay_index += 1
                 else:

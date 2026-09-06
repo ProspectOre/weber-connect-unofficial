@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Recover an established cloud socket once before surfacing a brief dropped
+  connection; retain bounded timeout handling and persistent-failure states.
+- Include connection/recovery counts and exception types in diagnostics.
+- Document a targeted Activity exclusion for the frequently changing last-update
+  sensor while preserving its live value and recorded history.
 - Add reading-status entities for the hub and supported probes, distinguishing
   initial waiting, missing readings, reconnecting, and lost updates without
   guessing whether an unreachable hub is sleeping or a probe is unplugged.

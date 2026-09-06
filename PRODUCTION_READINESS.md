@@ -11,7 +11,19 @@ firmware, region, adapter, account, router, or ESPHome version.
 > sender. Proxy-only telemetry rows below are retained as historical 3.0
 > availability evidence, not as current release gates or security claims.
 
-## Next-update acceptance
+## 3.2 release status
+
+**Not ready for release.** The current connection changes have local regression
+coverage but have not been deployed for physical acceptance. The September 5
+live observations used the preceding runtime and include an unresolved cloud
+interruption. They establish a baseline, not a passing 3.2 endurance result.
+
+Track the candidate-bound gates in
+[`docs/validation/3.2.0-readiness.md`](docs/validation/3.2.0-readiness.md).
+Do not reuse the 3.1.2 presentation-only evidence exception for 3.2: runtime,
+pairing-recovery, and entity behavior have changed.
+
+## Current-update acceptance
 
 The reading-status and in-place pairing recovery update requires a physical
 Home Assistant UI pass before release. Validate first-update waiting, missing
@@ -61,7 +73,11 @@ row before describing host-adapter-only operation as physically verified.
    full cook without the Home Assistant entity expiring to `Unknown`.
 8. Delete the config entry and verify local private data is removed.
 
-### One active ESPHome proxy
+### Historical 3.0 local telemetry: one active ESPHome proxy
+
+These steps describe the retired local telemetry path. They are not executable
+3.2 release gates; current proxy acceptance covers discovery and physically
+confirmed pairing, followed by authenticated cloud telemetry.
 
 Run with the host Bluetooth adapter disabled:
 
@@ -74,7 +90,7 @@ Run with the host Bluetooth adapter disabled:
 6. Return to Phone + Home Assistant mode and verify the proxy slot is released
    before the cloud socket starts.
 
-### Extended compatibility: two active ESPHome proxies
+### Historical 3.0 local telemetry: two active ESPHome proxies
 
 This is a non-blocking resilience scenario. No second proxy is available in the
 current test environment, so 3.0 does not claim that live connections fail over
@@ -95,8 +111,8 @@ Run with the host adapter disabled:
   `Unknown` after repeated failures; the integration retries quietly and does
   not silently take Bluetooth from the phone or raise a repair for a routinely
   powered-off hub.
-- Proxy out of slots: Home Assistant retains registered entities as `Unknown` and
-  retries without a restart.
+- Proxy out of slots during pairing: setup reports the failure and offers retry;
+  an existing entry is preserved during credential replacement.
 - Hub out of range: the integration releases resources and recovers on a later
   update.
 - Sleeping or powered-off hub: registered probe entities remain visible as
@@ -106,13 +122,15 @@ Run with the host adapter disabled:
   unused server-side companion record; Home Assistant retains no credential
   after the flow is discarded.
 - Generated companion credential rejected: Home Assistant creates a distinct
-  repair that removes the unusable entry before a new physical pairing. A
-  temporary Home Assistant internet, Weber service, or hub Wi-Fi outage does
-  not remove the entry.
-- Home Assistant unload/reload: the selected cloud socket or GATT session
-  closes and no background task survives the config entry.
+  repair that starts same-hub reauthentication. Successful physical pairing
+  replaces credentials in the existing entry; cancellation and failure leave
+  its data and references intact. Ordinary connection loss does not request
+  replacement credentials.
+- Home Assistant unload/reload: the cloud socket closes and no background task
+  survives the config entry. Setup GATT connections close on completion,
+  cancellation, or failure.
 
-## Current evidence
+## Historical release evidence
 
 The local 3.1.1 release candidate gate passes 130 tests with 95.66% combined
 statement/branch coverage against the Home Assistant 2026.7.2 test framework.
@@ -120,9 +138,9 @@ Ruff, formatting, strict mypy, Bandit, dependency audit, Actionlint, release
 contract validation, and diff-integrity checks all pass locally. Hassfest and
 HACS validation remain required hosted gates on the exact release commit.
 
-The current automated results are retained in
+The historical automated results are retained in
 [`docs/validation/3.1.1-rc-automated.json`](docs/validation/3.1.1-rc-automated.json).
-The current live assertions are retained in
+The historical live assertions are retained in
 [`docs/validation/3.1.1-rc-physical.json`](docs/validation/3.1.1-rc-physical.json)
 without device identifiers. The original 3.0 transport and endurance evidence
 remains in the adjacent 3.0 validation files.
