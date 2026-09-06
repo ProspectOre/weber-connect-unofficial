@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, call, patch
 
 import pytest
 from bleak.exc import BleakCharacteristicNotFoundError, BleakError
@@ -255,13 +255,16 @@ async def test_pairing_explains_services_that_never_become_ready() -> None:
         )
 
     with (
-        patch.object(transport, "_connect", AsyncMock(side_effect=clients)),
-        patch.object(transport.asyncio, "sleep", AsyncMock()),
+        patch.object(transport, "_connect", AsyncMock(side_effect=clients)) as connect,
+        patch.object(transport.asyncio, "sleep", AsyncMock()) as sleep,
     ):
-        with pytest.raises(transport.WeberBluetoothError, match="services were not ready"):
+        with pytest.raises(transport.WeberBluetoothError, match="services were not ready") as error:
             await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
 
     assert all(client.disconnected for client in clients)
+    assert connect.await_count == 3
+    assert sleep.await_args_list == [call(1.0), call(2.0)]
+    assert error.value.__cause__ is clients[-1].start_notify.side_effect
 
 
 @pytest.mark.asyncio
@@ -328,3 +331,186 @@ async def test_connect_normalizes_transport_errors_and_safe_disconnect() -> None
     client = FakeClient()
     client.disconnect = AsyncMock(side_effect=RuntimeError("already gone"))
     await transport._safe_disconnect(client)
+
+
+@pytest.fixture
+def pairing_clock():
+    """Advance protocol deadlines without waiting on wall-clock Bluetooth timeouts."""
+    clock = SimpleNamespace(now=0.0)
+
+    async def advance(delay):
+        clock.now += delay
+
+    with (
+        patch.object(
+            transport.asyncio,
+            "get_running_loop",
+            return_value=SimpleNamespace(time=lambda: clock.now),
+        ),
+        patch.object(transport.asyncio, "sleep", side_effect=advance),
+    ):
+        yield clock
+
+
+async def test_pairing_polls_when_notifications_are_unavailable(pairing_clock):
+    client = FakeClient([_pairing_required(), _pairing_confirmed()])
+    client.start_notify = AsyncMock(side_effect=BleakError("notifications unavailable"))
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    assert client.disconnected
+
+
+async def test_pairing_notification_queue_and_ignored_confirmation_telemetry(pairing_clock):
+    client = FakeClient()
+    original_write = client.write_gatt_char
+    commands = 0
+
+    async def write(uuid, data, response=True):
+        nonlocal commands
+        await original_write(uuid, data, response)
+        if uuid != transport.COMMAND_UUID:
+            return
+        commands += 1
+        callback = client.callbacks[transport.RESPONSE_UUID]
+        if commands == 1:
+            callback(None, bytearray(_pairing_required()))
+        elif commands == 2:
+            for frame in (_status(), _pairing_required(), _pairing_confirmed()):
+                callback(None, bytearray(frame))
+
+    client.write_gatt_char = write
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    assert client.disconnected
+
+
+async def test_pairing_retries_silent_handshake_and_times_out_confirmation(pairing_clock):
+    client = FakeClient()
+    client.read_gatt_char = AsyncMock(side_effect=BleakError("read unavailable"))
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        with pytest.raises(transport.WeberBluetoothError, match="did not confirm"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY, confirmation_timeout=3)
+    assert len([write for write in client.writes if write[0] == transport.COMMAND_UUID]) == 4
+    assert client.disconnected
+
+
+async def test_pairing_does_not_reuse_stale_polled_response(pairing_clock):
+    client = FakeClient()
+    client.read_gatt_char = AsyncMock(return_value=_pairing_required())
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        with pytest.raises(transport.WeberBluetoothError, match="did not confirm"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY, confirmation_timeout=3)
+    assert client.disconnected
+
+
+@pytest.mark.parametrize("status", [1, 255])
+async def test_pairing_reports_rejected_and_unknown_status(pairing_clock, status):
+    rejected = build_command_frame(
+        2, 10, 0x85, bytes(range(16)) + bytes(range(64)) + bytes([status])
+    )
+    client = FakeClient([_pairing_required(), rejected])
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        with pytest.raises(transport.WeberBluetoothError, match="for pairing"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert client.disconnected
+
+
+async def test_pairing_uses_negotiated_version_for_later_commands(pairing_clock):
+    error = build_command_frame(1, 10, 0x87, b"\x00\x01\x00")
+    client = FakeClient([error, _pairing_required(), _pairing_confirmed()])
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.message_version == 10
+    frames = [
+        transport._decoded(data)
+        for uuid, data, _ in client.writes
+        if uuid == transport.COMMAND_UUID
+    ]
+    assert [frame["envelope"]["body_plain_candidate"]["message_version"] for frame in frames] == [
+        11,
+        10,
+        10,
+        10,
+    ]
+
+
+async def test_pairing_continues_after_unrecognized_handshake_responses(pairing_clock):
+    client = FakeClient(
+        [
+            build_command_frame(1, 10, 0x85, b""),
+            build_command_frame(2, 10, 0x87, b"\x00\x01\xff"),
+            _pairing_confirmed(),
+            _pairing_confirmed(),
+        ]
+    )
+    # A notification may repeat a valid response; polled values are deduplicated.
+    original_write = client.write_gatt_char
+
+    async def write(uuid, data, response=True):
+        await original_write(uuid, data, response)
+        if len(client.writes) == 5:
+            client.callbacks[transport.RESPONSE_UUID](None, bytearray(_pairing_confirmed()))
+
+    client.write_gatt_char = write
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.message_version == 11
+
+
+async def test_pairing_translates_services_disappearing_after_setup(pairing_clock):
+    client = FakeClient()
+    client.write_gatt_char = AsyncMock(
+        side_effect=[None, BleakCharacteristicNotFoundError(transport.COMMAND_UUID)]
+    )
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        with pytest.raises(transport.WeberBluetoothError, match="services changed"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert client.disconnected
+
+
+async def test_pairing_rejects_invalid_decoded_identity(pairing_clock):
+    client = FakeClient([_pairing_required(), _pairing_confirmed()])
+    with (
+        patch.object(transport, "_connect", AsyncMock(return_value=client)),
+        patch.object(
+            transport,
+            "_pairing_payload",
+            side_effect=[
+                (0xF1, None),
+                (0x85, {"kind": "pairing_response", "status": "CONFIRMED", "appliance_id": "bad"}),
+            ],
+        ),
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="invalid appliance identity"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert client.disconnected
+
+
+async def test_pairing_keeps_version_when_decoder_has_no_integer_version(pairing_clock):
+    client = FakeClient([_pairing_required(), _pairing_confirmed()])
+    with (
+        patch.object(transport, "_connect", AsyncMock(return_value=client)),
+        patch.object(
+            transport,
+            "_pairing_payload",
+            side_effect=[
+                (0x87, {"kind": "error", "error_type": "UNSUPPORTED_MESSAGE_VERSION"}),
+                (0xF1, None),
+                (
+                    0x85,
+                    {"kind": "pairing_response", "status": "CONFIRMED", "appliance_id": "11" * 16},
+                ),
+            ],
+        ),
+        patch.object(
+            transport,
+            "_decoded",
+            return_value={"envelope": {"body_plain_candidate": {"message_version": None}}},
+        ),
+    ):
+        # Each stage needs a fresh transport frame to pass polling deduplication.
+        client.responses = [b"error", b"required", b"confirmed"]
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.message_version == 11

@@ -245,3 +245,43 @@ def test_request_payload_rejects_invalid_json_and_scalar_payloads() -> None:
     with patch.object(client, "_open", return_value=b"42"):
         with pytest.raises(WeberCloudError, match="unexpected"):
             client._request_payload("GET", "/test", authenticated=False)
+
+
+@pytest.mark.parametrize("url", ["https://api.walker-cloud.com:bad", "https://[broken"])
+def test_malformed_origin_is_reported_as_cloud_error(url: str) -> None:
+    with pytest.raises(WeberCloudError, match="malformed"):
+        cloud._https_origin(url)
+
+
+def test_redirect_handler_rejects_unsupported_parent_result() -> None:
+    handler = cloud._SameOriginRedirectHandler()
+    request = urllib.request.Request("https://api.walker-cloud.com/start")
+    with patch.object(urllib.request.HTTPRedirectHandler, "redirect_request", return_value=None):
+        with pytest.raises(WeberCloudError, match="unsupported"):
+            handler.redirect_request(request, None, 302, "Found", {}, request.full_url)
+
+
+def test_unmatched_expected_appliance_does_not_override_unique_association() -> None:
+    assert resolve_associated_appliance_id([{"id": APPLIANCE_ID}], "33" * 16) == APPLIANCE_ID
+
+
+def test_plain_response_and_transport_properties() -> None:
+    client = WeberCloudClient(CloudConfig(DEVICE_ID, "password"))
+    assert client.messaging_host == cloud.MESSAGING_HOST
+    assert client.user_agent == cloud.USER_AGENT
+    with patch.object(client._opener, "open", return_value=FakeResponse(b"{}")):
+        assert client._open(urllib.request.Request("https://api.walker-cloud.com/test")) == b"{}"
+
+
+def test_refresh_threshold_and_close_invalidate_cached_credentials() -> None:
+    client = WeberCloudClient(CloudConfig(DEVICE_ID, "password"))
+    with patch.object(cloud.time, "time", return_value=1000):
+        assert client.token_needs_refresh()
+        client._token = "cached"
+        client._token_expiry = 1061
+        assert not client.token_needs_refresh()
+        client._token_expiry = 1060
+        assert client.token_needs_refresh()
+        client.close()
+        assert client.token_needs_refresh()
+        assert client._token_expiry == 0

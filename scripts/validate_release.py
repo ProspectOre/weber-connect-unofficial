@@ -74,9 +74,18 @@ def check_runtime_acceptance(physical: dict[str, object], automated: dict[str, o
         fail("endurance run must cover at least one hour")
     if type(gap) not in (int, float) or not math.isfinite(gap) or not 0 <= gap <= 30:
         fail("endurance run has an update gap over three polling intervals")
-    for key in ("manual_recoveries", "unexpected_entry_reloads", "capture_errors"):
+    for key in (
+        "manual_recoveries",
+        "unexpected_entry_reloads",
+        "capture_errors",
+        "new_failed_updates",
+        "disconnected_samples",
+    ):
         if type(soak.get(key)) is not int or soak[key] != 0:
             fail(f"endurance run must have zero {key}")
+    samples = soak.get("samples")
+    if type(samples) is not int or samples < math.floor(duration / 10):
+        fail("endurance run requires samples at least every ten seconds")
     if soak.get("candidate_unchanged") is not True or soak.get("final_connected") is not True:
         fail("endurance run must finish connected on the unchanged candidate")
 
@@ -264,11 +273,10 @@ def check_privacy_and_scope() -> None:
     tests = automated.get("tests")
     if (
         not isinstance(tests, dict)
-        or float(tests.get("combined_statement_branch_coverage_percent", 0)) < 95
+        or float(tests.get("combined_statement_branch_coverage_percent", 0)) < 100
     ):
-        fail("automated validation evidence must record at least 95% combined coverage")
-    if VERSION == "3.2.0":
-        check_runtime_acceptance(evidence, automated)
+        fail("automated validation evidence must record 100% combined coverage")
+    check_runtime_acceptance(evidence, automated)
 
 
 def check_workflows() -> None:
@@ -276,10 +284,10 @@ def check_workflows() -> None:
     for required in ("hassfest", "hacs/action@", "mypy", "bandit", "pip-audit"):
         if required not in ci:
             fail(f"CI is missing release gate: {required}")
-    if "--cov-fail-under=95" not in ci:
-        fail("CI must enforce at least 95% native integration coverage")
+    if "--cov-fail-under=100" not in ci:
+        fail("CI must enforce at least 100% native integration coverage")
     if "--cov-branch" not in ci:
-        fail("CI must include branch coverage in the 95% release floor")
+        fail("CI must include branch coverage in the 100% release floor")
     review_gate = (ROOT / ".github" / "workflows" / "auto-merge.yml").read_text(encoding="utf-8")
     review_stamp = review_gate.find("if ! stamp_review_gate success")
     manual_merge = review_gate.find("an explicit maintainer merge is required")

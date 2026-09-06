@@ -84,7 +84,7 @@ jobs:
           --cov=custom_components/weber_connect
           --cov-branch
           --cov-report=term-missing
-          --cov-fail-under=95
+          --cov-fail-under=100
       - name: Validate release contract
         run: python scripts/validate_release.py
       - name: Audit runtime dependency

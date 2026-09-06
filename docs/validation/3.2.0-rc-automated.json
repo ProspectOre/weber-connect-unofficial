@@ -1,14 +1,14 @@
 {
   "candidate": "3.2.0",
   "evidence_date": "2026-09-05",
-  "runtime_sha256": "d8b4253191d3481e51952eea00f3913c76d22b8d4719a04d7798af70897230a6",
+  "runtime_sha256": "94cea4c6c15a8e05a8821478d8befe94a2919349cc9ba1ea12e7f1ea83827728",
   "home_assistant_test_framework": "2026.7.2",
   "python": "3.14.7",
   "tests": {
-    "passed": 219,
+    "passed": 277,
     "failed": 0,
-    "combined_statement_branch_coverage_percent": 95.59,
-    "required_coverage_percent": 95
+    "combined_statement_branch_coverage_percent": 100,
+    "required_coverage_percent": 100
   },
   "local_gates": {
     "ruff": "passed",

@@ -450,3 +450,89 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
     ):
         assert await options.async_step_init(submitted) == {"type": "created"}
         create.assert_called_once_with(title="", data=WeberOptions().as_dict())
+
+
+@pytest.mark.asyncio
+async def test_unload_failure_keeps_transport_running(hass: object) -> None:
+    """A platform refusing unload still needs its entry's transport."""
+    from custom_components.weber_connect import async_unload_entry
+
+    coordinator = SimpleNamespace(async_close=AsyncMock())
+    entry = SimpleNamespace(runtime_data=SimpleNamespace(coordinator=coordinator))
+    with patch.object(hass.config_entries, "async_unload_platforms", return_value=False):
+        assert await async_unload_entry(hass, entry) is False
+    coordinator.async_close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_selected_hub_disappearing_keeps_confirmation_recoverable(hass: object) -> None:
+    instance = flow(hass)
+    instance.async_set_unique_id = AsyncMock()
+    instance._abort_if_unique_id_configured = MagicMock()
+    with patch(
+        "custom_components.weber_connect.config_flow.bluetooth.async_discovered_service_info",
+        return_value=[],
+    ):
+        result = await instance.async_step_user({"address": ADDRESS})
+    assert result["step_id"] == "confirm"
+    assert instance._address == ADDRESS
+    assert result["description_placeholders"]["path"] == "Home Assistant Bluetooth"
+
+
+@pytest.mark.asyncio
+async def test_preparation_retry_preserves_companion_credentials(hass: object) -> None:
+    instance = flow(hass)
+    instance._identity = IDENTITY
+    config = CloudConfig.generate(IDENTITY.companion_id)
+    instance._cloud_config = config
+    with patch.object(instance, "_async_prepare_cloud_companion", AsyncMock()) as prepare:
+        instance._start_cloud_preparation()
+        await instance._cloud_prepare_task
+    prepare.assert_awaited_once()
+    assert instance._identity is IDENTITY
+    assert instance._cloud_config is config
+    instance._cloud_prepare_task = None
+    with patch.object(instance, "_start_cloud_preparation"):
+        result = await instance.async_step_preparing()
+    assert result["step_id"] == "setup_failed"
+
+
+@pytest.mark.asyncio
+async def test_cloud_progress_reuses_pending_tick_without_deadline(hass: object) -> None:
+    instance = flow(hass)
+    pending = hass.async_create_task(asyncio.sleep(3600))
+    instance._cloud_task = pending
+    tick = instance._cloud_progress_tick()
+    assert instance._cloud_progress_tick() is tick
+    assert instance._cloud_deadline is None
+    pending.cancel()
+    await asyncio.gather(pending, tick, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_cloud_setup_requires_prepared_credentials(hass: object) -> None:
+    instance = flow(hass)
+    instance._address = ADDRESS
+    instance._identity = IDENTITY
+    instance._pairing_result = PAIRING
+    with pytest.raises(WeberCloudError, match="not prepared"):
+        await instance._async_cloud_setup()
+
+
+@pytest.mark.asyncio
+async def test_cloud_retry_discards_expired_progress_but_retains_pairing(hass: object) -> None:
+    instance = flow(hass)
+    instance._identity = IDENTITY
+    instance._pairing_result = PAIRING
+    completed = hass.async_create_task(asyncio.sleep(0))
+    await completed
+    instance._cloud_task = completed
+    instance._cloud_progress_task = completed
+    instance._cloud_deadline = 1.0
+    with patch.object(instance, "async_step_cloud", AsyncMock(return_value={"type": "retry"})):
+        assert await instance.async_step_retry_cloud() == {"type": "retry"}
+    assert instance._cloud_task is None
+    assert instance._cloud_progress_task is None
+    assert instance._cloud_deadline is None
+    assert instance._identity is IDENTITY
+    assert instance._pairing_result is PAIRING

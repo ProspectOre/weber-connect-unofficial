@@ -22,6 +22,9 @@ def evidence() -> tuple[dict, dict]:
             "manual_recoveries": 0,
             "unexpected_entry_reloads": 0,
             "capture_errors": 0,
+            "new_failed_updates": 0,
+            "disconnected_samples": 0,
+            "samples": 360,
             "candidate_unchanged": True,
             "final_connected": True,
         },
@@ -57,6 +60,11 @@ def test_each_physical_gate_requires_explicit_success(gate: str, value: object) 
         ("duration_seconds", float("nan")),
         ("maximum_update_gap_seconds", 31),
         ("maximum_update_gap_seconds", float("inf")),
+        ("samples", 1),
+        ("samples", 359),
+        ("samples", True),
+        ("new_failed_updates", 99),
+        ("disconnected_samples", 99),
         ("manual_recoveries", 1),
         ("unexpected_entry_reloads", 1),
         ("capture_errors", 1),
@@ -90,3 +98,23 @@ def test_version_label_only_change_preserves_runtime_fingerprint(
     path.write_text(json.dumps(manifest))
     (tmp_path / "coordinator.py").write_text("# runtime changed\n")
     assert release.runtime_fingerprint() != original
+
+
+def test_future_release_still_checks_runtime_acceptance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release, "VERSION", "3.3.0")
+
+    def reject(*args: object) -> None:
+        raise RuntimeError("acceptance checked")
+
+    monkeypatch.setattr(release, "check_runtime_acceptance", reject)
+    with pytest.raises(RuntimeError, match="acceptance checked"):
+        release.check_privacy_and_scope()
+
+
+@pytest.mark.parametrize("key", ["new_failed_updates", "disconnected_samples", "samples"])
+@pytest.mark.parametrize("value", [None, False, -1, "360", 360.0])
+def test_endurance_counters_require_valid_integers(key: str, value: object) -> None:
+    physical, automated = evidence()
+    physical["endurance"][key] = value
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
