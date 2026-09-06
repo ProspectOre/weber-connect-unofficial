@@ -288,6 +288,11 @@ references. It replaces the stored connection only after physical pairing and
 the cloud association check succeed. Cancelling or failing recovery leaves the
 existing configuration intact. Physical approval is still required.
 
+To replace a connection yourself, open the hub entry's three-dot menu and
+choose **Reconfigure**. This uses the same guarded, same-hub pairing flow.
+Only one replacement flow can run for an entry at a time. A routine outage
+usually needs only automatic recovery, not new pairing.
+
 ### Collecting diagnostics
 
 Open **Settings → Devices & services → Weber Connect Unofficial**, select the

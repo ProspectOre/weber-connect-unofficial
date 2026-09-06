@@ -388,9 +388,12 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
     reload_entry.assert_awaited_once_with(entry.entry_id)
 
 
+@pytest.mark.parametrize(
+    "source", [config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE]
+)
 @pytest.mark.parametrize("wrong_hub", [False, True])
 async def test_reauth_preserves_entry_and_requires_same_appliance(
-    hass: Any, wrong_hub: bool
+    hass: Any, wrong_hub: bool, source: str
 ) -> None:
     """A completed pairing replaces credentials only for the original appliance."""
     entry = MockConfigEntry(
@@ -428,7 +431,7 @@ async def test_reauth_preserves_entry_and_requires_same_appliance(
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
-            context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+            context={"source": source, "entry_id": entry.entry_id},
             data=dict(entry.data),
         )
         assert result["step_id"] == "reauth_confirm"
@@ -439,7 +442,7 @@ async def test_reauth_preserves_entry_and_requires_same_appliance(
         result = await _finish_progress(hass, result)
         await hass.async_block_till_done()
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == ("wrong_hub" if wrong_hub else "reauth_successful")
+    assert result["reason"] == ("wrong_hub" if wrong_hub else f"{source}_successful")
     assert hass.config_entries.async_get_entry(entry.entry_id) is entry
     assert entry.title == "Patio grill" and entry.unique_id == ADDRESS
     assert dict(entry.options) == original_options
@@ -453,7 +456,10 @@ async def test_reauth_preserves_entry_and_requires_same_appliance(
         reload.assert_awaited_once_with(entry.entry_id)
 
 
-async def test_cancel_reauth_keeps_original_configuration(hass: Any) -> None:
+@pytest.mark.parametrize(
+    "source", [config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE]
+)
+async def test_cancel_reauth_keeps_original_configuration(hass: Any, source: str) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=ADDRESS,
@@ -462,7 +468,7 @@ async def test_cancel_reauth_keeps_original_configuration(hass: Any) -> None:
     entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        context={"source": source, "entry_id": entry.entry_id},
         data=dict(entry.data),
     )
     hass.config_entries.flow.async_abort(result["flow_id"])
@@ -494,7 +500,10 @@ async def test_options_use_registered_slots_and_preserve_hidden_names(hass: Any)
     assert saved.probe_names == ("Brisket", "", "Hidden", "Spare")
 
 
-async def test_reauth_retry_stays_locked_to_original_hub(hass: Any) -> None:
+@pytest.mark.parametrize(
+    "source", [config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE]
+)
+async def test_reauth_retry_stays_locked_to_original_hub(hass: Any, source: str) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=ADDRESS,
@@ -503,7 +512,7 @@ async def test_reauth_retry_stays_locked_to_original_hub(hass: Any) -> None:
     entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
-        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        context={"source": source, "entry_id": entry.entry_id},
         data=dict(entry.data),
     )
     flow = hass.config_entries.flow._progress[result["flow_id"]]
@@ -518,3 +527,34 @@ async def test_reauth_retry_stays_locked_to_original_hub(hass: Any) -> None:
         assert flow._address == ADDRESS
         assert flow._identity is None
     hass.config_entries.flow.async_abort(flow.flow_id)
+
+
+@pytest.mark.parametrize(
+    "first_source", [config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE]
+)
+async def test_replacement_flows_cannot_pair_concurrently(hass: Any, first_source: str) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=ADDRESS,
+        data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: "original"},
+    )
+    entry.add_to_hass(hass)
+    first = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": first_source, "entry_id": entry.entry_id},
+        data=dict(entry.data),
+    )
+    second_source = (
+        config_entries.SOURCE_RECONFIGURE
+        if first_source == config_entries.SOURCE_REAUTH
+        else config_entries.SOURCE_REAUTH
+    )
+    second = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": second_source, "entry_id": entry.entry_id},
+        data=dict(entry.data),
+    )
+    assert second["type"] is FlowResultType.ABORT
+    assert second["reason"] == "already_in_progress"
+    assert dict(entry.data) == {CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: "original"}
+    hass.config_entries.flow.async_abort(first["flow_id"])

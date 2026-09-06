@@ -77,7 +77,8 @@
       "already_configured": "This Weber hub is already configured.",
       "already_in_progress": "Setup is already open for this Weber hub. Close this window and continue the existing setup.",
       "reauth_successful": "Connection replaced. Turn Bluetooth back on and reopen the Weber app. Your existing device and entities have been kept.",
-      "wrong_hub": "The paired appliance does not match this integration. Nothing was changed. Retry with the original hub."
+      "wrong_hub": "The paired appliance does not match this integration. Nothing was changed. Retry with the original hub.",
+      "reconfigure_successful": "Connection replaced. Turn Bluetooth back on and reopen the Weber app. Your existing device and entities have been kept."
     }
   },
   "options": {

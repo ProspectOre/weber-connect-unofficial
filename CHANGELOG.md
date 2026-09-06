@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add native **Reconfigure** for owner-initiated same-hub connection replacement,
+  preserving existing entities and preventing concurrent replacement flows.
 - Recover an established cloud socket once before surfacing a brief dropped
   connection; retain bounded timeout handling and persistent-failure states.
 - Include connection/recovery counts and exception types in diagnostics.
