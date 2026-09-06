@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
+import math
 import py_compile
 import re
 import struct
@@ -13,13 +15,117 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.1.2"
+VERSION = "3.2.0"
 # A presentation-only release may reuse evidence for an unchanged runtime. Keep
 # each exception keyed to the exact release so changing VERSION automatically
 # requires matching fresh evidence unless a new exception is deliberately added.
 PRESENTATION_ONLY_RUNTIME_EVIDENCE = {"3.1.2": "3.1.1"}
 RUNTIME_EVIDENCE_VERSION = PRESENTATION_ONLY_RUNTIME_EVIDENCE.get(VERSION, VERSION)
 DOMAIN = "weber_connect"
+PHYSICAL_ACCEPTANCE_GATES = (
+    "upgrade_preserves_identity",
+    "rollback_tree_verified",
+    "physical_reauth_success",
+    "physical_reauth_cancellation",
+    "desktop_ui",
+    "mobile_ui",
+    "activity_filter",
+    "fresh_recovery",
+    "sustained_loss_clears_readings",
+    "cloud_only_app_live",
+)
+
+
+# This one reviewed Bluetooth retry refactor does not change cloud endurance.
+# Keep the original physical fingerprint and require fresh pairing evidence;
+# every other runtime transition still requires a new complete acceptance run.
+PHYSICAL_EVIDENCE_AMENDMENTS = {
+    (
+        "3.2.0",
+        "d8b4253191d3481e51952eea00f3913c76d22b8d4719a04d7798af70897230a6",
+        "94cea4c6c15a8e05a8821478d8befe94a2919349cc9ba1ea12e7f1ea83827728",
+    ): "bluetooth_retry_exhaustion_equivalent_refactor",
+}
+PHYSICAL_AMENDMENT_GATES = (
+    "physical_reauth_success",
+    "physical_reauth_cancellation",
+    "upgrade_preserves_identity",
+    "fresh_telemetry",
+)
+
+
+def runtime_fingerprint() -> str:
+    """Bind evidence to all shipped files, permitting only a version-label change."""
+
+    digest = hashlib.sha256()
+    for path in sorted(INTEGRATION.rglob("*")):
+        if not path.is_file() or "__pycache__" in path.parts or path.name == ".DS_Store":
+            continue
+        relative = path.relative_to(INTEGRATION).as_posix()
+        content = path.read_bytes()
+        if relative == "manifest.json":
+            manifest = json.loads(content)
+            manifest.pop("version", None)
+            content = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        digest.update(relative.encode() + b"\0" + hashlib.sha256(content).digest())
+    return digest.hexdigest()
+
+
+def check_runtime_acceptance(physical: dict[str, object], automated: dict[str, object]) -> None:
+    """Reject incomplete, stale, or insufficient runtime release evidence."""
+
+    fingerprint = runtime_fingerprint()
+    if automated.get("runtime_sha256") != fingerprint:
+        fail("automated evidence does not match the current runtime")
+    baseline = physical.get("runtime_sha256")
+    if baseline != fingerprint or "runtime_amendment" in physical:
+        amendment = physical.get("runtime_amendment")
+        if not isinstance(baseline, str) or not isinstance(amendment, dict):
+            fail("physical evidence does not match the current runtime")
+        amendment_type = PHYSICAL_EVIDENCE_AMENDMENTS.get((VERSION, baseline, fingerprint))
+        if (
+            amendment_type is None
+            or amendment.get("type") != amendment_type
+            or amendment.get("baseline_runtime_sha256") != baseline
+            or amendment.get("runtime_sha256") != fingerprint
+        ):
+            fail("physical runtime amendment is not an authorized exact transition")
+        amendment_verified = amendment.get("verified")
+        if not isinstance(amendment_verified, dict) or any(
+            amendment_verified.get(gate) is not True for gate in PHYSICAL_AMENDMENT_GATES
+        ):
+            fail("required physical runtime amendment gates are incomplete")
+    verified = physical.get("verified")
+    if not isinstance(verified, dict) or any(
+        verified.get(gate) is not True for gate in PHYSICAL_ACCEPTANCE_GATES
+    ):
+        fail("required physical acceptance gates are incomplete")
+    soak = physical.get("endurance")
+    if not isinstance(soak, dict):
+        fail("physical evidence is missing the endurance run")
+    duration = soak.get("duration_seconds")
+    gap = soak.get("maximum_update_gap_seconds")
+    if type(duration) not in (int, float) or not math.isfinite(duration) or duration < 3600:
+        fail("endurance run must cover at least one hour")
+    if type(gap) not in (int, float) or not math.isfinite(gap) or not 0 <= gap <= 30:
+        fail("endurance run has an update gap over three polling intervals")
+    age = soak.get("maximum_sampled_update_age_seconds")
+    if type(age) not in (int, float) or not math.isfinite(age) or not 0 <= age <= 30:
+        fail("endurance run has stale or missing sampled telemetry")
+    for key in (
+        "manual_recoveries",
+        "unexpected_entry_reloads",
+        "capture_errors",
+        "new_failed_updates",
+        "disconnected_samples",
+    ):
+        if type(soak.get(key)) is not int or soak[key] != 0:
+            fail(f"endurance run must have zero {key}")
+    samples = soak.get("samples")
+    if type(samples) is not int or samples < math.floor(duration / 10):
+        fail("endurance run requires samples at least every ten seconds")
+    if soak.get("candidate_unchanged") is not True or soak.get("final_connected") is not True:
+        fail("endurance run must finish connected on the unchanged candidate")
 
 
 def fail(message: str) -> None:
@@ -205,9 +311,10 @@ def check_privacy_and_scope() -> None:
     tests = automated.get("tests")
     if (
         not isinstance(tests, dict)
-        or float(tests.get("combined_statement_branch_coverage_percent", 0)) < 95
+        or float(tests.get("combined_statement_branch_coverage_percent", 0)) < 100
     ):
-        fail("automated validation evidence must record at least 95% combined coverage")
+        fail("automated validation evidence must record 100% combined coverage")
+    check_runtime_acceptance(evidence, automated)
 
 
 def check_workflows() -> None:
@@ -215,10 +322,10 @@ def check_workflows() -> None:
     for required in ("hassfest", "hacs/action@", "mypy", "bandit", "pip-audit"):
         if required not in ci:
             fail(f"CI is missing release gate: {required}")
-    if "--cov-fail-under=95" not in ci:
-        fail("CI must enforce at least 95% native integration coverage")
+    if "--cov-fail-under=100" not in ci:
+        fail("CI must enforce at least 100% native integration coverage")
     if "--cov-branch" not in ci:
-        fail("CI must include branch coverage in the 95% release floor")
+        fail("CI must include branch coverage in the 100% release floor")
     review_gate = (ROOT / ".github" / "workflows" / "auto-merge.yml").read_text(encoding="utf-8")
     review_stamp = review_gate.find("if ! stamp_review_gate success")
     manual_merge = review_gate.find("an explicit maintainer merge is required")

@@ -500,3 +500,92 @@ async def test_empty_timeout_error_has_actionable_diagnostics() -> None:
     assert session.last_error_type == "TimeoutError"
     assert "TimeoutError" in errors[0]
     assert "deadline" in errors[0]
+
+
+@pytest.mark.asyncio
+async def test_wake_network_failure_still_allows_websocket_status() -> None:
+    cloud = FakeCloudClient()
+    cloud.wake_messaging = MagicMock(side_effect=OSError("wake unavailable"))
+    connection = FakeConnection([routed(0x80)])
+    session = socket.WeberCloudSession(FakeHass(), cloud, APPLIANCE_ID, subscribe_delay=0)
+    with patch.object(socket, "connect", AsyncMock(return_value=connection)):
+        status = await session.async_request_status()
+    assert status["kind"] == "cook_session_status"
+    assert session.socket_connections == 1
+    await session.async_close()
+
+
+@pytest.mark.asyncio
+async def test_upgrade_server_failure_preserves_original_exception() -> None:
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    error = socket.InvalidStatus(SimpleNamespace(status_code=503))
+    with patch.object(socket, "connect", AsyncMock(side_effect=error)):
+        with pytest.raises(socket.InvalidStatus) as raised:
+            await session._async_connect()
+    assert raised.value is error
+    assert session._connection is None
+    assert session.socket_connections == 0
+
+
+@pytest.mark.asyncio
+async def test_close_failure_still_clears_connection_and_subscription() -> None:
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    connection = FakeConnection()
+    connection.close = AsyncMock(side_effect=OSError("already disconnected"))
+    session._connection = connection
+    session._subscribed = True
+    await session.async_close()
+    assert session._connection is None
+    assert not session._subscribed
+    assert session._closed
+
+
+@pytest.mark.asyncio
+async def test_subscription_pacing_and_unrecognized_frame_before_status() -> None:
+    connection = FakeConnection([routed(0x82), routed(0x80)])
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    with (
+        patch.object(socket, "connect", AsyncMock(return_value=connection)),
+        patch.object(socket.asyncio, "sleep", AsyncMock()) as sleep,
+    ):
+        status = await session.async_request_status()
+    assert status["kind"] == "cook_session_status"
+    assert session.received_types == [0x82, 0x80]
+    assert sleep.await_count == 9
+    assert all(call.args == (0.05,) for call in sleep.await_args_list)
+    await session.async_close()
+
+
+@pytest.mark.asyncio
+async def test_run_cancellation_during_request_closes_session() -> None:
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    statuses, errors = MagicMock(), MagicMock()
+    with patch.object(
+        session, "async_request_status", AsyncMock(side_effect=asyncio.CancelledError)
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await session.async_run(statuses, errors)
+    statuses.assert_not_called()
+    errors.assert_not_called()
+    assert session._closed
+
+
+@pytest.mark.asyncio
+async def test_run_delay_timeout_retries_then_honors_close() -> None:
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    statuses = []
+
+    def publish(status: dict[str, object]) -> None:
+        statuses.append(status)
+        if len(statuses) == 2:
+            session._closed = True
+            session.async_wake()
+
+    with (
+        patch.object(socket, "STATUS_INTERVAL", 0),
+        patch.object(session, "async_request_status", AsyncMock(return_value={"ok": True})) as poll,
+    ):
+        await session.async_run(publish, MagicMock())
+    assert statuses == [{"ok": True}, {"ok": True}]
+    assert poll.await_count == 2
+    assert session._closed

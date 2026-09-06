@@ -171,6 +171,7 @@ async def async_pair(
     # approval; no pairing request has reached the hub at this point.
     client: BleakClient | None = None
     try:
+        last_service_error: BleakCharacteristicNotFoundError | None = None
         for service_attempt in range(3):
             client = await _connect(
                 hass,
@@ -195,11 +196,9 @@ async def async_pair(
                 await _safe_disconnect(client)
                 client = None
                 bluetooth.async_clear_advertisement_history(hass, address)
+                last_service_error = exc
                 if service_attempt == 2:
-                    raise WeberBluetoothError(
-                        "The hub connected, but its Bluetooth services were not ready. "
-                        "Wake the hub and try pairing again."
-                    ) from exc
+                    continue
                 _LOGGER.debug(
                     "Weber pairing services were incomplete; reconnecting (%s/3)",
                     service_attempt + 1,
@@ -211,7 +210,7 @@ async def async_pair(
             raise WeberBluetoothError(
                 "The hub connected, but its Bluetooth services were not ready. "
                 "Wake the hub and try pairing again."
-            )
+            ) from last_service_error
 
         async def poll_response(timeout: float) -> bytes | None:
             nonlocal last_polled_response

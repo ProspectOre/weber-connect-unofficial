@@ -45,3 +45,16 @@ async def test_credential_repair_starts_reauth_without_removing_entry(hass: obje
     start.assert_called_once_with(hass)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert hass.config_entries.async_get_entry(entry.entry_id) is entry
+
+
+@pytest.mark.asyncio
+async def test_credential_repair_finishes_if_entry_was_removed(hass: object) -> None:
+    """A repair opened before entry deletion must not start a replacement flow."""
+    flow = await async_create_fix_flow(
+        hass, "credentials_rejected_removed", {"entry_id": "removed"}
+    )
+    flow.hass = hass
+    with patch.object(hass.config_entries.flow, "async_init") as start:
+        result = await flow.async_step_confirm({})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    start.assert_not_called()

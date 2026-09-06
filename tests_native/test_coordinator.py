@@ -405,3 +405,37 @@ def test_startup_outage_keeps_waiting_until_first_reading(hass: object) -> None:
     coordinator._async_status({"probes": [{"probe_number": 1, "probe_temp_c": 30.0}]})
     coordinator._async_error("later interruption")
     assert coordinator.data["reading_status"] == "reconnecting"
+
+
+@pytest.mark.asyncio
+async def test_close_before_start_releases_constructed_clients(hass: object) -> None:
+    """Setup cleanup must work before a background session was started."""
+    coordinator, transport = _coordinator(hass, cloud=True)
+    assert coordinator._transport_task is None
+    await coordinator.async_close()
+    assert transport.closed
+    assert coordinator.cloud_client.closed
+
+
+def test_error_defenses_do_not_retain_cloud_metadata_for_unknown_source(hass: object) -> None:
+    """Synthetic unsupported source exercises the retained defensive guard."""
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator.source = "unsupported"
+    coordinator._async_error("unavailable")
+    coordinator._async_error("unavailable")
+    with patch.object(coordinator_module.ir, "async_create_issue") as issue:
+        coordinator._async_error("unavailable")
+    assert coordinator.consecutive_failures == 3
+    assert coordinator.data["software_version"] is None
+    issue.assert_not_called()
+
+
+def test_error_defense_tolerates_absent_cloud_session(hass: object) -> None:
+    """Synthetic missing session must not turn error reporting into an exception."""
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator.cloud_session = None
+    with patch.object(coordinator_module.ir, "async_create_issue") as issue:
+        coordinator._async_error("session unavailable")
+    assert coordinator.last_error == "session unavailable"
+    assert coordinator.data["reading_status"] == "waiting"
+    issue.assert_not_called()

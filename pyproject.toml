@@ -1,6 +1,6 @@
 [project]
 name = "weber-connect-unofficial"
-version = "3.1.2"
+version = "3.2.0"
 requires-python = ">=3.14"
 
 [tool.ruff]
@@ -33,7 +33,7 @@ branch = true
 source = ["custom_components/weber_connect"]
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 100
 show_missing = true
 exclude_also = [
   "if __name__ == .__main__.:",
