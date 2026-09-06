@@ -255,7 +255,7 @@ and republishes temperatures when fresh data arrives.
 ### Keep Activity focused on changes
 
 The **Last successful update** sensor stays precise on every successful poll.
-To keep those timestamp changes out of Activity while retaining the live sensor
+To keep those timestamp changes out of the main Activity feed while retaining the live sensor
 and its History, merge this into your existing `configuration.yaml` logbook
 filter (replace the example entity ID with your hub's actual entity ID):
 
@@ -269,7 +269,13 @@ logbook:
 Keep existing exclusions and use only one `logbook:` section. Check the Home
 Assistant configuration, then restart to apply the filter. Connection and probe
 reading-status transitions remain visible. This filters Activity without
-deleting recorded history or changing the polling cadence.
+deleting recorded history or changing the polling cadence. Device-specific
+Activity views can still show this sensor because their queries bypass the
+logbook-only filter. To stop future timestamp history and device Activity
+entries too, add the same exact entity under `recorder.exclude.entities`.
+That leaves its live value available and preserves temperature and connection
+history, but stops recording future history for this timestamp sensor. Existing
+records remain until normal retention removes them.
 
 Established sockets that drop between polls get one immediate reconnect attempt.
 Only a fresh cooking/probe status completes recovery; appliance-only traffic

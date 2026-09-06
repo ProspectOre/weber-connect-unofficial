@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
+import math
 import py_compile
 import re
 import struct
@@ -13,13 +15,70 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.1.2"
+VERSION = "3.2.0"
 # A presentation-only release may reuse evidence for an unchanged runtime. Keep
 # each exception keyed to the exact release so changing VERSION automatically
 # requires matching fresh evidence unless a new exception is deliberately added.
 PRESENTATION_ONLY_RUNTIME_EVIDENCE = {"3.1.2": "3.1.1"}
 RUNTIME_EVIDENCE_VERSION = PRESENTATION_ONLY_RUNTIME_EVIDENCE.get(VERSION, VERSION)
 DOMAIN = "weber_connect"
+PHYSICAL_ACCEPTANCE_GATES = (
+    "upgrade_preserves_identity",
+    "rollback_tree_verified",
+    "physical_reauth_success",
+    "physical_reauth_cancellation",
+    "desktop_ui",
+    "mobile_ui",
+    "activity_filter",
+    "fresh_recovery",
+    "sustained_loss_clears_readings",
+    "cloud_only_app_live",
+)
+
+
+def runtime_fingerprint() -> str:
+    """Bind evidence to all shipped files, permitting only a version-label change."""
+
+    digest = hashlib.sha256()
+    for path in sorted(INTEGRATION.rglob("*")):
+        if not path.is_file() or "__pycache__" in path.parts or path.name == ".DS_Store":
+            continue
+        relative = path.relative_to(INTEGRATION).as_posix()
+        content = path.read_bytes()
+        if relative == "manifest.json":
+            manifest = json.loads(content)
+            manifest.pop("version", None)
+            content = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        digest.update(relative.encode() + b"\0" + hashlib.sha256(content).digest())
+    return digest.hexdigest()
+
+
+def check_runtime_acceptance(physical: dict[str, object], automated: dict[str, object]) -> None:
+    """Reject incomplete, stale, or insufficient runtime release evidence."""
+
+    fingerprint = runtime_fingerprint()
+    for name, evidence in (("physical", physical), ("automated", automated)):
+        if evidence.get("runtime_sha256") != fingerprint:
+            fail(f"{name} evidence does not match the current runtime")
+    verified = physical.get("verified")
+    if not isinstance(verified, dict) or any(
+        verified.get(gate) is not True for gate in PHYSICAL_ACCEPTANCE_GATES
+    ):
+        fail("required physical acceptance gates are incomplete")
+    soak = physical.get("endurance")
+    if not isinstance(soak, dict):
+        fail("physical evidence is missing the endurance run")
+    duration = soak.get("duration_seconds")
+    gap = soak.get("maximum_update_gap_seconds")
+    if type(duration) not in (int, float) or not math.isfinite(duration) or duration < 3600:
+        fail("endurance run must cover at least one hour")
+    if type(gap) not in (int, float) or not math.isfinite(gap) or not 0 <= gap <= 30:
+        fail("endurance run has an update gap over three polling intervals")
+    for key in ("manual_recoveries", "unexpected_entry_reloads", "capture_errors"):
+        if type(soak.get(key)) is not int or soak[key] != 0:
+            fail(f"endurance run must have zero {key}")
+    if soak.get("candidate_unchanged") is not True or soak.get("final_connected") is not True:
+        fail("endurance run must finish connected on the unchanged candidate")
 
 
 def fail(message: str) -> None:
@@ -208,6 +267,8 @@ def check_privacy_and_scope() -> None:
         or float(tests.get("combined_statement_branch_coverage_percent", 0)) < 95
     ):
         fail("automated validation evidence must record at least 95% combined coverage")
+    if VERSION == "3.2.0":
+        check_runtime_acceptance(evidence, automated)
 
 
 def check_workflows() -> None:

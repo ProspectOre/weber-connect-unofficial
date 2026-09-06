@@ -1,0 +1,98 @@
+{
+  "candidate": "3.2.0",
+  "evidence_date": "2026-09-05",
+  "identifiers": "redacted",
+  "runtime_sha256": "d8b4253191d3481e51952eea00f3913c76d22b8d4719a04d7798af70897230a6",
+  "environment": {
+    "home_assistant": "2026.9.0",
+    "host": "Home Assistant Yellow",
+    "hub": "Weber Connect Hub 2.0.3_7398",
+    "transport": "Weber Cloud"
+  },
+  "verified": {
+    "upgrade_preserves_identity": true,
+    "rollback_tree_verified": true,
+    "physical_reauth_success": true,
+    "physical_reauth_cancellation": true,
+    "desktop_ui": true,
+    "mobile_ui": true,
+    "activity_filter": true,
+    "fresh_recovery": true,
+    "sustained_loss_clears_readings": true,
+    "cloud_only_app_live": true
+  },
+  "endurance": {
+    "duration_seconds": 3600.027,
+    "samples": 360,
+    "maximum_sampled_update_age_seconds": 10.399,
+    "manual_recoveries": 0,
+    "unexpected_entry_reloads": 0,
+    "capture_errors": 0,
+    "candidate_unchanged": true,
+    "final_connected": true,
+    "disconnected_samples": 0,
+    "fast_recoveries": 6,
+    "new_failed_updates": 0,
+    "raw_sha256": "d7e24840121b16d4b8cbe54c60cca09c5a6cb6b4e793cfc9bd0a94b703d70ef0",
+    "maximum_update_gap_seconds": 19.629709,
+    "gap_measurement": "Maximum difference between successive distinct successful-update timestamps observed in the capture."
+  },
+  "not_verified": [
+    "Other hub models, firmware, regions and Bluetooth adapters.",
+    "Rollback restore was verified in an isolated directory; prior runtime was not booted."
+  ],
+  "pairing_recovery": {
+    "result": "same-hub connection replaced successfully",
+    "existing_device_and_entry_preserved": true,
+    "entities_after": 18,
+    "fresh_probe_temperature_f": 74.1,
+    "post_pairing_connected": true,
+    "observed_local": "2026-09-05T21:25:00-07:00",
+    "cancellation_before_pairing_preserved_entry": true,
+    "active_pairing_cancelled_with_live_readings_preserved": true
+  },
+  "power_off_test": {
+    "observed_local_date": "2026-09-05",
+    "probe_cleared_local": "21:27:01",
+    "reconnecting_local": "21:27:35",
+    "connection_lost_local": "21:28:29",
+    "temperature_state": "unknown",
+    "all_probe_statuses": "connection_lost",
+    "hub_status": "connection_lost",
+    "connection": "disconnected",
+    "slow_telemetry_retained": true,
+    "recovery_pending": false,
+    "recovered_local": "21:44:50",
+    "automatic_recovery_without_reload": true,
+    "recovered_probe_temperature_f": 74.3
+  },
+  "ui_validation": {
+    "desktop_settings": "passed",
+    "desktop_repair_confirmation": "passed",
+    "responsive_viewport_css_pixels": [
+      390,
+      740
+    ],
+    "four_probe_fields_and_submit_reachable": true,
+    "physical_phone_confirmation": "Actual iPhone Air via iPhone Mirroring: device data and all four nickname fields plus Submit displayed and were reachable.",
+    "phone_model": "iPhone Air"
+  },
+  "rollback_validation": {
+    "method": "Restore preserved component backup into an isolated directory and compare every file digest.",
+    "files": 23,
+    "restored_tree_sha256": "6c2afbd87cd07023aa1dac0db1cd1b748799b3b01840e5a96266b6efac0e0a28",
+    "live_candidate_unchanged": true,
+    "old_runtime_booted": false
+  },
+  "activity_validation": {
+    "recorder_excludes_only_last_successful_update": true,
+    "main_and_device_activity_no_new_timestamp_events": true,
+    "live_timestamp_still_advances": true,
+    "status_events_remain_visible": true,
+    "old_history_not_purged": true
+  },
+  "cloud_concurrency": {
+    "owner_confirmed_app_live_with_phone_bluetooth_off": true,
+    "observed_local_date": "2026-09-05"
+  }
+}

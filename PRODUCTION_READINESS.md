@@ -13,11 +13,14 @@ firmware, region, adapter, account, router, or ESPHome version.
 
 ## 3.2 release status
 
-**Not ready for release.** The current connection changes have local regression
-coverage but have not been deployed for physical acceptance. The September 5
-live observations used the preceding runtime and include an unresolved cloud
-interruption. They establish a baseline, not a passing 3.2 endurance result.
+**Physical acceptance passed on the documented equipment.** The reviewed runtime is deployed on Home
+Assistant 2026.9.0. It completed a one-hour connection run with six automatic
+recoveries and no new failed updates. Same-hub re-pairing preserved the entry
+and 18 entities. Owner-controlled power-off cleared readings and reported
+connection loss; power-on recovered automatically without a reload.
 
+The final release PR must pass its exact-head CI and review gates before merge
+and publication. The candidate-bound records below document physical acceptance.
 Track the candidate-bound gates in
 [`docs/validation/3.2.0-readiness.md`](docs/validation/3.2.0-readiness.md).
 Do not reuse the 3.1.2 presentation-only evidence exception for 3.2: runtime,

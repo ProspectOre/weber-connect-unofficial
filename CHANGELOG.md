@@ -1,14 +1,14 @@
 # Changelog
 
-## Unreleased
+## 3.2.0 — 2026-09-05
 
 - Add native **Reconfigure** for owner-initiated same-hub connection replacement,
   preserving existing entities and preventing concurrent replacement flows.
 - Recover an established cloud socket once before surfacing a brief dropped
   connection; retain bounded timeout handling and persistent-failure states.
 - Include connection/recovery counts and exception types in diagnostics.
-- Document a targeted Activity exclusion for the frequently changing last-update
-  sensor while preserving its live value and recorded history.
+- Document targeted Activity filtering for the last-update sensor, including
+  the recorder option that also removes future device-page timestamp noise.
 - Add reading-status entities for the hub and supported probes, distinguishing
   initial waiting, missing readings, reconnecting, and lost updates without
   guessing whether an unreachable hub is sleeping or a probe is unplugged.
