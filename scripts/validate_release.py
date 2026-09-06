@@ -36,6 +36,24 @@ PHYSICAL_ACCEPTANCE_GATES = (
 )
 
 
+# This one reviewed Bluetooth retry refactor does not change cloud endurance.
+# Keep the original physical fingerprint and require fresh pairing evidence;
+# every other runtime transition still requires a new complete acceptance run.
+PHYSICAL_EVIDENCE_AMENDMENTS = {
+    (
+        "3.2.0",
+        "d8b4253191d3481e51952eea00f3913c76d22b8d4719a04d7798af70897230a6",
+        "94cea4c6c15a8e05a8821478d8befe94a2919349cc9ba1ea12e7f1ea83827728",
+    ): "bluetooth_retry_exhaustion_equivalent_refactor",
+}
+PHYSICAL_AMENDMENT_GATES = (
+    "physical_reauth_success",
+    "physical_reauth_cancellation",
+    "upgrade_preserves_identity",
+    "fresh_telemetry",
+)
+
+
 def runtime_fingerprint() -> str:
     """Bind evidence to all shipped files, permitting only a version-label change."""
 
@@ -57,9 +75,26 @@ def check_runtime_acceptance(physical: dict[str, object], automated: dict[str, o
     """Reject incomplete, stale, or insufficient runtime release evidence."""
 
     fingerprint = runtime_fingerprint()
-    for name, evidence in (("physical", physical), ("automated", automated)):
-        if evidence.get("runtime_sha256") != fingerprint:
-            fail(f"{name} evidence does not match the current runtime")
+    if automated.get("runtime_sha256") != fingerprint:
+        fail("automated evidence does not match the current runtime")
+    baseline = physical.get("runtime_sha256")
+    if baseline != fingerprint or "runtime_amendment" in physical:
+        amendment = physical.get("runtime_amendment")
+        if not isinstance(baseline, str) or not isinstance(amendment, dict):
+            fail("physical evidence does not match the current runtime")
+        amendment_type = PHYSICAL_EVIDENCE_AMENDMENTS.get((VERSION, baseline, fingerprint))
+        if (
+            amendment_type is None
+            or amendment.get("type") != amendment_type
+            or amendment.get("baseline_runtime_sha256") != baseline
+            or amendment.get("runtime_sha256") != fingerprint
+        ):
+            fail("physical runtime amendment is not an authorized exact transition")
+        amendment_verified = amendment.get("verified")
+        if not isinstance(amendment_verified, dict) or any(
+            amendment_verified.get(gate) is not True for gate in PHYSICAL_AMENDMENT_GATES
+        ):
+            fail("required physical runtime amendment gates are incomplete")
     verified = physical.get("verified")
     if not isinstance(verified, dict) or any(
         verified.get(gate) is not True for gate in PHYSICAL_ACCEPTANCE_GATES

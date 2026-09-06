@@ -94,5 +94,21 @@
   "cloud_concurrency": {
     "owner_confirmed_app_live_with_phone_bluetooth_off": true,
     "observed_local_date": "2026-09-05"
+  },
+  "runtime_amendment": {
+    "type": "bluetooth_retry_exhaustion_equivalent_refactor",
+    "baseline_runtime_sha256": "d8b4253191d3481e51952eea00f3913c76d22b8d4719a04d7798af70897230a6",
+    "runtime_sha256": "94cea4c6c15a8e05a8821478d8befe94a2919349cc9ba1ea12e7f1ea83827728",
+    "verified": {
+      "physical_reauth_success": true,
+      "physical_reauth_cancellation": true,
+      "upgrade_preserves_identity": true,
+      "fresh_telemetry": true
+    },
+    "observed_local": "2026-09-05T22:42:00-07:00",
+    "candidate_commit": "b5cd8d6d7ede6bbdff18d019d27ce62ea0869b84",
+    "installed_tree_sha256": "a871a2eaa1a1375472ddeca84015c6f193c118253acfb40944cb6559b01561a2",
+    "reason": "Only Bluetooth service retry exhaustion changed; cloud telemetry, sensors, configuration flows and UI are byte-identical apart from the manifest version. Three attempts, delays of one and two seconds, cleanup and final error cause are explicitly tested. Original endurance data is retained with its original runtime fingerprint.",
+    "pairing_observation": "Active cancellation preserved fresh readings. First subsequent pairing rejected an unsupported encrypted response without replacing settings; one retry succeeded. Fresh telemetry followed with zero failed updates at the seven-update readback. All 18 entity IDs and names matched the saved baseline."
   }
 }

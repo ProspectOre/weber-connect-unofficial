@@ -118,3 +118,115 @@ def test_endurance_counters_require_valid_integers(key: str, value: object) -> N
     physical["endurance"][key] = value
     with pytest.raises(SystemExit):
         release.check_runtime_acceptance(physical, automated)
+
+
+def amended_evidence() -> tuple[dict, dict]:
+    physical, automated = evidence()
+    (version, baseline, current), amendment_type = next(
+        iter(release.PHYSICAL_EVIDENCE_AMENDMENTS.items())
+    )
+    assert version == "3.2.0"
+    physical["runtime_sha256"] = baseline
+    physical["runtime_amendment"] = {
+        "type": amendment_type,
+        "baseline_runtime_sha256": baseline,
+        "runtime_sha256": current,
+        "verified": dict.fromkeys(release.PHYSICAL_AMENDMENT_GATES, True),
+    }
+    automated["runtime_sha256"] = current
+    return physical, automated
+
+
+def test_exact_reviewed_amendment_preserves_original_endurance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    physical, automated = amended_evidence()
+    original = copy.deepcopy(physical)
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
+    release.check_runtime_acceptance(physical, automated)
+    assert physical == original
+    assert physical["runtime_sha256"] != automated["runtime_sha256"]
+
+
+@pytest.mark.parametrize("field", ["type", "baseline_runtime_sha256", "runtime_sha256"])
+def test_amendment_rejects_wrong_transition_fields(
+    field: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    physical, automated = amended_evidence()
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
+    physical["runtime_amendment"][field] = "unreviewed"
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+@pytest.mark.parametrize("gate", release.PHYSICAL_AMENDMENT_GATES)
+@pytest.mark.parametrize("value", [False, None, "true", 1])
+def test_amendment_requires_each_fresh_physical_gate(
+    gate: str, value: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    physical, automated = amended_evidence()
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
+    physical["runtime_amendment"]["verified"][gate] = value
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+@pytest.mark.parametrize("value", [None, [], "approved", {}])
+def test_amendment_requires_structured_record(
+    value: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    physical, automated = amended_evidence()
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
+    physical["runtime_amendment"] = value
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+def test_prior_fingerprint_without_amendment_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    physical, automated = amended_evidence()
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
+    del physical["runtime_amendment"]
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+@pytest.mark.parametrize("change", ["baseline", "current", "release", "automated", "relabel"])
+def test_amendment_cannot_authorize_another_runtime_or_release(
+    change: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    physical, automated = amended_evidence()
+    current = automated["runtime_sha256"]
+    if change == "baseline":
+        physical["runtime_sha256"] = "another-baseline"
+        physical["runtime_amendment"]["baseline_runtime_sha256"] = "another-baseline"
+    elif change == "current":
+        current = "another-runtime"
+        automated["runtime_sha256"] = current
+        physical["runtime_amendment"]["runtime_sha256"] = current
+    elif change == "release":
+        monkeypatch.setattr(release, "VERSION", "3.3.0")
+    elif change == "automated":
+        automated["runtime_sha256"] = physical["runtime_sha256"]
+    else:
+        physical["runtime_sha256"] = current
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: current)
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+def test_amendment_still_requires_complete_original_endurance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    physical, automated = amended_evidence()
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
+    physical["endurance"]["duration_seconds"] = 3599
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+def test_amendment_missing_gate_cannot_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    physical, automated = amended_evidence()
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
+    del physical["runtime_amendment"]["verified"]["fresh_telemetry"]
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)

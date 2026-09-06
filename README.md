@@ -207,7 +207,7 @@ Weber Cloud status, device state, and firmware metadata. Battery changed from
 preserved the entity identities, resumed cloud updates with zero failures, and
 produced no Weber warning or error log entries.
 
-The current greenfield transport implementation is held to at least 95%
+The current greenfield transport implementation is held to 100%
 combined statement/branch coverage. Import, config flow, transient
 identity generation, entity contracts, protocol frames, persistent-session
 cleanup during pairing, diagnostics redaction, and transport ownership are

@@ -45,7 +45,7 @@ Every release pull request must pass:
 - pairing, settings, credential-repair, status-frame, malformed-frame,
   persistent cloud session, entity-identity, transport-ownership, and
   diagnostics-redaction tests;
-- at least 95% combined statement and branch coverage across the native
+- 100% combined statement and branch coverage across the native
   integration;
 - Ruff formatting/lint, strict mypy, Bandit, CodeQL, and Actionlint;
 - HACS repository validation and Home Assistant Hassfest;
