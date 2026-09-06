@@ -19,6 +19,7 @@ def evidence() -> tuple[dict, dict]:
         "endurance": {
             "duration_seconds": 3600,
             "maximum_update_gap_seconds": 12,
+            "maximum_sampled_update_age_seconds": 10,
             "manual_recoveries": 0,
             "unexpected_entry_reloads": 0,
             "capture_errors": 0,
@@ -228,5 +229,20 @@ def test_amendment_missing_gate_cannot_pass(monkeypatch: pytest.MonkeyPatch) -> 
     physical, automated = amended_evidence()
     monkeypatch.setattr(release, "runtime_fingerprint", lambda: automated["runtime_sha256"])
     del physical["runtime_amendment"]["verified"]["fresh_telemetry"]
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+@pytest.mark.parametrize("age", [None, True, -1, 31, 3600, float("nan"), float("inf"), "10"])
+def test_stale_or_invalid_sampled_telemetry_blocks_release(age: object) -> None:
+    physical, automated = evidence()
+    physical["endurance"]["maximum_sampled_update_age_seconds"] = age
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
+def test_missing_sampled_telemetry_age_blocks_release() -> None:
+    physical, automated = evidence()
+    del physical["endurance"]["maximum_sampled_update_age_seconds"]
     with pytest.raises(SystemExit):
         release.check_runtime_acceptance(physical, automated)

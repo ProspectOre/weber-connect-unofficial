@@ -109,6 +109,9 @@ def check_runtime_acceptance(physical: dict[str, object], automated: dict[str, o
         fail("endurance run must cover at least one hour")
     if type(gap) not in (int, float) or not math.isfinite(gap) or not 0 <= gap <= 30:
         fail("endurance run has an update gap over three polling intervals")
+    age = soak.get("maximum_sampled_update_age_seconds")
+    if type(age) not in (int, float) or not math.isfinite(age) or not 0 <= age <= 30:
+        fail("endurance run has stale or missing sampled telemetry")
     for key in (
         "manual_recoveries",
         "unexpected_entry_reloads",
