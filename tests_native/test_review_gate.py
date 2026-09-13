@@ -14,16 +14,14 @@ def test_active_workflow_is_canonical_adapter() -> None:
 def test_review_verdict_rechecks_on_trusted_events() -> None:
     w = _workflow()
     assert "pull_request_target:" in w and "issue_comment:" in w
-    assert "workflow_run:" in w and "workflows: [CI, Codex Review Signal]" in w
-    assert "Codex Review Signal" in w
+    assert "workflow_run:" in w and "workflows: [CI]" in w
+    assert "Codex Review Signal" not in w
 
 
-def test_review_event_signal_is_privilege_free() -> None:
-    signal = (ROOT / ".github/workflows/review-canonical-signal.yml").read_text(encoding="utf-8")
-    assert "pull_request_review:" in signal
-    assert "pull_request_review_comment:" in signal
-    assert "permissions: {}" in signal
-    assert "actions/checkout" not in signal
+def test_review_event_reconciliation_uses_trusted_polling() -> None:
+    assert not (ROOT / ".github/workflows/review-canonical-signal.yml").exists()
+    assert "schedule:" in _workflow()
+    assert "SIGNAL_TITLE" not in _workflow()
 def test_workflow_has_exact_head_ci_proof() -> None:
     w = _workflow()
     assert "candidate-proof" in w
