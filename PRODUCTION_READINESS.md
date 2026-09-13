@@ -11,7 +11,14 @@ firmware, region, adapter, account, router, or ESPHome version.
 > sender. Proxy-only telemetry rows below are retained as historical 3.0
 > availability evidence, not as current release gates or security claims.
 
-## 3.3 release acceptance
+## 3.3 release candidate
+
+Final review identified two report snapshot defects. Both are fixed with
+regression coverage; fresh physical acceptance is pending on runtime
+`63bcedc8efc07256cd74cd016477adb826f7c49fc6915966c6fa8a78e693fe1f`.
+The initial candidate results below remain bound to their original runtime.
+
+### Initial candidate acceptance
 
 Support reports and clarified pairing instructions passed physical acceptance
 on Home Assistant 2026.9.1 and an iPhone Air. Same-hub pairing and active

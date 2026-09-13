@@ -97,6 +97,9 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._support_journal = SupportJournal()
         self._support_return = "no_devices"
         self._support_snapshot: dict[str, Any] = {}
+        self._pairing_bluetooth: dict[str, Any] | None = None
+        self._support_menu_options: list[str] = []
+        self._support_error_placeholders: dict[str, str] | None = None
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Pair a replacement companion for the same entry and physical hub."""
@@ -306,6 +309,10 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raise WeberBluetoothError("The Weber hub is no longer visible.")
         if self._identity is None or self._cloud_config is None:
             raise WeberBluetoothError("The private Weber companion is not ready.")
+        self._pairing_bluetooth = {
+            **bluetooth_summary(self.hass, self._address),
+            "captured_at": "pairing_attempt_start",
+        }
         self._support_journal.record(SupportEvent.CONNECTING)
         self._pairing_task = self.hass.async_create_task(
             async_pair(
@@ -593,14 +600,20 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         self._support_return = step_id
         self._support_snapshot = support_report(stage=step_id, journal=self._support_journal)
-        self._support_snapshot["bluetooth"] = bluetooth_summary(self.hass, self._address)
+        self._support_snapshot["bluetooth"] = (
+            dict(self._pairing_bluetooth)
+            if self._pairing_bluetooth is not None
+            else {**bluetooth_summary(self.hass, self._address), "captured_at": "error_screen"}
+        )
         self._support_snapshot["pairing_complete"] = self._pairing_result is not None
         self._support_snapshot["message_version"] = (
             self._pairing_result.message_version if self._pairing_result is not None else None
         )
+        self._support_menu_options = [*menu_options, "support"]
+        self._support_error_placeholders = description_placeholders
         return self.async_show_menu(
             step_id=step_id,
-            menu_options=[*menu_options, "support"],
+            menu_options=self._support_menu_options,
             description_placeholders=description_placeholders,
         )
 
@@ -622,15 +635,11 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Return without creating a companion or restarting any network task."""
 
-        steps = {
-            "no_devices": self.async_step_no_devices,
-            "pairing_failed": self.async_step_pairing_failed,
-            "cloud_preparation_failed": self.async_step_cloud_preparation_failed,
-            "cloud_not_linked": self.async_step_cloud_not_linked,
-            "cloud_unavailable": self.async_step_cloud_unavailable,
-            "setup_failed": self.async_step_setup_failed,
-        }
-        return await steps[self._support_return]()
+        return self.async_show_menu(
+            step_id=self._support_return,
+            menu_options=self._support_menu_options,
+            description_placeholders=self._support_error_placeholders,
+        )
 
     async def async_step_choose_hub(
         self, user_input: dict[str, Any] | None = None
@@ -664,6 +673,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pairing_result = None
         self._support_journal = SupportJournal()
         self._support_snapshot = {}
+        self._pairing_bluetooth = None
         self._pairing_task = None
         self._cloud_prepare_task = None
         self._cloud_task = None

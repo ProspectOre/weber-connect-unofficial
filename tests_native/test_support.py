@@ -145,7 +145,15 @@ async def test_every_failure_offers_report_and_return_preserves_attempt(
     assert report["stage"] == stage
     assert report["events"][-2]["event"] == "pairing_request_sent"
     assert report["pairing_complete"] is False
-    returned = await flow.async_step_return_to_error()
+    with patch(
+        "custom_components.weber_connect.config_flow.bluetooth_summary",
+        side_effect=AssertionError("Returning must not sample changed Bluetooth state"),
+    ):
+        returned = await flow.async_step_return_to_error()
+        reopened = await flow.async_step_support()
+    assert reopened["description_placeholders"] == result["description_placeholders"]
+    assert returned["menu_options"] == menu["menu_options"]
+    assert returned.get("description_placeholders") == menu.get("description_placeholders")
     assert returned["step_id"] == stage
     assert flow._identity is identity
     assert flow._pairing_task is None
@@ -210,3 +218,35 @@ async def test_support_navigation_through_home_assistant_flow_manager(hass: obje
         assert result["flow_id"] == flow_id
         assert not hass.config_entries.async_entries(DOMAIN)
         hass.config_entries.flow.async_abort(flow_id)
+
+
+async def test_pairing_report_keeps_visibility_before_cleanup(hass: object) -> None:
+    from unittest.mock import AsyncMock
+
+    from custom_components.weber_connect.bluetooth import WeberBluetoothError
+
+    flow = WeberConnectConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+    flow._address = SECRET
+    flow._identity = SimpleNamespace()
+    flow._cloud_config = SimpleNamespace()
+    visible = {"selected_connectable": True, "selected_advertisement_visible": True}
+    with (
+        patch(
+            "custom_components.weber_connect.config_flow.bluetooth_summary", return_value=visible
+        ),
+        patch(
+            "custom_components.weber_connect.config_flow.async_pair",
+            new=AsyncMock(side_effect=WeberBluetoothError("The hub did not confirm pairing")),
+        ),
+    ):
+        await flow.async_step_pairing()
+        await hass.async_block_till_done()
+        await flow.async_step_pairing()
+    with patch("custom_components.weber_connect.config_flow.bluetooth_summary", return_value={}):
+        await flow.async_step_pairing_failed()
+    report = json.loads((await flow.async_step_support())["description_placeholders"]["report"])
+    assert report["bluetooth"] == {**visible, "captured_at": "pairing_attempt_start"}
+    flow._reset_setup()
+    assert flow._pairing_bluetooth is None
