@@ -36,10 +36,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request }}
+          WORKFLOW_PRS: ${{ toJSON(github.event.workflow_run.pull_requests.*.number) }}
         run: |
           set -euo pipefail
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-          matrix="$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp | jq -c '{include: [.[][] | {pr_number: .number}]}')"
+          if [[ "$EVENT_NAME" == "schedule" || ( "$EVENT_NAME" == "workflow_run" && "$WORKFLOW_PRS" == "[]" ) ]]; then
+            matrix="$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp | jq -c '{include: [.[][] | {pr_number: .number}]}')"
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            matrix="$(jq -cn --argjson prs "$WORKFLOW_PRS" '{include: [$prs[] | {pr_number: .}]}')"
+          elif [[ "$TARGET_PR" =~ ^[1-9][0-9]*$ ]]; then
+            matrix="$(jq -cn --argjson pr "$TARGET_PR" '{include: [{pr_number: $pr}]}')"
+          else
+            matrix='{"include":[]}'
+          fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   evaluate:
     needs: discover
@@ -61,8 +72,8 @@ jobs:
           POLICY_REF: ${{ github.workflow_sha }}
           PR_NUMBER: ${{ matrix.pr_number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          EXPECTED_SHA256: '37432df1966e26a131f75e8e2bf5a6eb76b5a9ebffaa1a83251710f453d2ed1f'
-          EXPECTED_DEPENDENCY_SHA256: '7aac00bde1d0324fa72dd54568d809745027808746aaa88b7b6f4a3608b60dc8'
+          EXPECTED_SHA256: 'c438462f16bd5d981aa53107f07378364d96031f00b73e2a465de39f92323d47'
+          EXPECTED_DEPENDENCY_SHA256: '86e785705ef4b4279479293eec0fa745ca13a04e65230bc2cdb93584d64f4f12'
         shell: bash
         run: |
           set -euo pipefail
