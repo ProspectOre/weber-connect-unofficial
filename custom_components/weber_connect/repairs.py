@@ -6,6 +6,8 @@ import voluptuous as vol
 from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.core import HomeAssistant
 
+from .support import report_placeholders, support_report
+
 
 class CredentialRepairFlow(RepairsFlow):
     """Start pairing recovery without removing the existing entry."""
@@ -23,7 +25,16 @@ class CredentialRepairFlow(RepairsFlow):
             if (entry := self.hass.config_entries.async_get_entry(self._entry_id)) is not None:
                 entry.async_start_reauth(self.hass)
             return self.async_create_entry(data={})
-        return self.async_show_form(step_id="confirm", data_schema=vol.Schema({}))
+        return self.async_show_form(
+            step_id="confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders=report_placeholders(
+                support_report(
+                    stage="credentials_rejected",
+                    entry=self.hass.config_entries.async_get_entry(self._entry_id),
+                )
+            ),
+        )
 
 
 async def async_create_fix_flow(

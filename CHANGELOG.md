@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add reviewable support reports to setup errors, settings, and credential
+  recovery, including versions and bounded diagnostic events without raw logs
+  or credentials. Reports can be copied into an existing issue or prefilled
+  into a new GitHub issue without restarting setup.
+- Include pairing milestones and runtime failure/recovery events; clarify that
+  the pairing progress screen can appear before the device receives a request.
+- Keep diagnostics available for unloaded entries and redact probe nicknames,
+  arbitrary stored options, and raw exception messages from downloads.
+
 ## 3.2.0 — 2026-09-05
 
 - Add native **Reconfigure** for owner-initiated same-hub connection replacement,

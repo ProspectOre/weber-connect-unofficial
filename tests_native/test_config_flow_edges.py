@@ -363,6 +363,7 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
     assert pairing_failed["menu_options"] == [
         "retry_pairing",
         "choose_hub",
+        "support",
     ]
     assert pairing_failed["description_placeholders"] == {
         "reason": "The pairing connection ended before setup finished."
@@ -370,16 +371,19 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
     assert (await instance.async_step_cloud_preparation_failed())["menu_options"] == [
         "retry_preparation",
         "start_over",
+        "support",
     ]
     assert (await instance.async_step_cloud_not_linked())["menu_options"] == [
         "retry_cloud",
         "start_over",
+        "support",
     ]
     assert (await instance.async_step_cloud_unavailable())["menu_options"] == [
         "retry_cloud",
         "start_over",
+        "support",
     ]
-    assert (await instance.async_step_setup_failed())["menu_options"] == ["start_over"]
+    assert (await instance.async_step_setup_failed())["menu_options"] == ["start_over", "support"]
 
     instance._address = ADDRESS
     instance._identity = IDENTITY
@@ -428,7 +432,7 @@ async def test_recovery_menus_reset_complete_and_options(hass: object) -> None:
         "config_entry",
         new_callable=PropertyMock,
         return_value=SimpleNamespace(
-            options=WeberOptions().as_dict(), unique_id="hub", entry_id="entry"
+            options=WeberOptions().as_dict(), unique_id="hub", entry_id="entry", data={}
         ),
     ):
         form = await options.async_step_init()
