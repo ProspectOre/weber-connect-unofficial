@@ -2,7 +2,7 @@
 name: Codex Review Gate
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled, auto_merge_enabled]
   issue_comment:
     types: [created, edited, deleted]
   workflow_run:
@@ -28,6 +28,16 @@ concurrency:
   cancel-in-progress: false
 jobs:
   discover:
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request &&
+      ((github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+      github.event.comment.user.id == 199175422 && github.event.comment.user.type == 'Bot') ||
+      (github.event.comment.user.type == 'User' &&
+      (github.event.comment.author_association == 'OWNER' ||
+      github.event.comment.author_association == 'MEMBER' ||
+      github.event.comment.author_association == 'COLLABORATOR') &&
+      contains(github.event.comment.body, '@codex review'))))
     runs-on: ${{ vars.USE_HOSTED_RUNNERS != 'false' && vars.USE_HOSTED_LINUX != 'false' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","mbp"]') }}
     outputs:
       matrix: ${{ steps.prs.outputs.matrix }}
@@ -43,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-          if [[ "$EVENT_NAME" == workflow_run && "$SIGNAL_TITLE" =~ ^Codex\ review\ signal\ \#([1-9][0-9]*)$ ]]; then
+          if [[ "$EVENT_NAME" == workflow_run && "$SIGNAL_TITLE" =~ ^Codex\ review\ signal\ \#([1-9][0-9]*)(\ withdrawn)?$ ]]; then
             matrix="$(jq -cn --argjson pr "${BASH_REMATCH[1]}" '{include: [{pr_number: $pr}]}')"
           elif [[ "$EVENT_NAME" == workflow_run && "$SIGNAL_TITLE" == 'Ignored review signal' ]]; then
             matrix='{"include":[]}'
@@ -78,8 +88,8 @@ jobs:
           POLICY_REF: ${{ github.workflow_sha }}
           PR_NUMBER: ${{ matrix.pr_number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          EXPECTED_SHA256: 'd7979b89a303a54e9218d8e1ef779986dcad26fcf00139e9e7b070c6884c743d'
-          EXPECTED_DEPENDENCY_SHA256: '0e091bac2b5e1133c05db80197eebc89dbb53f8f8f6d46c23719556d3df07658'
+          EXPECTED_SHA256: 'f5ed0d33322ba8070fcf0eabfde341cadbd45f1275576b976deda59da701f679'
+          EXPECTED_DEPENDENCY_SHA256: 'e86cb1961e9f4eff0b3cd40dba39a08a7a4627a59c7e39a043d4ec068eace18c'
         shell: bash
         run: |
           set -euo pipefail
@@ -124,12 +134,8 @@ jobs:
           base_sha="$(jq -er '.base.sha' <<< "$candidate")"
           head_repo="$(jq -er '.head.repo.full_name' <<< "$candidate")"
           [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$base_sha" =~ ^[0-9a-f]{40}$ ]]
-          if [[ "$head_repo" != "$REPO" ]]; then
-            echo "head=$head_sha" >> "$GITHUB_OUTPUT"
-            echo "base=$base_sha" >> "$GITHUB_OUTPUT"
-            echo "Fork head detected; preserving the review-only path."
-            exit 0
-          fi
+          # Fork heads must still present successful repository CI. Dependency
+          # exemption removes Codex review cost only after this proof succeeds.
           # A head can back multiple PRs against different bases. Filter workflow
           # runs by this PR before choosing the newest ID; selecting globally first
           # lets a newer run for the other base hide this PR's valid run forever.
@@ -205,6 +211,7 @@ jobs:
           REVIEW_REVIEW_CONTEXT: review-gate-regular-review
           EVENT_HEAD_SHA: ${{ steps.candidate-proof.outputs.head }}
           EXPECTED_BASE_SHA: ${{ steps.candidate-proof.outputs.base }}
+          REVIEW_FINDING_AFTER: ${{ github.event_name == 'workflow_run' && endsWith(github.event.workflow_run.display_title, ' withdrawn') && github.event.workflow_run.created_at || '' }}
           CANONICAL_REVIEW_GATE: ${{ steps.canonical.outputs.path }}
           SECURITY_REVIEW_BOT_LOGIN: chatgpt-codex-connector
           SECURITY_REVIEW_BOT_EVENT_LOGIN: chatgpt-codex-connector[bot]

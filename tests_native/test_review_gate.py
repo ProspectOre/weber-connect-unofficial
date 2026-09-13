@@ -36,13 +36,13 @@ def test_ci_proof_binds_the_pr_before_recency() -> None:
     assert "sort -t$'\\t' -k1,1nr" in w
 
 
-def test_fork_review_only_path_precedes_ci_lookup() -> None:
+def test_forks_cannot_skip_ci_before_dependency_exemption() -> None:
     w = _workflow()
-    fork = w.index('head_repo="$(jq -er')
-    branch = w.index('if [[ "$head_repo" != "$REPO" ]]', fork)
-    ci = w.index("actions/workflows/ci.yml/runs?event=pull_request")
-    assert fork < branch < ci
-    assert "preserving the review-only path" in w
+    proof = w[w.index('- id: candidate-proof'):w.index('- name: Evaluate canonical gate')]
+    assert 'if [[ "$head_repo" != "$REPO" ]]' not in proof
+    assert 'actions/workflows/ci.yml/runs?event=pull_request' in proof
+    assert '"$ci_check_head" != "$head_sha" || "$ci_conclusion" != "success"' in proof
+
 def test_ci_proof_exports_head_and_base_to_evaluator() -> None:
     w = _workflow()
     assert "EVENT_HEAD_SHA:" in w and "EXPECTED_BASE_SHA:" in w
