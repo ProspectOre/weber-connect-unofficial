@@ -10,10 +10,10 @@
     "physical_reauth_success": true,
     "physical_reauth_cancellation": true,
     "desktop_ui": true,
-    "mobile_ui": false,
-    "activity_filter": false,
-    "fresh_recovery": false,
-    "sustained_loss_clears_readings": false,
+    "mobile_ui": true,
+    "activity_filter": true,
+    "fresh_recovery": true,
+    "sustained_loss_clears_readings": true,
     "cloud_only_app_live": true
   },
   "observations": {
@@ -38,9 +38,46 @@
     "physical_reauth_success": true,
     "post_reauth_fresh_probe_f": 74.8,
     "post_reauth_same_device_link": true,
-    "post_reauth_entry_id_preserved": true
+    "post_reauth_entry_id_preserved": true,
+    "full_entity_id_and_name_comparison": true,
+    "post_reauth_entities": 18,
+    "active_cancellation_successful_updates": 18,
+    "active_cancellation_failed_updates": 0,
+    "recorder_and_logbook_exclude_last_update": true,
+    "device_activity_status_events_visible": true,
+    "device_activity_timestamp_events_absent": true,
+    "probe_cleared_while_cloud_updates_continued": true
   },
   "not_verified": [
     "Physical acceptance remains incomplete; do not publish this candidate."
-  ]
+  ],
+  "power_off_test": {
+    "observed_utc": "2026-09-13T05:51:38.261420+00:00",
+    "connection": "off",
+    "probe_1": "unknown",
+    "hub_status": "connection_lost",
+    "probe_1_status": "connection_lost",
+    "last_successful_update": "2026-09-13T05:46:51+00:00",
+    "consecutive_failures": 7,
+    "automatic_recovery_verified": true,
+    "recovered_utc": "2026-09-13T05:55:58.272385+00:00",
+    "recovered_probe_f": 75.2,
+    "reload_performed": false
+  },
+  "endurance_progress": {
+    "start_utc": "2026-09-13T05:56:18.273380+00:00",
+    "baseline_failed_updates": 11,
+    "status": "running",
+    "observed_seconds": 250.011,
+    "samples": 26,
+    "new_failed_updates": 0,
+    "disconnected_samples": 0
+  },
+  "ui_validation": {
+    "actual_phone": "iPhone Air via iPhone Mirroring",
+    "support_link_visible": true,
+    "four_probe_fields_reachable": true,
+    "submit_reachable": true,
+    "mobile_activity_recovery_events_visible": true
+  }
 }
