@@ -1,0 +1,12 @@
+name: Codex Review Event Signal
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+permissions: {}
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Review event received; trusted gate will recompute API evidence."
