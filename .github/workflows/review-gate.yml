@@ -6,7 +6,7 @@ on:
   issue_comment:
     types: [created, edited, deleted]
   workflow_run:
-    workflows: [CI, Codex Review Event Signal]
+    workflows: [CI, Codex Review Signal]
     types: [requested, completed]
   schedule:
     - cron: '*/15 * * * *'
@@ -38,11 +38,16 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           TARGET_PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request }}
+          SIGNAL_TITLE: ${{ github.event.workflow_run.display_title }}
           WORKFLOW_PRS: ${{ toJSON(github.event.workflow_run.pull_requests.*.number) }}
         run: |
           set -euo pipefail
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-          if [[ "$EVENT_NAME" == "schedule" || ( "$EVENT_NAME" == "workflow_run" && "$WORKFLOW_PRS" == "[]" ) ]]; then
+          if [[ "$EVENT_NAME" == workflow_run && "$SIGNAL_TITLE" =~ ^Codex\ review\ signal\ \#([1-9][0-9]*)$ ]]; then
+            matrix="$(jq -cn --argjson pr "${BASH_REMATCH[1]}" '{include: [{pr_number: $pr}]}')"
+          elif [[ "$EVENT_NAME" == workflow_run && "$SIGNAL_TITLE" == 'Ignored review signal' ]]; then
+            matrix='{"include":[]}'
+          elif [[ "$EVENT_NAME" == "schedule" || ( "$EVENT_NAME" == "workflow_run" && "$WORKFLOW_PRS" == "[]" ) ]]; then
             matrix="$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp | jq -c '{include: [.[][] | {pr_number: .number}]}')"
           elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
             matrix="$(jq -cn --argjson prs "$WORKFLOW_PRS" '{include: [$prs[] | {pr_number: .}]}')"
@@ -67,13 +72,14 @@ jobs:
       - id: canonical
         name: Load pinned canonical review policy
         env:
+          AUDIT_MODE: ${{ github.event_name == 'schedule' }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           POLICY_REF: ${{ github.workflow_sha }}
           PR_NUMBER: ${{ matrix.pr_number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          EXPECTED_SHA256: 'c438462f16bd5d981aa53107f07378364d96031f00b73e2a465de39f92323d47'
-          EXPECTED_DEPENDENCY_SHA256: '86e785705ef4b4279479293eec0fa745ca13a04e65230bc2cdb93584d64f4f12'
+          EXPECTED_SHA256: 'd7979b89a303a54e9218d8e1ef779986dcad26fcf00139e9e7b070c6884c743d'
+          EXPECTED_DEPENDENCY_SHA256: '0e091bac2b5e1133c05db80197eebc89dbb53f8f8f6d46c23719556d3df07658'
         shell: bash
         run: |
           set -euo pipefail
@@ -82,7 +88,7 @@ jobs:
           [[ "$POLICY_REF" =~ ^[0-9a-f]{40}$ && "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
           # Revoke prior success before a download failure can strand it green.
           pr="$(gh api "repos/$REPO/pulls/$PR_NUMBER")"
-          if [[ "$(jq -r '.state' <<< "$pr")" == open ]]; then
+          if [[ "${AUDIT_MODE:-false}" != true && "$(jq -r '.state' <<< "$pr")" == open ]]; then
             head="$(jq -er '.head.sha' <<< "$pr")"
             [[ "$head" =~ ^[0-9a-f]{40}$ ]]
             gh api "repos/$REPO/statuses/$head" --silent -f state=pending \
@@ -187,6 +193,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
           INPUT_PR: ${{ inputs.pull_request }}
+          EVENT_NAME: ${{ github.event_name }}
           EVENT_PR_NUMBER: ${{ matrix.pr_number }}
           REPO: ${{ github.repository }}
           REVIEW_BOT: chatgpt-codex-connector[bot]
@@ -203,7 +210,7 @@ jobs:
           SECURITY_REVIEW_BOT_EVENT_LOGIN: chatgpt-codex-connector[bot]
         shell: bash
         run: |
-          export GITHUB_EVENT_NAME=workflow_dispatch INPUT_PR="$EVENT_PR_NUMBER"
+          export GITHUB_EVENT_NAME="$EVENT_NAME" INPUT_PR="${INPUT_PR:-$EVENT_PR_NUMBER}" EVENT_PR_NUMBER="$EVENT_PR_NUMBER"
           bash "$CANONICAL_REVIEW_GATE"
       - if: '${{ always() }}'
         env:
