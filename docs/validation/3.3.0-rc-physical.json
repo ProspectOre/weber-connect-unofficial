@@ -1,9 +1,9 @@
 {
   "candidate": "3.3.0",
-  "evidence_date": "2026-09-12",
+  "evidence_date": "2026-09-13",
   "identifiers": "redacted",
   "runtime_sha256": "3c9c37b77b15769404f573866157c57d680134ff27558c0b794d71b7599fcec8",
-  "status": "acceptance_in_progress",
+  "status": "passed",
   "verified": {
     "upgrade_preserves_identity": true,
     "rollback_tree_verified": true,
@@ -49,7 +49,8 @@
     "probe_cleared_while_cloud_updates_continued": true
   },
   "not_verified": [
-    "Physical acceptance remains incomplete; do not publish this candidate."
+    "Other models, firmware, regions and Bluetooth adapters.",
+    "Rollback copy matched the prior runtime; prior runtime was not booted."
   ],
   "power_off_test": {
     "observed_utc": "2026-09-13T05:51:38.261420+00:00",
@@ -64,20 +65,26 @@
     "recovered_probe_f": 75.2,
     "reload_performed": false
   },
-  "endurance_progress": {
-    "start_utc": "2026-09-13T05:56:18.273380+00:00",
-    "baseline_failed_updates": 11,
-    "status": "running",
-    "observed_seconds": 250.011,
-    "samples": 26,
-    "new_failed_updates": 0,
-    "disconnected_samples": 0
-  },
   "ui_validation": {
     "actual_phone": "iPhone Air via iPhone Mirroring",
     "support_link_visible": true,
     "four_probe_fields_reachable": true,
     "submit_reachable": true,
     "mobile_activity_recovery_events_visible": true
+  },
+  "endurance": {
+    "duration_seconds": 3920.174,
+    "samples": 393,
+    "capture_errors": 0,
+    "disconnected_samples": 0,
+    "new_failed_updates": 0,
+    "maximum_update_gap_seconds": 11.0,
+    "maximum_sampled_update_age_seconds": 2.300871,
+    "unexpected_entry_reloads": 0,
+    "final_connected": true,
+    "last_sample": "2026-09-13T07:01:38.447277+00:00",
+    "raw_sha256": "80fe7266fd821ca3efb546f4af84dcdfd1dd47ea78b0268f7e7c2fcfb09619a2",
+    "candidate_unchanged": true,
+    "manual_recoveries": 0
   }
 }
