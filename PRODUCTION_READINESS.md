@@ -11,6 +11,16 @@ firmware, region, adapter, account, router, or ESPHome version.
 > sender. Proxy-only telemetry rows below are retained as historical 3.0
 > availability evidence, not as current release gates or security claims.
 
+## 3.3 release candidate
+
+Support reports and clarified pairing instructions are under physical acceptance
+on Home Assistant 2026.9.1. Same-hub pairing and active cancellation passed;
+entity IDs and names matched the saved baseline. Power-loss recovery, mobile
+UI, Activity filtering, and the one-hour endurance run remain pending.
+
+The 3.3.0 records explicitly track incomplete gates. The release validator
+blocks publication until they pass; the 3.2.0 receipts below remain historical.
+
 ## 3.2 release status
 
 **Physical acceptance passed on the documented equipment.** The reviewed runtime is deployed on Home

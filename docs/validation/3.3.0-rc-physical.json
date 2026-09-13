@@ -1,0 +1,46 @@
+{
+  "candidate": "3.3.0",
+  "evidence_date": "2026-09-12",
+  "identifiers": "redacted",
+  "runtime_sha256": "3c9c37b77b15769404f573866157c57d680134ff27558c0b794d71b7599fcec8",
+  "status": "acceptance_in_progress",
+  "verified": {
+    "upgrade_preserves_identity": true,
+    "rollback_tree_verified": true,
+    "physical_reauth_success": true,
+    "physical_reauth_cancellation": true,
+    "desktop_ui": true,
+    "mobile_ui": false,
+    "activity_filter": false,
+    "fresh_recovery": false,
+    "sustained_loss_clears_readings": false,
+    "cloud_only_app_live": true
+  },
+  "observations": {
+    "rollback_runtime_verified": "94cea4c6c15a8e05a8821478d8befe94a2919349cc9ba1ea12e7f1ea83827728",
+    "cloud_only_app_live_owner_confirmed": true,
+    "post_restart_entities": 18,
+    "post_restart_same_device_link": true,
+    "settings_support_report_rendered": true,
+    "settings_report_successful_updates": 4,
+    "settings_report_failed_updates": 0,
+    "repair_confirmation_cancelled": true,
+    "pairing_error_support_report_rendered": true,
+    "support_return_preserved_retry_menu": true,
+    "pairing_error": "no_connectable_adapter",
+    "pairing_request_sent": false,
+    "regular_review": "positive exact-head verdict",
+    "active_pairing_cancelled": true,
+    "after_cancellation_successful_updates": 18,
+    "after_cancellation_failed_updates": 0,
+    "revised_pairing_wording_rendered": true,
+    "hub_powered_on_resolved_discovery": true,
+    "physical_reauth_success": true,
+    "post_reauth_fresh_probe_f": 74.8,
+    "post_reauth_same_device_link": true,
+    "post_reauth_entry_id_preserved": true
+  },
+  "not_verified": [
+    "Physical acceptance remains incomplete; do not publish this candidate."
+  ]
+}
