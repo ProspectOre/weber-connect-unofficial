@@ -1,0 +1,193 @@
+# Generated adapter; edit scripts/review-gate/adapters in ProspectOre/dev-workspace.
+name: Codex Review Gate
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited, labeled, unlabeled]
+  issue_comment:
+    types: [created, edited, deleted]
+  workflow_run:
+    workflows: [CI]
+    types: [requested, completed]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number
+        required: true
+        type: string
+permissions:
+  checks: read
+  contents: read
+  issues: read
+  pull-requests: write
+  statuses: write
+  actions: read
+concurrency:
+  group: review-gate-discovery-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request || github.run_id }}
+  cancel-in-progress: false
+jobs:
+  discover:
+    runs-on: ${{ vars.USE_HOSTED_RUNNERS != 'false' && vars.USE_HOSTED_LINUX != 'false' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","mbp"]') }}
+    outputs:
+      matrix: ${{ steps.prs.outputs.matrix }}
+    steps:
+      - id: prs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          matrix="$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp | jq -c '{include: [.[][] | {pr_number: .number}]}')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+  evaluate:
+    needs: discover
+    if: needs.discover.outputs.matrix != '{"include":[]}'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    concurrency:
+      group: review-gate-${{ matrix.pr_number }}
+      cancel-in-progress: false
+    runs-on: ${{ vars.USE_HOSTED_RUNNERS != 'false' && vars.USE_HOSTED_LINUX != 'false' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","mbp"]') }}
+    timeout-minutes: 15
+    steps:
+      - id: canonical
+        name: Load pinned canonical review policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          POLICY_REF: ${{ github.workflow_sha }}
+          PR_NUMBER: ${{ matrix.pr_number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EXPECTED_SHA256: '7d468a76809e575a27096a8f376de5209176fe07106e24308f239fa28936b9a8'
+          EXPECTED_DEPENDENCY_SHA256: 'd7a72d5574d6cdbe4efc11bb91dfe0a26eff18836ac716cba1624cd8fe7e13db'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          [[ "$GITHUB_WORKFLOW_REF" == "$REPO/.github/workflows/"*"@refs/heads/$DEFAULT_BRANCH" ]]
+          [[ "$POLICY_REF" =~ ^[0-9a-f]{40}$ && "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          # Revoke prior success before a download failure can strand it green.
+          pr="$(gh api "repos/$REPO/pulls/$PR_NUMBER")"
+          if [[ "$(jq -r '.state' <<< "$pr")" == open ]]; then
+            head="$(jq -er '.head.sha' <<< "$pr")"
+            [[ "$head" =~ ^[0-9a-f]{40}$ ]]
+            gh api "repos/$REPO/statuses/$head" --silent -f state=pending \
+              -f context=review-gate -f description='Loading canonical review policy' \
+              -f target_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+          fi
+          policy="$(mktemp "$RUNNER_TEMP/review-policy.XXXXXX")"
+          trap 'rm -f "$policy" "$policy.dependencies.py"' EXIT
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$REPO/contents/.github/review-gate/evaluate.sh?ref=$POLICY_REF" > "$policy"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$REPO/contents/.github/review-gate/classify_dependencies.py?ref=$POLICY_REF" > "$policy.dependencies.py"
+          actual="$(shasum -a 256 "$policy")"
+          [[ "${actual%% *}" == "$EXPECTED_SHA256" ]]
+          actual="$(shasum -a 256 "$policy.dependencies.py")"
+          [[ "${actual%% *}" == "$EXPECTED_DEPENDENCY_SHA256" ]]
+          chmod 400 "$policy" "$policy.dependencies.py"
+          echo "path=$policy" >> "$GITHUB_OUTPUT"
+          trap - EXIT
+      - id: candidate-proof
+        name: Preserve exact-head CI proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ matrix.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          pr_number="$PR_NUMBER"
+          candidate="$(gh api "repos/$REPO/pulls/$pr_number")"
+          head_sha="$(jq -er '.head.sha' <<< "$candidate")"
+          base_sha="$(jq -er '.base.sha' <<< "$candidate")"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$base_sha" =~ ^[0-9a-f]{40}$ ]]
+          # A head can back multiple PRs against different bases. Filter workflow
+          # runs by this PR before choosing the newest ID; selecting globally first
+          # lets a newer run for the other base hide this PR's valid run forever.
+          if ! ci_run_candidates="$(PR_NUMBER="$pr_number" GH_TOKEN="$GH_TOKEN" gh api \
+            "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$head_sha&per_page=100" \
+            --paginate \
+            --jq '
+              # CI_RUN_IDENTITY_FILTER_BEGIN
+              .workflow_runs[]
+              | select(any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber)))
+              | [.id, .head_sha, .event, (.conclusion // "pending"), .path]
+              | @tsv
+              # CI_RUN_IDENTITY_FILTER_END
+            ')"; then
+            echo "Could not read CI runs associated with PR $pr_number; leaving the required gate pending."
+            exit 1
+          fi
+          ci_run_identity="$(printf '%s\n' "$ci_run_candidates" | sort -t$'\t' -k1,1nr | sed -n '1p')"
+          if [[ -z "$ci_run_identity" ]]; then
+            echo "No exact-head CI run is associated with PR $pr_number; leaving the required gate pending."
+            exit 1
+          fi
+          IFS=$'\t' read -r ci_run_id ci_run_head ci_run_event ci_run_conclusion ci_run_path <<< "$ci_run_identity"
+          if [[ ! "$ci_run_id" =~ ^[1-9][0-9]*$ \
+            || "$ci_run_head" != "$head_sha" \
+            || "$ci_run_event" != "pull_request" \
+            || "$ci_run_path" != ".github/workflows/ci.yml" ]]; then
+            echo "Associated CI candidate has an invalid workflow identity; leaving the required gate pending."
+            exit 1
+          fi
+          if [[ "$ci_run_conclusion" != "success" ]]; then
+            echo "Newest exact-head CI run for PR $pr_number is '${ci_run_conclusion:-pending}'; leaving the required gate pending."
+            exit 1
+          fi
+          if ! ci_check="$(CI_RUN_ID="$ci_run_id" GH_TOKEN="$GH_TOKEN" gh api \
+            "repos/$REPO/commits/$head_sha/check-runs?check_name=ci&filter=all&per_page=100" \
+            --jq '[.check_runs[]
+                    | select(.name == "ci" and .app.slug == "github-actions")
+                    | select(.details_url | startswith("https://github.com/" + env.REPO + "/actions/runs/" + env.CI_RUN_ID + "/job/"))]
+                  | sort_by(.id) | last
+                  | if . == null then "" else [.head_sha, (.conclusion // "pending"), .details_url] | @tsv end')"; then
+            echo "Could not read the aggregate CI check for run $ci_run_id; leaving the required gate pending."
+            exit 1
+          fi
+          IFS=$'\t' read -r ci_check_head ci_conclusion ci_details_url <<< "$ci_check"
+          if [[ "$ci_check_head" != "$head_sha" || "$ci_conclusion" != "success" ]]; then
+            echo "Exact-head aggregate CI is '${ci_conclusion:-missing}' for run $ci_run_id; leaving the required gate pending."
+            exit 1
+          fi
+          case "$ci_details_url" in
+            "https://github.com/$REPO/actions/runs/$ci_run_id/job/"[0-9]*) ;;
+            *)
+              echo "Aggregate CI check has an unexpected run URL; leaving the required gate pending."
+              exit 1
+              ;;
+          esac
+          echo "head=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "base=$base_sha" >> "$GITHUB_OUTPUT"
+      - name: Evaluate canonical gate
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PR: ${{ inputs.pull_request }}
+          EVENT_PR_NUMBER: ${{ matrix.pr_number }}
+          REPO: ${{ github.repository }}
+          REVIEW_BOT: chatgpt-codex-connector[bot]
+          REVIEW_BOT_LOGIN: chatgpt-codex-connector
+          REVIEW_BOT_EVENT_LOGIN: chatgpt-codex-connector[bot]
+          REVIEW_GATE_CONTEXT: review-gate
+          REVIEW_BASE_CONTEXT: review-gate-base-change
+          REVIEW_COMMENT_CONTEXT: review-gate-regular-comment
+          REVIEW_REVIEW_CONTEXT: review-gate-regular-review
+          EVENT_HEAD_SHA: ${{ steps.candidate-proof.outputs.head }}
+          EXPECTED_BASE_SHA: ${{ steps.candidate-proof.outputs.base }}
+          CANONICAL_REVIEW_GATE: ${{ steps.canonical.outputs.path }}
+          SECURITY_REVIEW_BOT_LOGIN: chatgpt-codex-connector
+          SECURITY_REVIEW_BOT_EVENT_LOGIN: chatgpt-codex-connector[bot]
+        shell: bash
+        run: |
+          export GITHUB_EVENT_NAME=workflow_dispatch INPUT_PR="$EVENT_PR_NUMBER"
+          bash "$CANONICAL_REVIEW_GATE"
+      - if: '${{ always() }}'
+        env:
+          POLICY_PATH: ${{ steps.canonical.outputs.path }}
+        run: '[ -z "$POLICY_PATH" ] || rm -f -- "$POLICY_PATH" "$POLICY_PATH.dependencies.py"'
