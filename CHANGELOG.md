@@ -10,6 +10,8 @@
   the pairing progress screen can appear before the device receives a request.
 - Keep diagnostics available for unloaded entries and redact probe nicknames,
   arbitrary stored options, and raw exception messages from downloads.
+- Classify report-capture-only fixes as exact runtime amendments so unchanged
+  pairing and cloud transport acceptance does not need to be repeated.
 
 ## 3.2.0 — 2026-09-05
 

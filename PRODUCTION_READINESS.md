@@ -14,9 +14,12 @@ firmware, region, adapter, account, router, or ESPHome version.
 ## 3.2.1 release candidate
 
 Final review identified two report snapshot defects. Both are fixed with
-regression coverage; fresh physical acceptance is pending on runtime
+regression coverage. Because the fixes only affect support-report evidence
+capture and return navigation, the prior physical transport and endurance
+acceptance is reused through the exact `support_report_evidence_only` runtime
+amendment; no pairing protocol or cloud transport changed in runtime
 `63bcedc8efc07256cd74cd016477adb826f7c49fc6915966c6fa8a78e693fe1f`.
-The initial candidate results below remain bound to their original runtime.
+The amendment still requires the two new targeted regression tests.
 
 ### Initial candidate acceptance
 

@@ -150,6 +150,52 @@ def test_exact_reviewed_amendment_preserves_original_endurance(
     assert physical["runtime_sha256"] != automated["runtime_sha256"]
 
 
+def test_support_report_only_amendment_accepts_prior_physical_acceptance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    physical, automated = evidence()
+    (version, baseline, current), amendment_type = next(
+        item for item in release.PHYSICAL_EVIDENCE_AMENDMENTS.items() if item[0][0] == "3.2.1"
+    )
+    assert version == "3.2.1"
+    physical["runtime_sha256"] = baseline
+    physical["runtime_amendment"] = {
+        "type": amendment_type,
+        "baseline_runtime_sha256": baseline,
+        "runtime_sha256": current,
+        "verified": dict.fromkeys(release.PHYSICAL_AMENDMENT_GATES_BY_TYPE[amendment_type], True),
+    }
+    automated["runtime_sha256"] = current
+    monkeypatch.setattr(release, "VERSION", version)
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: current)
+    release.check_runtime_acceptance(physical, automated)
+
+
+@pytest.mark.parametrize(
+    "gate", release.PHYSICAL_AMENDMENT_GATES_BY_TYPE["support_report_evidence_only"]
+)
+def test_support_report_only_amendment_requires_targeted_evidence(
+    gate: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    physical, automated = evidence()
+    (version, baseline, current), amendment_type = next(
+        item for item in release.PHYSICAL_EVIDENCE_AMENDMENTS.items() if item[0][0] == "3.2.1"
+    )
+    physical["runtime_sha256"] = baseline
+    physical["runtime_amendment"] = {
+        "type": amendment_type,
+        "baseline_runtime_sha256": baseline,
+        "runtime_sha256": current,
+        "verified": dict.fromkeys(release.PHYSICAL_AMENDMENT_GATES_BY_TYPE[amendment_type], True),
+    }
+    physical["runtime_amendment"]["verified"][gate] = False
+    automated["runtime_sha256"] = current
+    monkeypatch.setattr(release, "VERSION", version)
+    monkeypatch.setattr(release, "runtime_fingerprint", lambda: current)
+    with pytest.raises(SystemExit):
+        release.check_runtime_acceptance(physical, automated)
+
+
 @pytest.mark.parametrize("field", ["type", "baseline_runtime_sha256", "runtime_sha256"])
 def test_amendment_rejects_wrong_transition_fields(
     field: str, monkeypatch: pytest.MonkeyPatch
