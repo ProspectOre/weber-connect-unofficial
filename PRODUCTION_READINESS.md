@@ -11,7 +11,7 @@ firmware, region, adapter, account, router, or ESPHome version.
 > sender. Proxy-only telemetry rows below are retained as historical 3.0
 > availability evidence, not as current release gates or security claims.
 
-## 3.3 release candidate
+## 3.2.1 release candidate
 
 Final review identified two report snapshot defects. Both are fixed with
 regression coverage; fresh physical acceptance is pending on runtime
@@ -30,7 +30,7 @@ The unchanged runtime completed 3,920 seconds with 393 samples, zero new failed
 updates, zero disconnections, and zero capture errors. The maximum update gap
 was 11 seconds and maximum sampled age was 2.301 seconds. Final exact-head CI
 and review are required before merge and publication. See
-[`docs/validation/3.3.0-readiness.md`](docs/validation/3.3.0-readiness.md).
+[`docs/validation/3.2.1-readiness.md`](docs/validation/3.2.1-readiness.md).
 
 ## 3.2 release status
 

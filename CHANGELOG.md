@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.3.0 — 2026-09-13
+## 3.2.1 — 2026-09-13
 
 - Add reviewable support reports to setup errors, settings, and credential
   recovery, including versions and bounded diagnostic events without raw logs

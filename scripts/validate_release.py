@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.3.0"
+VERSION = "3.2.1"
 # A presentation-only release may reuse evidence for an unchanged runtime. Keep
 # each exception keyed to the exact release so changing VERSION automatically
 # requires matching fresh evidence unless a new exception is deliberately added.

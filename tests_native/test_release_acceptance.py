@@ -211,7 +211,7 @@ def test_amendment_cannot_authorize_another_runtime_or_release(
         automated["runtime_sha256"] = current
         physical["runtime_amendment"]["runtime_sha256"] = current
     elif change == "release":
-        monkeypatch.setattr(release, "VERSION", "3.3.0")
+        monkeypatch.setattr(release, "VERSION", "3.2.1")
     elif change == "automated":
         automated["runtime_sha256"] = physical["runtime_sha256"]
     else:
