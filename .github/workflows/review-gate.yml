@@ -123,11 +123,10 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-          pr_number="$PR_NUMBER"
+          pr_number="${PR_NUMBER:?PR number is required}"
           candidate="$(gh api "repos/$REPO/pulls/$pr_number")"
           head_sha="$(jq -er '.head.sha' <<< "$candidate")"
           base_sha="$(jq -er '.base.sha' <<< "$candidate")"
-          head_repo="$(jq -er '.head.repo.full_name' <<< "$candidate")"
           [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$base_sha" =~ ^[0-9a-f]{40}$ ]]
           # Fork heads must still present successful repository CI. Dependency
           # exemption removes Codex review cost only after this proof succeeds.
