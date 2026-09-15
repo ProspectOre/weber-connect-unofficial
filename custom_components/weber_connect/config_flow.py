@@ -30,6 +30,13 @@ from .const import (
 from .entity import known_probe_numbers
 from .models import CompanionIdentity, PairingResult
 from .options import WeberOptions
+from .support import (
+    SupportEvent,
+    SupportJournal,
+    bluetooth_summary,
+    report_placeholders,
+    support_report,
+)
 from .weber_cloud import (
     CloudConfig,
     WeberCloudClient,
@@ -87,6 +94,12 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._cloud_progress_task: asyncio.Task[None] | None = None
         self._cloud_deadline: float | None = None
         self._entry_data: dict[str, Any] | None = None
+        self._support_journal = SupportJournal()
+        self._support_return = "no_devices"
+        self._support_snapshot: dict[str, Any] = {}
+        self._pairing_bluetooth: dict[str, Any] | None = None
+        self._support_menu_options: list[str] = []
+        self._support_error_placeholders: dict[str, str] | None = None
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Pair a replacement companion for the same entry and physical hub."""
@@ -200,7 +213,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Keep setup recoverable when the hub is temporarily out of range."""
 
-        return self.async_show_menu(
+        return self._show_error_menu(
             step_id="no_devices",
             menu_options=["search_again"],
         )
@@ -238,6 +251,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._identity = generate_identity()
         if self._cloud_config is None:
             self._cloud_config = CloudConfig.generate(self._identity.companion_id)
+        self._support_journal.record(SupportEvent.PREPARING)
         self._cloud_prepare_task = self.hass.async_create_task(
             self._async_prepare_cloud_companion()
         )
@@ -274,10 +288,12 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             await task
         except WeberCloudError as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             _LOGGER.warning("Could not prepare the Weber cloud companion: %s", err)
             self._cloud_prepare_task = None
             return self.async_show_progress_done(next_step_id="cloud_preparation_failed")
-        except Exception:
+        except Exception as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             _LOGGER.exception("Unexpected Weber companion preparation failure")
             self._cloud_prepare_task = None
             return self.async_show_progress_done(next_step_id="setup_failed")
@@ -293,8 +309,18 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raise WeberBluetoothError("The Weber hub is no longer visible.")
         if self._identity is None or self._cloud_config is None:
             raise WeberBluetoothError("The private Weber companion is not ready.")
+        self._pairing_bluetooth = {
+            **bluetooth_summary(self.hass, self._address),
+            "captured_at": "pairing_attempt_start",
+        }
+        self._support_journal.record(SupportEvent.CONNECTING)
         self._pairing_task = self.hass.async_create_task(
-            async_pair(self.hass, self._address, self._identity)
+            async_pair(
+                self.hass,
+                self._address,
+                self._identity,
+                progress_callback=self._support_journal.record,
+            )
         )
 
     async def async_step_pairing(
@@ -305,6 +331,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             self._start_pairing()
         except WeberBluetoothError as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             self._pairing_failure_reason = str(err)
             return self.async_show_progress_done(next_step_id="pairing_failed")
         task = self._pairing_task
@@ -324,11 +351,13 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             self._pairing_result = await task
         except WeberBluetoothError as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             _LOGGER.warning("Weber hub pairing was not completed: %s", err)
             self._pairing_failure_reason = str(err)
             self._pairing_task = None
             return self.async_show_progress_done(next_step_id="pairing_failed")
-        except Exception:
+        except Exception as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             _LOGGER.exception("Unexpected Weber pairing failure")
             self._pairing_task = None
             return self.async_show_progress_done(next_step_id="setup_failed")
@@ -340,6 +369,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._cloud_task is None:
             self._cloud_deadline = _monotonic_time() + _CLOUD_ASSOCIATION_MAX_WAIT
+            self._support_journal.record(SupportEvent.CLOUD)
             self._cloud_task = self.hass.async_create_task(self._async_cloud_setup())
 
     def _cloud_time_remaining(self) -> str:
@@ -455,18 +485,21 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             self._entry_data = await task
         except WeberCloudAssociationPending as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             _LOGGER.warning("Weber setup is waiting for hub association: %s", err)
             self._cloud_task = None
             self._cloud_progress_task = None
             self._cloud_deadline = None
             return self.async_show_progress_done(next_step_id="cloud_not_linked")
         except WeberCloudError as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             _LOGGER.warning("Weber setup could not finish: %s", err)
             self._cloud_task = None
             self._cloud_progress_task = None
             self._cloud_deadline = None
             return self.async_show_progress_done(next_step_id="cloud_unavailable")
-        except Exception:
+        except Exception as err:
+            self._support_journal.record(SupportEvent.FAILED, err)
             _LOGGER.exception("Unexpected Weber setup failure")
             self._cloud_task = None
             self._cloud_progress_task = None
@@ -481,7 +514,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Offer explicit recovery after physical approval times out."""
 
-        return self.async_show_menu(
+        return self._show_error_menu(
             step_id="pairing_failed",
             menu_options=["retry_pairing", "start_over"]
             if self.source in (config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE)
@@ -494,7 +527,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Explain that setup stopped before contacting the hub."""
 
-        return self.async_show_menu(
+        return self._show_error_menu(
             step_id="cloud_preparation_failed",
             menu_options=["retry_preparation", "start_over"],
         )
@@ -521,7 +554,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Explain that Weber has not associated the new companion."""
 
-        return self.async_show_menu(
+        return self._show_error_menu(
             step_id="cloud_not_linked",
             menu_options=["retry_cloud", "start_over"],
         )
@@ -531,7 +564,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Explain a network or Weber Cloud failure separately."""
 
-        return self.async_show_menu(
+        return self._show_error_menu(
             step_id="cloud_unavailable",
             menu_options=["retry_cloud", "start_over"],
         )
@@ -551,9 +584,61 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Recover cleanly from an unexpected setup failure."""
 
-        return self.async_show_menu(
+        return self._show_error_menu(
             step_id="setup_failed",
             menu_options=["start_over"],
+        )
+
+    def _show_error_menu(
+        self,
+        *,
+        step_id: str,
+        menu_options: list[str],
+        description_placeholders: dict[str, str] | None = None,
+    ) -> ConfigFlowResult:
+        """Snapshot the failure before a retry can replace its evidence."""
+
+        self._support_return = step_id
+        self._support_snapshot = support_report(stage=step_id, journal=self._support_journal)
+        self._support_snapshot["bluetooth"] = (
+            dict(self._pairing_bluetooth)
+            if self._pairing_bluetooth is not None
+            else {**bluetooth_summary(self.hass, self._address), "captured_at": "error_screen"}
+        )
+        self._support_snapshot["pairing_complete"] = self._pairing_result is not None
+        self._support_snapshot["message_version"] = (
+            self._pairing_result.message_version if self._pairing_result is not None else None
+        )
+        self._support_menu_options = [*menu_options, "support"]
+        self._support_error_placeholders = description_placeholders
+        return self.async_show_menu(
+            step_id=step_id,
+            menu_options=self._support_menu_options,
+            description_placeholders=description_placeholders,
+        )
+
+    async def async_step_support(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Let users review or copy a report without restarting their attempt."""
+
+        return self.async_show_menu(
+            step_id="support",
+            menu_options=["return_to_error"],
+            description_placeholders=report_placeholders(self._support_snapshot),
+        )
+
+    async def async_step_return_to_error(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Return without creating a companion or restarting any network task."""
+
+        return self.async_show_menu(
+            step_id=self._support_return,
+            menu_options=self._support_menu_options,
+            description_placeholders=self._support_error_placeholders,
         )
 
     async def async_step_choose_hub(
@@ -586,6 +671,9 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._identity = None
         self._cloud_config = None
         self._pairing_result = None
+        self._support_journal = SupportJournal()
+        self._support_snapshot = {}
+        self._pairing_bluetooth = None
         self._pairing_task = None
         self._cloud_prepare_task = None
         self._cloud_task = None
@@ -623,7 +711,12 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._entry_data[CONF_ADDRESS] != entry.data[CONF_ADDRESS]
                 or self._entry_data[CONF_APPLIANCE_ID] != entry.data[CONF_APPLIANCE_ID]
             ):
-                return self.async_abort(reason="wrong_hub")
+                return self.async_abort(
+                    reason="wrong_hub",
+                    description_placeholders=report_placeholders(
+                        support_report(stage="wrong_hub", journal=self._support_journal)
+                    ),
+                )
             return self.async_update_reload_and_abort(entry, data_updates=self._entry_data)
         return self.async_create_entry(title=self._name, data=self._entry_data)
 
@@ -646,6 +739,9 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
         numbers = known_probe_numbers(self.hass, self.config_entry)
         return self.async_show_form(
             step_id="init",
+            description_placeholders=report_placeholders(
+                support_report(stage="device_settings", entry=self.config_entry)
+            ),
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_PROBES): section(

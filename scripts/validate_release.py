@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.2.0"
+VERSION = "3.2.1"
 # A presentation-only release may reuse evidence for an unchanged runtime. Keep
 # each exception keyed to the exact release so changing VERSION automatically
 # requires matching fresh evidence unless a new exception is deliberately added.
@@ -36,15 +36,20 @@ PHYSICAL_ACCEPTANCE_GATES = (
 )
 
 
-# This one reviewed Bluetooth retry refactor does not change cloud endurance.
-# Keep the original physical fingerprint and require fresh pairing evidence;
-# every other runtime transition still requires a new complete acceptance run.
+# Reviewed runtime amendments may reuse the prior physical receipt only when the
+# exact transition is listed below and its targeted evidence is complete. Any
+# transport, cloud, entity, or recovery change still requires a new full run.
 PHYSICAL_EVIDENCE_AMENDMENTS = {
     (
         "3.2.0",
         "d8b4253191d3481e51952eea00f3913c76d22b8d4719a04d7798af70897230a6",
         "94cea4c6c15a8e05a8821478d8befe94a2919349cc9ba1ea12e7f1ea83827728",
     ): "bluetooth_retry_exhaustion_equivalent_refactor",
+    (
+        "3.2.1",
+        "3c9c37b77b15769404f573866157c57d680134ff27558c0b794d71b7599fcec8",
+        "63bcedc8efc07256cd74cd016477adb826f7c49fc6915966c6fa8a78e693fe1f",
+    ): "support_report_evidence_only",
 }
 PHYSICAL_AMENDMENT_GATES = (
     "physical_reauth_success",
@@ -52,6 +57,13 @@ PHYSICAL_AMENDMENT_GATES = (
     "upgrade_preserves_identity",
     "fresh_telemetry",
 )
+PHYSICAL_AMENDMENT_GATES_BY_TYPE = {
+    "bluetooth_retry_exhaustion_equivalent_refactor": PHYSICAL_AMENDMENT_GATES,
+    "support_report_evidence_only": (
+        "support_report_snapshot_before_cleanup",
+        "support_return_preserves_retry_menu",
+    ),
+}
 
 
 def runtime_fingerprint() -> str:
@@ -90,9 +102,12 @@ def check_runtime_acceptance(physical: dict[str, object], automated: dict[str, o
             or amendment.get("runtime_sha256") != fingerprint
         ):
             fail("physical runtime amendment is not an authorized exact transition")
+        amendment_gates = PHYSICAL_AMENDMENT_GATES_BY_TYPE.get(amendment_type)
         amendment_verified = amendment.get("verified")
-        if not isinstance(amendment_verified, dict) or any(
-            amendment_verified.get(gate) is not True for gate in PHYSICAL_AMENDMENT_GATES
+        if (
+            amendment_gates is None
+            or not isinstance(amendment_verified, dict)
+            or any(amendment_verified.get(gate) is not True for gate in amendment_gates)
         ):
             fail("required physical runtime amendment gates are incomplete")
     verified = physical.get("verified")

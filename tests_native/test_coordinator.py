@@ -351,6 +351,10 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
         }
     )
     entry = _entry(hass, cloud=True)
+    entry.options["unknown_sensitive_option"] = "private-option"
+    entry.options["probes"] = {"probe_name_1": "private-nickname"}
+    coordinator.last_error = "Request failed with private-error-secret"
+    entry.data["unrecognized_secret"] = "private-extra-secret"
     entry.data["companion_private_key"] = "private-key"
     entry.data["companion_public_key"] = "public-key"
     entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
@@ -360,6 +364,13 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     assert "cloud-password" not in serialized
     assert "private-key" not in serialized
     assert "public-key" not in serialized
+    for private in (
+        "private-option",
+        "private-nickname",
+        "private-error-secret",
+        "private-extra-secret",
+    ):
+        assert private not in serialized
     assert diagnostics["transport"] == "cloud"
     assert diagnostics["grill_temperature_c"] == 121.5
     assert diagnostics["hub_battery_level"] == 64
@@ -439,3 +450,19 @@ def test_error_defense_tolerates_absent_cloud_session(hass: object) -> None:
     assert coordinator.last_error == "session unavailable"
     assert coordinator.data["reading_status"] == "waiting"
     issue.assert_not_called()
+
+
+def test_support_history_records_failures_and_recovery_without_flooding(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator._async_status({"actual_cavity_temp_c": 100.0})
+    coordinator._async_status({"actual_cavity_temp_c": 101.0})
+    coordinator._async_error("TimeoutError: private-token@example.com")
+    coordinator._async_status({"actual_cavity_temp_c": 102.0})
+    history = coordinator.support_journal.snapshot()
+    assert [event["event"] for event in history] == [
+        "receiving_updates",
+        "update_failed",
+        "receiving_updates",
+    ]
+    assert history[1]["error"] == "timeout"
+    assert "private-token" not in str(history)

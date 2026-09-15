@@ -1,0 +1,100 @@
+{
+  "candidate": "3.2.1",
+  "evidence_date": "2026-09-13",
+  "identifiers": "redacted",
+  "runtime_sha256": "3c9c37b77b15769404f573866157c57d680134ff27558c0b794d71b7599fcec8",
+  "status": "passed_with_targeted_amendment",
+  "verified": {
+    "upgrade_preserves_identity": true,
+    "rollback_tree_verified": true,
+    "physical_reauth_success": true,
+    "physical_reauth_cancellation": true,
+    "desktop_ui": true,
+    "mobile_ui": true,
+    "activity_filter": true,
+    "fresh_recovery": true,
+    "sustained_loss_clears_readings": true,
+    "cloud_only_app_live": true
+  },
+  "observations": {
+    "rollback_runtime_verified": "94cea4c6c15a8e05a8821478d8befe94a2919349cc9ba1ea12e7f1ea83827728",
+    "cloud_only_app_live_owner_confirmed": true,
+    "post_restart_entities": 18,
+    "post_restart_same_device_link": true,
+    "settings_support_report_rendered": true,
+    "settings_report_successful_updates": 4,
+    "settings_report_failed_updates": 0,
+    "repair_confirmation_cancelled": true,
+    "pairing_error_support_report_rendered": true,
+    "support_return_preserved_retry_menu": true,
+    "pairing_error": "no_connectable_adapter",
+    "pairing_request_sent": false,
+    "regular_review": "positive exact-head verdict",
+    "active_pairing_cancelled": true,
+    "after_cancellation_successful_updates": 18,
+    "after_cancellation_failed_updates": 0,
+    "revised_pairing_wording_rendered": true,
+    "hub_powered_on_resolved_discovery": true,
+    "physical_reauth_success": true,
+    "post_reauth_fresh_probe_f": 74.8,
+    "post_reauth_same_device_link": true,
+    "post_reauth_entry_id_preserved": true,
+    "post_reauth_entities": 18,
+    "active_cancellation_successful_updates": 18,
+    "active_cancellation_failed_updates": 0,
+    "recorder_and_logbook_exclude_last_update": true,
+    "device_activity_status_events_visible": true,
+    "device_activity_timestamp_events_absent": true,
+    "probe_cleared_while_cloud_updates_continued": true
+  },
+  "not_verified": [
+    "Other models, firmware, regions and Bluetooth adapters.",
+    "Rollback copy matched the prior runtime; prior runtime was not booted."
+  ],
+  "power_off_test": {
+    "observed_utc": "2026-09-13T05:51:38.261420+00:00",
+    "connection": "off",
+    "probe_1": "unknown",
+    "hub_status": "connection_lost",
+    "probe_1_status": "connection_lost",
+    "last_successful_update": "2026-09-13T05:46:51+00:00",
+    "consecutive_failures": 7,
+    "automatic_recovery_verified": true,
+    "recovered_utc": "2026-09-13T05:55:58.272385+00:00",
+    "recovered_probe_f": 75.2,
+    "reload_performed": false
+  },
+  "ui_validation": {
+    "actual_phone": "iPhone Air via iPhone Mirroring",
+    "support_link_visible": true,
+    "four_probe_fields_reachable": true,
+    "submit_reachable": true,
+    "mobile_activity_recovery_events_visible": true
+  },
+  "endurance": {
+    "duration_seconds": 3920.174,
+    "samples": 393,
+    "capture_errors": 0,
+    "disconnected_samples": 0,
+    "new_failed_updates": 0,
+    "maximum_update_gap_seconds": 11.0,
+    "maximum_sampled_update_age_seconds": 2.300871,
+    "unexpected_entry_reloads": 0,
+    "final_connected": true,
+    "last_sample": "2026-09-13T07:01:38.447277+00:00",
+    "raw_sha256": "80fe7266fd821ca3efb546f4af84dcdfd1dd47ea78b0268f7e7c2fcfb09619a2",
+    "candidate_unchanged": true,
+    "manual_recoveries": 0
+  },
+  "runtime_amendment": {
+    "type": "support_report_evidence_only",
+    "baseline_runtime_sha256": "3c9c37b77b15769404f573866157c57d680134ff27558c0b794d71b7599fcec8",
+    "runtime_sha256": "63bcedc8efc07256cd74cd016477adb826f7c49fc6915966c6fa8a78e693fe1f",
+    "verified": {
+      "support_report_snapshot_before_cleanup": true,
+      "support_return_preserves_retry_menu": true
+    },
+    "reason": "Only support-report evidence capture and return navigation changed after the accepted candidate. Bluetooth transport, cloud transport, coordinator, entities, recovery behavior, and pairing protocol are unchanged. The new behavior is covered by targeted native regression tests in tests_native/test_support.py; the prior candidate's physical transport and endurance receipt remains bound to its original fingerprint."
+  },
+  "previous_candidate_evidence": "3.3.0-initial-candidate-physical.json"
+}

@@ -13,6 +13,7 @@ from bleak_retry_connector import BleakOutOfConnectionSlotsError
 from custom_components.weber_connect import bluetooth as transport
 from custom_components.weber_connect.models import CompanionIdentity
 from custom_components.weber_connect.saber_frames import build_command_frame, crc8
+from custom_components.weber_connect.support import SupportEvent
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
 IDENTITY = CompanionIdentity("11" * 16, "33" * 64)
@@ -117,6 +118,7 @@ class FakeClient:
 async def test_pairing_confirms_and_releases_proxy_connection(
     clear_advertisement_history: object,
 ) -> None:
+    events = []
     client = FakeClient([_pairing_required(), _pairing_confirmed()])
     with patch.object(transport, "_connect", AsyncMock(return_value=client)):
         result = await transport.async_pair(
@@ -124,7 +126,14 @@ async def test_pairing_confirms_and_releases_proxy_connection(
             ADDRESS,
             IDENTITY,
             confirmation_timeout=0.5,
+            progress_callback=events.append,
         )
+    assert events == [
+        SupportEvent.SERVICES,
+        SupportEvent.HANDSHAKE,
+        SupportEvent.REQUESTED,
+        SupportEvent.CONFIRMED,
+    ]
     assert result.message_version == 11
     assert result.appliance_id == bytes(range(16)).hex()
     assert client.disconnected
