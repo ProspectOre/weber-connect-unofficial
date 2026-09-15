@@ -163,6 +163,7 @@ jobs:
             --jq '
               # CI_RUN_IDENTITY_FILTER_BEGIN
               .workflow_runs[]
+              | select(any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber)))
               | select(any(.pull_requests[]?; .number == (env.PR_NUMBER | tonumber) and .base.sha == env.BASE_SHA))
               | [.id, .head_sha, .event, (.conclusion // "pending"), .path]
               | @tsv
