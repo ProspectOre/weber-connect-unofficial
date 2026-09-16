@@ -1,5 +1,7 @@
 """Native contracts for the generated canonical review gate adapter."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +52,7 @@ def test_ci_proof_binds_the_pr_before_recency() -> None:
     assert "sort -t$'\\t' -k1,1nr" in w
 
 
-def test_forks_cannot_skip_ci_before_dependency_exemption() -> None:
+def test_forks_cannot_skip_candidate_ci() -> None:
     w = _workflow()
     proof = w[w.index("- id: candidate-proof") : w.index("- name: Evaluate canonical gate")]
     assert 'if [[ "$head_repo" != "$REPO" ]]' not in proof
@@ -79,12 +81,17 @@ def test_evaluator_uses_codex_identity() -> None:
     assert "chatgpt-codex-connector[bot]" in e and "199175422" in e
 
 
-def test_evaluator_has_dependency_exemption() -> None:
+def test_dependency_changes_require_regular_review() -> None:
     e = _evaluator()
-    assert "DEPENDENCY_CLASSIFIER" in e and "Dependencies exempt for" in e
+    assert "DEPENDENCY_CLASSIFIER" not in e and "Dependencies exempt for" not in e
+    result = subprocess.run(
+        [sys.executable, str(EVALUATOR.with_name("classify_dependencies.py"))],
+        capture_output=True, check=False,
+    )
+    assert result.returncode == 3
 
 
-def test_dependency_exemption_rechecks_final_snapshot() -> None:
+def test_regular_review_rechecks_final_snapshot() -> None:
     e = _evaluator()
     assert "final_head_sha" in e and "final_base_sha" in e
 
