@@ -86,7 +86,8 @@ def test_dependency_changes_require_regular_review() -> None:
     assert "DEPENDENCY_CLASSIFIER" not in e and "Dependencies exempt for" not in e
     result = subprocess.run(
         [sys.executable, str(EVALUATOR.with_name("classify_dependencies.py"))],
-        capture_output=True, check=False,
+        capture_output=True,
+        check=False,
     )
     assert result.returncode == 3
 
