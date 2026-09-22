@@ -892,6 +892,8 @@ if [[ -z "$DEFAULT_BRANCH" || "$base_ref" != "$DEFAULT_BRANCH" ]]; then
   gate_pending
 fi
 
+# Event-only capture must continue through authenticated history recording even
+# for drafts; gate_pending returns in RECORD_EVENT_ONLY mode until that phase ends.
 if [[ "$is_draft" == "true" ]]; then
   stamp_review_gate pending "Waiting for pull request to leave draft"
   gate_pending

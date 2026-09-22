@@ -1,5 +1,6 @@
 """Native contracts for the generated canonical review gate adapter."""
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -115,3 +116,25 @@ def test_evaluator_has_no_review_request_api() -> None:
 def test_legacy_auto_merge_entrypoint_is_retired() -> None:
     t = (ROOT / ".github/workflows/auto-merge.yml").read_text(encoding="utf-8")
     assert "retired" in t.lower() and "review-gate.yml" in t
+
+
+def test_event_only_capture_continues_past_draft_gate() -> None:
+    evaluator = _evaluator()
+    match = re.search(r"(?ms)^gate_pending\(\) \{\n.*?^\}", evaluator)
+    assert match is not None
+    draft_gate = evaluator.index('if [[ "$is_draft" == "true" ]]')
+    event_capture = evaluator.index('if [[ "$event_name" == issue_comment && -f "$event_path" ]]')
+    assert draft_gate < event_capture
+    script = "\n".join(
+        [
+            "set -e",
+            "evidence_only_mode=0",
+            "event_history_phase_done=false",
+            "RECORD_EVENT_ONLY=true",
+            match.group(0),
+            "gate_pending",
+            "printf 'event-history-reached\\n'",
+        ]
+    )
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True)
+    assert result.stdout == "event-history-reached\n"
