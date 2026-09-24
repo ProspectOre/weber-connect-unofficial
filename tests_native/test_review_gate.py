@@ -44,7 +44,7 @@ def test_manual_dispatch_rejects_malformed_pull_request_input() -> None:
     discovery = workflow[workflow.index("- id: prs") : workflow.index("  evaluate:")]
     assert 'elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]' in discovery
     assert "Manual review-gate dispatch requires a positive pull request number." in discovery
-    assert 'exit 1' in discovery
+    assert "exit 1" in discovery
 
 
 def test_workflow_has_exact_head_ci_proof() -> None:
