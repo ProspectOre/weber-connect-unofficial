@@ -129,14 +129,17 @@ def test_native_review_only_accepts_exact_stock_heading_and_intro_lines() -> Non
     evaluator = _evaluator()
     # The permissive fallback used to accept semantic text appended to either
     # stock envelope line, even when there were no inline finding threads.
-    assert 'codex[[:space:]]+review[^\\r\\n]*\\r?\\n' not in evaluator
-    assert 'suggestions for this pull request\\.[^\\r\\n]*\\r?\\n' not in evaluator
+    assert "codex[[:space:]]+review[^\\r\\n]*\\r?\\n" not in evaluator
+    assert "suggestions for this pull request\\.[^\\r\\n]*\\r?\\n" not in evaluator
 
 
 def test_exact_head_changes_requested_reviews_are_always_adverse() -> None:
     evaluator = _evaluator()
     assert 'select((.commit.oid // "") == $head)' in evaluator
-    assert 'select(if .state == "CHANGES_REQUESTED" then true else ($body | exact_head) end)' in evaluator
+    assert (
+        'select(if .state == "CHANGES_REQUESTED" then true else ($body | exact_head) end)'
+        in evaluator
+    )
     assert 'clean: (.state != "CHANGES_REQUESTED"' in evaluator
 
 
@@ -146,9 +149,9 @@ def test_known_nonsemantic_stock_salutations_remain_accepted() -> None:
     for salutation in (
         "Keep it up!",
         "Keep them coming!",
-        "You.re on a roll\\.",
+        "You.re on a roll",
         "Swish!",
-        "Bravo\\.",
+        "Bravo",
     ):
         assert salutation in evaluator
 
