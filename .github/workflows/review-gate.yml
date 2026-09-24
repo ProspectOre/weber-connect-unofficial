@@ -56,6 +56,12 @@ jobs:
             matrix="$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp | jq -c '{include: [.[][] | {pr_number: .number}]}')"
           elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
             matrix="$(jq -cn --argjson prs "$WORKFLOW_PRS" '{include: [$prs[] | {pr_number: .}]}')"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ ! "$TARGET_PR" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Manual review-gate dispatch requires a positive pull request number." >&2
+              exit 1
+            fi
+            matrix="$(jq -cn --argjson pr "$TARGET_PR" '{include: [{pr_number: $pr}]}')"
           elif [[ "$TARGET_PR" =~ ^[1-9][0-9]*$ ]]; then
             matrix="$(jq -cn --argjson pr "$TARGET_PR" '{include: [{pr_number: $pr}]}')"
           else
