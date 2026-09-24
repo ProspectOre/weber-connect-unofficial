@@ -436,7 +436,6 @@ regular_evidence() {
             test("(?is)\\A<details>[[:space:]]*<summary>[[:space:]]*[^<\\r\\n]*about[[:space:]]+codex[[:space:]]+in[[:space:]]+github[[:space:]]*</summary>[[:space:]]*<br[[:space:]]*/?>[[:space:]]*\\[your team has set up codex to review pull requests in this repo\\]\\(https://chatgpt\\.com/codex/cloud/settings/general\\)\\.[[:space:]]*reviews are triggered when you[[:space:]]*-[[:space:]]*open a pull request for review[[:space:]]*-[[:space:]]*mark a draft as ready[[:space:]]*-[[:space:]]*comment \\\"@codex review\\\"\\.[[:space:]]*if codex has suggestions, it will comment; otherwise it will react with .[[:space:]]*codex can also answer questions or update the pr\\.[[:space:]]*try commenting \\\"@codex address that feedback\\\"\\.[[:space:]]*</details>[[:space:]]*$");
           def stock_clean_envelope:
             test("(?is)\\A[[:space:]]*#{1,6}[[:space:]]+(?:[^[:alnum:]\\r\\n]+[[:space:]]+)?codex[[:space:]]+review[[:space:]]*\\r?\\n[[:space:]]*\\r?\\n[[:space:]]*here are some automated review suggestions for this pull request\\.[[:space:]]*\\r?\\n[[:space:]]*\\r?\\n[[:space:]]*\\*\\*reviewed commit:\\*\\*[[:space:]]*\\x60(" + $head + "|" + $prefix + ")\\x60[[:space:]]*\\r?\\n[[:space:]]*<details>[[:space:]]*<summary>[[:space:]]*[^<\\r\\n]*about[[:space:]]+codex[[:space:]]+in[[:space:]]+github[[:space:]]*</summary>[[:space:]]*<br[[:space:]]*/?>[[:space:]]*\\[your team has set up codex to review pull requests in this repo\\]\\(https://chatgpt\\.com/codex/cloud/settings/general\\)\\.[[:space:]]*reviews are triggered when you[[:space:]]*-[[:space:]]*open a pull request for review[[:space:]]*-[[:space:]]*mark a draft as ready[[:space:]]*-[[:space:]]*comment \\\"@codex review\\\"\\.[[:space:]]*if codex has suggestions, it will comment; otherwise it will react with .[[:space:]]*codex can also answer questions or update the pr\\.[[:space:]]*try commenting \\\"@codex address that feedback\\\"\\.[[:space:]]*</details>[[:space:]]*$")
-            or test("(?is)\\A[[:space:]]*#{1,6}[^\\r\\n]*codex[[:space:]]+review[^\\r\\n]*\\r?\\n[[:space:]]*\\r?\\n[[:space:]]*here are some automated review suggestions for this pull request\\.[^\\r\\n]*\\r?\\n[[:space:]]*\\r?\\n[[:space:]]*\\*\\*reviewed commit:\\*\\*[[:space:]]*\\x60(" + $head + "|" + $prefix + ")\\x60[[:space:]]*(?:\\r?\\n[[:space:]]*)*<details>[[:space:]]*<summary>[[:space:]]*[^<\\r\\n]*about[[:space:]]+codex[[:space:]]+in[[:space:]]+github[[:space:]]*</summary>[[:space:]]*<br[[:space:]]*/?>[[:space:]]*\\[your team has set up codex to review pull requests in this repo\\]\\(https://chatgpt\\.com/codex/cloud/settings/general\\)\\.[[:space:]]*reviews are triggered when you[[:space:]]*-[[:space:]]*open a pull request for review[[:space:]]*-[[:space:]]*mark a draft as ready[[:space:]]*-[[:space:]]*comment \\\"@codex review\\\"\\.[[:space:]]*if codex has suggestions, it will comment; otherwise it will react with .[[:space:]]*codex can also answer questions or update the pr\\.[[:space:]]*try commenting \\\"@codex address that feedback\\\"\\.[[:space:]]*</details>[[:space:]]*$")
             or test("(?is)\\A[[:space:]]*(?:#{1,6}[[:space:]]+(?:[^[:alnum:]\\r\\n]+[[:space:]]+)?)?codex review:[[:space:]]*didn.t find any major issues\\.[ \t]*(?:What shall we delve into next\\?|Delightful!|Nice work!|Already looking forward to the next diff\\.|Another round soon, please!|More of your lovely PRs please\\.|Hooray!|Chef.s kiss|:tada:)?[ \t]*(?::\\+1:|👍|:rocket:|🚀)?[ \t]*(?:\\r?\\n[[:space:]]*)+\\*\\*reviewed commit:\\*\\*[[:space:]]*\\x60(" + $head + "|" + $prefix + ")\\x60[[:space:]]*(?:\\r?\\n[[:space:]]*)+<details>[[:space:]]*<summary>[^\\r\\n]*codex[[:space:]]+in[[:space:]]+github(?:(?!</details>).)*</details>[[:space:]]*$")
             or test("(?is)\\A[[:space:]]*#{1,6}[[:space:]]+(?:[^[:alnum:]\\r\\n]+[[:space:]]+)?(?:codex[[:space:]]+review|review result):[[:space:]]*(?:didn.t find any issues|no issues found)\\.[[:space:]]*(?:\\r?\\n[[:space:]]*)*\\*\\*reviewed commit:\\*\\*[[:space:]]*\\x60(" + $head + "|" + $prefix + ")\\x60[[:space:]]*$");
           def strict_stock_clean_envelope:
@@ -445,6 +444,10 @@ regular_evidence() {
                    test("(?is)\\A[[:space:]]*#{1,6}[[:space:]]+(?:[^[:alnum:]\\r\\n]+[[:space:]]+)?codex[[:space:]]+review[[:space:]]*\\r?\\n[[:space:]]*\\r?\\n[[:space:]]*here are some automated review suggestions for this pull request\\.[[:space:]]*\\r?\\n")
                  else true end)
             and (if test("(?is)<details>") then capture("(?is)\\A.*?(?<footer><details>.*)$").footer | known_codex_footer else true end);
+          # Preserve previously supported non-semantic stock salutations by
+          # normalizing only the exact verdict-line suffix before matching.
+          def normalize_known_stock_salutation:
+            gsub("(?i)(?<prefix>Codex Review:[[:space:]]*didn.t find any major issues\\.)[[:space:]]*(?<salutation>Keep it up!|Keep them coming!|You.re on a roll\\.|Swish!|Bravo\\.)"; "\\(.prefix) Nice work!");
           [.[] | .data.repository.pullRequest.reviews.nodes[]?] as $records
           # This synthetic record is used only to classify a previously
           # authenticated relay body, never as a verdict or live API evidence.
@@ -458,15 +461,15 @@ regular_evidence() {
            | select((.author.login // "") == $bot and .author.id == "BOT_kgDOC98s_g")
            | select((.commit.oid // "") == $head)
            | (.body // "") as $body
-           | select($body | regular_heading)
-           | select(($body | security_heading) | not)
-           | select(($body | availability_notice) | not)
-           | select($body | exact_head)
+           | select(if .state == "CHANGES_REQUESTED" then true else ($body | regular_heading) end)
+           | select(if .state == "CHANGES_REQUESTED" then true else (($body | security_heading) | not) end)
+           | select(if .state == "CHANGES_REQUESTED" then true else (($body | availability_notice) | not) end)
+           | select(if .state == "CHANGES_REQUESTED" then true else ($body | exact_head) end)
            | {at: (if .state == "DISMISSED" then .submittedAt else (.updatedAt // .submittedAt) end),
               id: (.databaseId | tostring),
               source: "review",
               dismissed: (.state == "DISMISSED"),
-              clean: ((.state == "COMMENTED" or .state == "APPROVED") and (($body | multiple_result_sections) | not) and ($body | strict_stock_clean_envelope))}]'
+              clean: (.state != "CHANGES_REQUESTED" and (.state == "COMMENTED" or .state == "APPROVED") and (($body | multiple_result_sections) | not) and ($body | normalize_known_stock_salutation | strict_stock_clean_envelope))}]'
   )"
   issue_comment_records="$(
     gh api "repos/$REPO/issues/$pr_number/comments?per_page=100" --paginate --slurp \
@@ -495,6 +498,8 @@ regular_evidence() {
           def strict_stock_clean_issue_comment_envelope:
             stock_clean_issue_comment_envelope
             and (if test("(?is)<details>") then capture("(?is)\\A.*?(?<footer><details>.*)$").footer | known_codex_footer else true end);
+          def normalize_known_stock_salutation:
+            gsub("(?i)(?<prefix>Codex Review:[[:space:]]*didn.t find any major issues\\.)[[:space:]]*(?<salutation>Keep it up!|Keep them coming!|You.re on a roll\\.|Swish!|Bravo\\.)"; "\\(.prefix) Nice work!");
           [.[][]
            | if (.id | tostring) == $prior_id then .body = $prior_body else . end
            | select((.user.login // "") == $bot and .user.id == 199175422 and .user.type == "Bot")
@@ -507,7 +512,7 @@ regular_evidence() {
               id: ("issue-comment-" + (.id | tostring)),
               source: "issue_comment",
               body: $body,
-              clean: ((($body | multiple_result_sections) | not) and ($body | strict_stock_clean_issue_comment_envelope))}]'
+              clean: ((($body | multiple_result_sections) | not) and ($body | normalize_known_stock_salutation | strict_stock_clean_issue_comment_envelope))}]'
   )"
   jq -cn --argjson reviews "$review_records" --argjson issue_comments "$issue_comment_records" '
     {deliveries: ($reviews + $issue_comments),

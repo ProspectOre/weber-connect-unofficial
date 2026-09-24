@@ -125,6 +125,34 @@ def test_native_clean_envelope_requires_known_details_boilerplate() -> None:
     assert "here are some automated review suggestions for this pull request" in evaluator
 
 
+def test_native_review_only_accepts_exact_stock_heading_and_intro_lines() -> None:
+    evaluator = _evaluator()
+    # The permissive fallback used to accept semantic text appended to either
+    # stock envelope line, even when there were no inline finding threads.
+    assert 'codex[[:space:]]+review[^\\r\\n]*\\r?\\n' not in evaluator
+    assert 'suggestions for this pull request\\.[^\\r\\n]*\\r?\\n' not in evaluator
+
+
+def test_exact_head_changes_requested_reviews_are_always_adverse() -> None:
+    evaluator = _evaluator()
+    assert 'select((.commit.oid // "") == $head)' in evaluator
+    assert 'select(if .state == "CHANGES_REQUESTED" then true else ($body | exact_head) end)' in evaluator
+    assert 'clean: (.state != "CHANGES_REQUESTED"' in evaluator
+
+
+def test_known_nonsemantic_stock_salutations_remain_accepted() -> None:
+    evaluator = _evaluator()
+    assert evaluator.count("def normalize_known_stock_salutation:") == 2
+    for salutation in (
+        "Keep it up!",
+        "Keep them coming!",
+        "You.re on a roll\\.",
+        "Swish!",
+        "Bravo\\.",
+    ):
+        assert salutation in evaluator
+
+
 def test_evaluator_has_no_review_request_api() -> None:
     e = _evaluator()
     assert "request_reviewers" not in e and "requested_reviewers" not in e
