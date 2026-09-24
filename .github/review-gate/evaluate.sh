@@ -441,6 +441,9 @@ regular_evidence() {
             or test("(?is)\\A[[:space:]]*#{1,6}[[:space:]]+(?:[^[:alnum:]\\r\\n]+[[:space:]]+)?(?:codex[[:space:]]+review|review result):[[:space:]]*(?:didn.t find any issues|no issues found)\\.[[:space:]]*(?:\\r?\\n[[:space:]]*)*\\*\\*reviewed commit:\\*\\*[[:space:]]*\\x60(" + $head + "|" + $prefix + ")\\x60[[:space:]]*$");
           def strict_stock_clean_envelope:
             stock_clean_envelope
+            and (if test("(?is)here are some automated review suggestions for this pull request") then
+                   test("(?is)\\A[[:space:]]*#{1,6}[[:space:]]+(?:[^[:alnum:]\\r\\n]+[[:space:]]+)?codex[[:space:]]+review[[:space:]]*\\r?\\n[[:space:]]*\\r?\\n[[:space:]]*here are some automated review suggestions for this pull request\\.[[:space:]]*\\r?\\n")
+                 else true end)
             and (if test("(?is)<details>") then capture("(?is)\\A.*?(?<footer><details>.*)$").footer | known_codex_footer else true end);
           [.[] | .data.repository.pullRequest.reviews.nodes[]?] as $records
           # This synthetic record is used only to classify a previously

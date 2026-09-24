@@ -91,7 +91,7 @@ jobs:
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          EXPECTED_SHA256: '18b69121056b50bd31365ae5960561962d1e46271420ea99ef25571fe79dae5e'
+          EXPECTED_SHA256: 'f62981e3e67957941daebc284ee6562de42a7ddfe2a29cfe759edb8561be959f'
           EXPECTED_DEPENDENCY_SHA256: '3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455'
         shell: bash
         run: |
