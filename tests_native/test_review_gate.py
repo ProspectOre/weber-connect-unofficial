@@ -116,6 +116,12 @@ def test_evaluator_keeps_review_gate_pending_until_clean() -> None:
     assert "Waiting for the regular review verdict" in e and "Clean regular review" in e
 
 
+def test_native_clean_envelope_requires_known_details_boilerplate() -> None:
+    evaluator = _evaluator()
+    assert "your team has set up codex to review pull requests in this repo" in evaluator
+    assert "<details>(?:(?!</details>).)*</details>" not in evaluator
+
+
 def test_evaluator_has_no_review_request_api() -> None:
     e = _evaluator()
     assert "request_reviewers" not in e and "requested_reviewers" not in e
