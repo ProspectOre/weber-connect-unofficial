@@ -120,6 +120,8 @@ def test_native_clean_envelope_requires_known_details_boilerplate() -> None:
     evaluator = _evaluator()
     assert "your team has set up codex to review pull requests in this repo" in evaluator
     assert "<details>(?:(?!</details>).)*</details>" not in evaluator
+    assert "strict_stock_clean_envelope" in evaluator
+    assert "strict_stock_clean_issue_comment_envelope" in evaluator
 
 
 def test_evaluator_has_no_review_request_api() -> None:
