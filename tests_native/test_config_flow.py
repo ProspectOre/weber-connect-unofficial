@@ -30,6 +30,7 @@ from custom_components.weber_connect.const import (
 )
 from custom_components.weber_connect.models import CompanionIdentity, PairingResult
 from custom_components.weber_connect.options import ConnectionMode, WeberOptions
+from custom_components.weber_connect.support import SupportJournal
 from custom_components.weber_connect.weber_cloud import CloudConfig
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
@@ -197,7 +198,7 @@ async def test_user_flow_explains_when_no_hub_is_visible(hass: object) -> None:
         )
     assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "no_devices"
-    assert result["menu_options"] == ["search_again"]
+    assert result["menu_options"] == ["search_again", "support"]
 
 
 @pytest.mark.asyncio
@@ -350,6 +351,12 @@ async def test_options_flow_saves_and_reloads_through_home_assistant(hass: objec
         initial_state=lambda: {"source": "cloud", "connected": False},
         async_set_updated_data=Mock(),
         async_start=lambda: None,
+        data={},
+        successful_updates=0,
+        failed_updates=0,
+        consecutive_failures=0,
+        last_error=None,
+        support_journal=SupportJournal(),
     )
     submitted = {
         CONF_PROBES: {"probe_name_1": "Brisket"},
@@ -517,7 +524,7 @@ async def test_reauth_retry_stays_locked_to_original_hub(hass: Any, source: str)
     )
     flow = hass.config_entries.flow._progress[result["flow_id"]]
     menu = await flow.async_step_pairing_failed()
-    assert menu["menu_options"] == ["retry_pairing", "start_over"]
+    assert menu["menu_options"] == ["retry_pairing", "start_over", "support"]
     strings = json.loads(await hass.async_add_executor_job(_STRINGS_PATH.read_text))
     labels = strings["config"]["step"]["pairing_failed"]["menu_options"]
     assert all(labels.get(option) for option in menu["menu_options"])

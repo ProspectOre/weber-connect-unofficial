@@ -27,6 +27,7 @@ from .saber_frames import (
     build_pairing_body,
     decode_hex_frame,
 )
+from .support import SupportEvent
 
 _LOGGER = logging.getLogger(__name__)
 CONNECTION_TIMEOUT = 30.0
@@ -157,6 +158,7 @@ async def async_pair(
     display_name: str = "Home Assistant",
     initial_version: int = 11,
     confirmation_timeout: float = 60.0,
+    progress_callback: Callable[[SupportEvent], None] | None = None,
 ) -> PairingResult:
     """Pair Home Assistant after the user confirms on the physical hub."""
 
@@ -212,6 +214,9 @@ async def async_pair(
                 "Wake the hub and try pairing again."
             ) from last_service_error
 
+        if progress_callback is not None:
+            progress_callback(SupportEvent.SERVICES)
+
         async def poll_response(timeout: float) -> bytes | None:
             nonlocal last_polled_response
             deadline = asyncio.get_running_loop().time() + timeout
@@ -243,6 +248,8 @@ async def async_pair(
             )
             sequence += 1
             await client.write_gatt_char(COMMAND_UUID, greeting, response=True)
+            if progress_callback is not None:
+                progress_callback(SupportEvent.HANDSHAKE)
             reply = await poll_response(10.0)
             if reply is None:
                 continue
@@ -272,6 +279,8 @@ async def async_pair(
         pairing = build_command_frame(sequence, version, 0x0A, pairing_body)
         await client.write_gatt_char(COMMAND_UUID, pairing, response=True)
 
+        if progress_callback is not None:
+            progress_callback(SupportEvent.REQUESTED)
         deadline = asyncio.get_running_loop().time() + confirmation_timeout
         pairing_payload: dict[str, Any] | None = None
         while asyncio.get_running_loop().time() < deadline:
@@ -298,6 +307,8 @@ async def async_pair(
         if len(appliance_id) != 32:
             raise WeberBluetoothError("The hub returned an invalid appliance identity.")
 
+        if progress_callback is not None:
+            progress_callback(SupportEvent.CONFIRMED)
         post_pair = build_command_frame(
             sequence + 1,
             version,

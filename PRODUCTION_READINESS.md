@@ -11,6 +11,30 @@ firmware, region, adapter, account, router, or ESPHome version.
 > sender. Proxy-only telemetry rows below are retained as historical 3.0
 > availability evidence, not as current release gates or security claims.
 
+## 3.2.1 release candidate
+
+Final review identified two report snapshot defects. Both are fixed with
+regression coverage. Because the fixes only affect support-report evidence
+capture and return navigation, the prior physical transport and endurance
+acceptance is reused through the exact `support_report_evidence_only` runtime
+amendment; no pairing protocol or cloud transport changed in runtime
+`63bcedc8efc07256cd74cd016477adb826f7c49fc6915966c6fa8a78e693fe1f`.
+The amendment still requires the two new targeted regression tests.
+
+### Initial candidate acceptance
+
+Support reports and clarified pairing instructions passed physical acceptance
+on Home Assistant 2026.9.1 and an iPhone Air. Same-hub pairing and active
+cancellation preserved the device, entity IDs and names. Power loss cleared
+readings and reported connection loss; power-on recovered without a reload.
+Activity filtering retained status events without timestamp-only noise.
+
+The unchanged runtime completed 3,920 seconds with 393 samples, zero new failed
+updates, zero disconnections, and zero capture errors. The maximum update gap
+was 11 seconds and maximum sampled age was 2.301 seconds. Final exact-head CI
+and review are required before merge and publication. See
+[`docs/validation/3.2.1-readiness.md`](docs/validation/3.2.1-readiness.md).
+
 ## 3.2 release status
 
 **Physical acceptance passed on the documented equipment.** The reviewed runtime is deployed on Home

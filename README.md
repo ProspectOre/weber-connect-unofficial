@@ -301,11 +301,34 @@ usually needs only automatic recovery, not new pairing.
 
 ### Collecting diagnostics
 
-Open **Settings → Devices & services → Weber Connect Unofficial**, select the
-three-dot menu for the config entry, and download diagnostics. Identifiers and
-stored credentials are redacted. Attach that file, the Home Assistant version,
-hub model and firmware, and relevant logs to a
-[GitHub issue](https://github.com/ProspectOre/weber-connect-unofficial/issues).
+If setup fails—even before a device has been added—choose **Get help / report
+a problem** on the error screen. Review the report, then open the prefilled
+GitHub issue and describe what happened. To reply to an existing issue, copy
+the report into your comment instead. **Return to error** keeps the current
+pairing identity and retry options; opening a report does not retry setup.
+
+Reports include Home Assistant/integration/Python versions, the failed step,
+Bluetooth advertisement and active-connection visibility at the error, and up
+to 12 recent diagnostic events with elapsed times. Pairing events distinguish
+Bluetooth services becoming ready, the handshake, the pairing request, and
+confirmation. Runtime reports include firmware/hardware versions when known,
+update/failure counts, and recent connection failures or recovery. These are
+structured diagnostic events, not a capture of Home Assistant's raw logs.
+
+For problems after setup, use the report link in the integration's **Configure**
+settings or credential repair screen. For a fuller device snapshot, open
+**Settings → Devices & services → Weber Connect Unofficial**, select the
+entry's three-dot menu, and choose **Download diagnostics**. A basic report is
+available even when the entry has no loaded runtime.
+
+Reports omit names, addresses, credentials, QR codes, packet contents, and raw
+exception messages. Unknown errors include integration code locations rather
+than potentially sensitive exception text. Reports stay in memory until you
+open the GitHub link or copy them; opening the link sends the prefilled report
+to GitHub, where you review it before submitting. There is no automatic upload
+or background reporting. Add the exact model, adapter/proxy model, what the
+display showed, and whether Weber Connect works over Wi-Fi. Those details
+cannot always be determined automatically before pairing succeeds.
 
 ## Removing the integration
 

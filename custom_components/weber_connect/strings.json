@@ -3,7 +3,7 @@
   "config": {
     "progress": {
       "preparing_companion": "**Step 1 of 3 \u00b7 Preparing your connection.** This usually takes a few seconds. No action is needed yet.",
-      "approve_hub": "**Step 2 of 3 \u00b7 Approve on {name}.** Connecting through {path}. An active proxy may take up to 90 seconds.\n\n**Standalone hub:** when all four probe lights turn on, press down once on the top/display within 60 seconds.\n\n**Grill controller:** press its dial or confirmation control when prompted.\n\nThis screen advances automatically after approval.",
+      "approve_hub": "**Step 2 of 3 \u00b7 Connecting and pairing with {name}.** Using {path}. An active proxy may take up to 90 seconds to establish the Bluetooth connection; reaching this screen does not mean an approval request has reached the device.\n\nWhen the device requests approval:\n\n**Standalone hub:** when all four probe lights turn on, press down once on the top/display within 60 seconds.\n\n**Grill controller:** use its dial or confirmation control when prompted.\n\nIf no prompt appears, wait for the result. The error screen offers a support report with the connection milestones.",
       "finishing_setup": "**Step 3 of 3 \u00b7 Connecting to Weber Cloud \u00b7 {remaining} remaining.** Physical approval is complete. No further button press is needed; this screen advances automatically."
     },
     "step": {
@@ -18,7 +18,8 @@
         "title": "No Weber hub found",
         "description": "Initial setup requires a connectable Bluetooth path, even if you plan to use Weber Cloud afterward. Fully close the Weber app and turn off Bluetooth on every phone or tablet that uses the hub. Wake the hub, keep it near Home Assistant or an active ESPHome Bluetooth proxy with a free connection slot, then search again.",
         "menu_options": {
-          "search_again": "Search again"
+          "search_again": "Search again",
+          "support": "Get help / report a problem"
         }
       },
       "confirm": {
@@ -31,7 +32,8 @@
         "menu_options": {
           "retry_pairing": "Try pairing again",
           "choose_hub": "Choose another hub",
-          "start_over": "Start pairing over"
+          "start_over": "Start pairing over",
+          "support": "Get help / report a problem"
         }
       },
       "cloud_preparation_failed": {
@@ -39,7 +41,8 @@
         "description": "Home Assistant stopped before contacting the hub, so no approval is needed yet. Confirm Home Assistant can reach the internet, then try again. The same private identity will be reused.",
         "menu_options": {
           "retry_preparation": "Try preparing the connection again",
-          "start_over": "Start over"
+          "start_over": "Start over",
+          "support": "Get help / report a problem"
         }
       },
       "cloud_not_linked": {
@@ -47,7 +50,8 @@
         "description": "Local pairing succeeded. Home Assistant reached Weber Cloud and checked automatically for up to five minutes, but the new connection was not given access to this hub. You do not need to approve the hub again. Turn off phone or tablet Bluetooth and confirm the hub is online in the Weber app; if it is offline there too, restore the hub's Wi-Fi before checking again.",
         "menu_options": {
           "retry_cloud": "Check Weber Cloud again \u2014 up to 5 minutes",
-          "start_over": "Start over"
+          "start_over": "Start over",
+          "support": "Get help / report a problem"
         }
       },
       "cloud_unavailable": {
@@ -55,19 +59,28 @@
         "description": "Local pairing succeeded, but Home Assistant could not complete the online check. The hub does not need approval again. Confirm Home Assistant has internet access. With phone or tablet Bluetooth off, also confirm the hub is online in the Weber app; if it is offline there too, restore the hub's Wi-Fi. Then try again.",
         "menu_options": {
           "retry_cloud": "Try the online check again \u2014 up to 5 minutes",
-          "start_over": "Start over"
+          "start_over": "Start over",
+          "support": "Get help / report a problem"
         }
       },
       "setup_failed": {
         "title": "Setup did not finish",
-        "description": "Setup could not finish. Existing integration settings have not been changed. Check the Home Assistant logs for the cause, then start over.",
+        "description": "Setup could not finish. Existing integration settings have not been changed. Choose **Get help / report a problem** to review the diagnostic report, or start over.",
         "menu_options": {
-          "start_over": "Start over"
+          "start_over": "Start over",
+          "support": "Get help / report a problem"
         }
       },
       "reauth_confirm": {
         "title": "Reconnect {name}",
         "description": "Pair a new private connection with this same hub. Your device, entity IDs, probe names, dashboards, and automations will be kept. The current configuration stays in place until pairing and the Weber Cloud check both succeed."
+      },
+      "support": {
+        "title": "Review your support report",
+        "description": "[Open a prefilled GitHub report]({report_url}), describe what happened, then submit it on GitHub. To reply to an existing issue, copy the report below into your comment.\n\nThis report contains versions, connection checks, and recent diagnostic events. It excludes names, addresses, credentials, QR codes, packet contents, and raw logs. Nothing is submitted automatically.\n\n```json\n{report}\n```\n\nSelect **Return to error** to return to the error and keep your retry options.",
+        "menu_options": {
+          "return_to_error": "Return to error"
+        }
       }
     },
     "create_entry": {
@@ -77,7 +90,7 @@
       "already_configured": "This Weber hub is already configured.",
       "already_in_progress": "Setup is already open for this Weber hub. Close this window and continue the existing setup.",
       "reauth_successful": "Connection replaced. Turn Bluetooth back on and reopen the Weber app. Your existing device and entities have been kept.",
-      "wrong_hub": "The paired appliance does not match this integration. Nothing was changed. Retry with the original hub.",
+      "wrong_hub": "The paired appliance does not match this integration. Nothing was changed. Retry with the original hub. [Report this problem]({report_url}).",
       "reconfigure_successful": "Connection replaced. Turn Bluetooth back on and reopen the Weber app. Your existing device and entities have been kept."
     }
   },
@@ -85,7 +98,7 @@
     "step": {
       "init": {
         "title": "Weber Connect settings",
-        "description": "Give each probe a food name, such as Brisket. Its physical probe number stays visible. Home Assistant receives readings through Weber Cloud while you continue using the Weber app.",
+        "description": "Give each probe a food name, such as Brisket. Its physical probe number stays visible. Home Assistant receives readings through Weber Cloud while you continue using the Weber app.\n\nHaving trouble with readings or connectivity? [Open a prefilled support report]({report_url}).",
         "sections": {
           "probes": {
             "name": "Probe names",
@@ -108,7 +121,7 @@
         "step": {
           "confirm": {
             "title": "Pair {name} again",
-            "description": "Weber rejected the private connection for {name}. Continue to start pairing recovery, then open the integration\u2019s reauthentication prompt in Devices & services. Approve the replacement connection on the same physical hub. Your existing device, entity IDs, names, dashboards, and automations will be kept."
+            "description": "Weber rejected the private connection for {name}. Continue to start pairing recovery, then open the integration\u2019s reauthentication prompt in Devices & services. Approve the replacement connection on the same physical hub. Your existing device, entity IDs, names, dashboards, and automations will be kept.\n\n[Report this problem]({report_url}). The report includes diagnostic events and versions, without credentials or raw logs. Review it on GitHub before submitting."
           }
         }
       }

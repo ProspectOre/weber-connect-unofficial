@@ -24,6 +24,7 @@ from .const import (
 )
 from .options import WeberOptions
 from .state import normalize_state
+from .support import SupportEvent, SupportJournal
 from .weber_cloud import CloudConfig, WeberCloudClient
 from .weber_cloud_socket import WeberCloudSession
 
@@ -51,6 +52,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.options = WeberOptions.from_mapping(entry.options)
         self.source = "cloud"
         self._transport_task: asyncio.Task[None] | None = None
+        self.support_journal = SupportJournal()
         self.last_error: str | None = None
         self.last_successful_update: str | None = None
         self.consecutive_failures = 0
@@ -110,6 +112,8 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Publish a decoded transport status into Home Assistant."""
 
         self.successful_updates += 1
+        if self.successful_updates == 1 or self.consecutive_failures:
+            self.support_journal.record(SupportEvent.CONNECTED)
         self.last_error = None
         self.last_successful_update = datetime.now(timezone.utc).isoformat()
         self.consecutive_failures = 0
@@ -146,6 +150,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _async_error(self, message: str) -> None:
         """Record a bounded transport failure without hiding temperature entities."""
 
+        self.support_journal.record(SupportEvent.DISCONNECTED, message)
         self.last_error = message
         self.failed_updates += 1
         self.consecutive_failures += 1

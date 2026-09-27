@@ -15,6 +15,7 @@ from .const import (
     CONF_COMPANION_ID,
 )
 from .models import WeberRuntimeData
+from .support import error_category, report_placeholders, support_report
 
 TO_REDACT = {
     CONF_ADDRESS,
@@ -32,20 +33,27 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return support data with credentials and device identifiers removed."""
 
-    runtime: WeberRuntimeData = entry.runtime_data
+    report = support_report(stage="device_diagnostics", entry=entry)
+    support = {"support_report": report, **report_placeholders(report)}
+    runtime: WeberRuntimeData | None = getattr(entry, "runtime_data", None)
+    if runtime is None:
+        return support
     coordinator = runtime.coordinator
     state = coordinator.data
     return {
-        "entry": async_redact_data(dict(entry.data), TO_REDACT),
-        "stored_options": dict(entry.options),
-        "effective_options": coordinator.options.as_dict(),
+        **support,
+        "entry": async_redact_data(
+            {key: value for key, value in entry.data.items() if key in TO_REDACT}, TO_REDACT
+        ),
+        "stored_options": async_redact_data(dict(entry.options), set(entry.options)),
+        "effective_options": async_redact_data(coordinator.options.as_dict(), {"probes"}),
         "transport": coordinator.source,
         "connected": state.get("connected", False),
         "last_successful_update": coordinator.last_successful_update,
         "consecutive_failures": coordinator.consecutive_failures,
         "successful_updates": coordinator.successful_updates,
         "failed_updates": coordinator.failed_updates,
-        "last_error": coordinator.last_error,
+        "last_error": error_category(coordinator.last_error),
         "grill_temperature_c": state.get("grill_temperature"),
         "target_grill_temperature_c": state.get("target_grill_temperature"),
         "cook_mode": state.get("cook_mode"),
