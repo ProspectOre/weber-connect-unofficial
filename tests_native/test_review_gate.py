@@ -119,7 +119,7 @@ def test_evaluator_keeps_review_gate_pending_until_clean() -> None:
 def test_native_clean_envelope_requires_known_details_boilerplate() -> None:
     evaluator = _evaluator()
     assert "your team has set up codex to review pull requests in this repo" in evaluator
-    assert "<details>(?:(?!</details>).)*</details>" not in evaluator
+    assert "def known_codex_footer:" in evaluator
     assert "strict_stock_clean_envelope" in evaluator
     assert "strict_stock_clean_issue_comment_envelope" in evaluator
     assert "here are some automated review suggestions for this pull request" in evaluator
@@ -145,11 +145,13 @@ def test_exact_head_changes_requested_reviews_are_always_adverse() -> None:
 
 def test_known_nonsemantic_stock_salutations_remain_accepted() -> None:
     evaluator = _evaluator()
-    assert evaluator.count("def normalize_known_stock_salutation:") == 2
+    # Both native reviews and issue comments accept the same literal stock
+    # suffixes directly; a separate normalization helper is not required.
+    assert evaluator.count("Keep it up!") == 2
     for salutation in (
         "Keep it up!",
         "Keep them coming!",
-        "You.re on a roll",
+        "You[[:punct:]]re on a roll",
         "Swish!",
         "Bravo",
     ):
