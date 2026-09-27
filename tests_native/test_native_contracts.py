@@ -161,6 +161,34 @@ def test_normalized_state_prefers_actual_cavity_temp_then_display_fallback() -> 
     assert actual_state["grill_temperature"] == 94.0
 
 
+@pytest.mark.parametrize(
+    ("device_state", "cook_mode", "expected"),
+    [
+        ("active", "grill", True),
+        ("active", "smoke_boost", True),
+        ("active", "clean", False),
+        ("active", "unknown", False),
+        ("idle", "grill", False),
+        ("shutting_down", "grill", False),
+    ],
+)
+def test_a_pellet_grill_holding_a_cook_mode_is_cooking(
+    device_state: str, cook_mode: str, expected: bool
+) -> None:
+    """No burners and a merely inserted probe must not read as not cooking."""
+
+    state = normalize_state(
+        {
+            "device_state": device_state,
+            "cook_mode": cook_mode,
+            "probes": [{"probe_number": 1, "probe_temp_c": 21.0, "state": "PROBED"}],
+        },
+        source="bluetooth",
+        connected=True,
+    )
+    assert state["cooking"] is expected
+
+
 def test_normalized_state_exposes_capability_driven_telemetry() -> None:
     state = normalize_state(
         {
