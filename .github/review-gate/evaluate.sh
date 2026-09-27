@@ -71,6 +71,19 @@ normalize_timestamp() {
       | if $roundtrip != $whole then error("invalid calendar timestamp") else $normalized end
     end'
 }
+timestamp_event_tag() {
+  python3 -c '
+from datetime import datetime, timezone
+import sys
+
+value = datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+delta = value - datetime(1970, 1, 1, tzinfo=timezone.utc)
+microseconds = (delta.days * 86400 + delta.seconds) * 1000000 + delta.microseconds
+if microseconds < 0 or microseconds >= 1 << 56:
+    raise SystemExit("event timestamp is outside the supported range")
+print(format(microseconds, "014x"))
+' "$1"
+}
 latest_timestamp() {
   jq -r '
     map(select(. != "")
@@ -484,23 +497,43 @@ latest_regular_review_invalidation_at() {
 }
 
 # Finding-history statuses are append-only authenticated observations. Their
-# publication timestamp is the durable edit/finding watermark even when the
-# originating review is later dismissed and the API exposes only its original
-# submission time. Keep this separate from the mutable review delivery.
+# publication timestamp is the durable edit/finding watermark for legacy
+# origins whose source event time was not captured. A dismissed native review
+# contributes its authenticated update time, so either later observation keeps
+# a clean verdict from passing. New relays carry source event time and avoid
+# treating delayed publication as a newer finding.
 latest_regular_finding_history_at() {
+  local reviews="${1:-[]}"
   gh api "repos/$REPO/commits/$head_sha/statuses?per_page=100" --paginate --slurp \
-    | jq -c --arg context "review-finding-history" --arg head "$head_sha" --argjson number "$pr_number" '
+    | jq -c --arg context "review-finding-history" --arg head "$head_sha" --argjson number "$pr_number" --argjson reviews "$reviews" '
+        def hex_microseconds($value):
+          ($value | explode | reduce .[] as $char (0;
+            . * 16 + (if $char >= 48 and $char <= 57 then $char - 48 else $char - 87 end)));
+        def event_timestamp($value):
+          (hex_microseconds($value)) as $microseconds
+          | (($microseconds / 1000000) | floor | todate) as $whole
+          | (($microseconds % 1000000) | tostring) as $fraction
+          | ($whole | sub("Z$"; "." + (("000000" + $fraction)[-6:]) + "Z"));
         [.[][] | select(.context == $context)] as $history
         | [$history[] | select(.state == "pending") as $marker
            | ($marker.description // "") as $description
            | select(($description | contains("for PR #" + ($number | tostring) + " on head " + $head))
                     or (($description | contains("for PR #")) | not))
-           | (try ($description | capture("; (?<origin>(?:review|issue-comment):[1-9][0-9]*)(?:; (?:sha256|h):[0-9a-f]{24})?(?:; t:[0-9a-f]{9})?$").origin) catch "") as $origin
+           | (try ($description | capture("; (?<origin>(?:review|issue-comment):[1-9][0-9]*)(?:; (?:sha256|h):[0-9a-f]{24})?(?:; (?:t|observed-at):[^;]+)?(?:; (?:event:captured|e:(?<event_hex>[0-9a-f]{14})))?$") ) catch {}) as $marker_fields
+           | ($marker_fields.origin // "") as $origin
+           | (try (if ($marker_fields.event_hex // "") != "" then event_timestamp($marker_fields.event_hex) else "" end) catch "") as $event_at
            | ("Regular clean receipt #" + ($marker.id | tostring) + " for PR #" + ($number | tostring) + " on head " + $head + "; " + $origin) as $compact_receipt
            | ("Regular clean history receipt #" + ($marker.id | tostring) + " for PR #" + ($number | tostring) + " on head " + $head + "; " + $origin) as $legacy_receipt
            | select(([$history[] | select(.state == "success") | .description] | index($compact_receipt)) == null
                    and ([$history[] | select(.state == "success") | .description] | index($legacy_receipt)) == null)
-           | ($marker.updated_at // $marker.created_at // "")]
+           | (if ($origin | test("^review:[1-9][0-9]*$")) then
+                ([$reviews[] | select((.id | tostring) == ($origin | sub("^review:"; ""))
+                                      and .dismissed == true) | .updated_at][0] // "") as $dismissed_at
+                | if $event_at != "" then [$event_at, $dismissed_at] | map(select(. != ""))
+                  else [($marker.updated_at // $marker.created_at // ""), $dismissed_at]
+                       | map(select(. != "")) end
+              elif $event_at != "" then [$event_at]
+              else [($marker.updated_at // $marker.created_at // "")] end)[]]
         ' | latest_timestamp
 }
 
@@ -771,6 +804,11 @@ regular_evidence() {
               capture("(?is)\\A.*?(?<footer><details>.*)$").footer | known_codex_footer
               else true end);
           [.[] | .data.repository.pullRequest.reviews.nodes[]?] as $records
+          | [$records[]
+             | select((.author.login // "") == $bot and .author.id == "BOT_kgDOC98s_g")
+             | select((.commit.oid // "") == $head)
+             | {id: (.databaseId | tostring), dismissed: (.state == "DISMISSED"),
+                updated_at: (.updatedAt // .submittedAt)}] as $all_reviews
           # This synthetic record is used only to classify a previously
           # authenticated relay body, never as a verdict or live API evidence.
           | (if $prior_source == "review" then
@@ -778,8 +816,9 @@ regular_evidence() {
                [{databaseId: ($prior_id | tonumber), body: $prior_body,
                  state: "COMMENTED", submittedAt: $prior_at, updatedAt: $prior_at,
                  author: {login: $bot, id: "BOT_kgDOC98s_g"}, commit: {oid: $head}}]
-             else $records end)
-          | [.[]
+             else $records end) as $records_with_prior
+          | {all_reviews: $all_reviews,
+             deliveries: [$records_with_prior[]
            | select((.author.login // "") == $bot and .author.id == "BOT_kgDOC98s_g")
            | select((.commit.oid // "") == $head)
            | (.body // "") as $body
@@ -788,11 +827,12 @@ regular_evidence() {
            | select(if .state == "CHANGES_REQUESTED" then true else (($body | availability_notice) | not) end)
            | select(if .state == "CHANGES_REQUESTED" then true else ($body | exact_head) end)
            | {at: (if .state == "DISMISSED" then .submittedAt else (.updatedAt // .submittedAt) end),
+              updated_at: (.updatedAt // .submittedAt),
               created_at: .submittedAt,
               id: (.databaseId | tostring),
               source: "review",
               dismissed: (.state == "DISMISSED"),
-              clean: (.state != "CHANGES_REQUESTED" and (.state == "COMMENTED" or .state == "APPROVED") and (($body | multiple_result_sections) | not) and ($body | strict_stock_clean_envelope))}]'
+              clean: (.state != "CHANGES_REQUESTED" and (.state == "COMMENTED" or .state == "APPROVED") and (($body | multiple_result_sections) | not) and ($body | strict_stock_clean_envelope))}]}'
   )"
   issue_comment_pages="$(gh api "repos/$REPO/issues/$pr_number/comments?per_page=100" --paginate --slurp)"
   if [[ "${REQUIRE_CLEAN_ISSUE_COMMENT_RECEIPT:-false}" == true ]]; then
@@ -925,9 +965,10 @@ regular_evidence() {
               clean: ((($require_creation_receipt | not) or .review_gate_creation_receipt == true)
                 and $clean_envelope)}])'
     )"
-  jq -cn --argjson reviews "$review_records" --argjson issue_comments "$issue_comment_records" '
-    {deliveries: ($reviews + $issue_comments),
-     review_ids: [$reviews[] | select(.dismissed != true) | .id]}' | normalize_delivery_timestamps
+  jq -cn --argjson review_data "$review_records" --argjson issue_comments "$issue_comment_records" '
+    {deliveries: ($review_data.deliveries + $issue_comments),
+     all_reviews: $review_data.all_reviews,
+     review_ids: [$review_data.deliveries[] | select(.dismissed != true) | .id]}' | normalize_delivery_timestamps
 }
 
 regular_review_thread_summary() {
@@ -1064,10 +1105,10 @@ findings_dismissed() {
                 or (contains("for PR #") | not))
        | select(($marker.id | tostring) as $id | ($valid | index($id)) == null)
        | ($marker.description // "") as $description
-       | if ($description | test("^" + $label + " findings(?: observed)? for PR #" + ($number | tostring) + " on head " + $head + "; (review|issue-comment):[1-9][0-9]*(; (?:sha256|h):[0-9a-f]{24})?(; (?:t|observed-at):[^;]+)?(; event:captured)?$")) then
-           ($description | capture("; (?<source>review|issue-comment):(?<id>[1-9][0-9]*)(?:; (?:sha256|h):[0-9a-f]{24})?(?:; (?:t|observed-at):[^;]+)?(?:; event:captured)?$"))
-         elif ($description | test("^" + $label + " findings(?: observed)? on head " + $head + "; (review|issue-comment):[1-9][0-9]*(; (?:sha256|h):[0-9a-f]{24})?(; (?:t|observed-at):[^;]+)?(; event:captured)?$")) then
-           ($description | capture("; (?<source>review|issue-comment):(?<id>[1-9][0-9]*)(?:; (?:sha256|h):[0-9a-f]{24})?(?:; (?:t|observed-at):[^;]+)?(?:; event:captured)?$"))
+       | if ($description | test("^" + $label + " findings(?: observed)? for PR #" + ($number | tostring) + " on head " + $head + "; (review|issue-comment):[1-9][0-9]*(; (?:sha256|h):[0-9a-f]{24})?(; (?:t|observed-at):[^;]+)?(; (?:event:captured|e:[0-9a-f]{14}))?$")) then
+           ($description | capture("; (?<source>review|issue-comment):(?<id>[1-9][0-9]*)(?:; (?:sha256|h):[0-9a-f]{24})?(?:; (?:t|observed-at):[^;]+)?(?:; (?:event:captured|e:[0-9a-f]{14}))?$"))
+         elif ($description | test("^" + $label + " findings(?: observed)? on head " + $head + "; (review|issue-comment):[1-9][0-9]*(; (?:sha256|h):[0-9a-f]{24})?(; (?:t|observed-at):[^;]+)?(; (?:event:captured|e:[0-9a-f]{14}))?$")) then
+           ($description | capture("; (?<source>review|issue-comment):(?<id>[1-9][0-9]*)(?:; (?:sha256|h):[0-9a-f]{24})?(?:; (?:t|observed-at):[^;]+)?(?:; (?:event:captured|e:[0-9a-f]{14}))?$"))
          elif ($description | test("^" + $label + " for PR #" + ($number | tostring) + " on head " + $head + "; (review|issue-comment):[1-9][0-9]*; (?:sha256|h):[0-9a-f]{24}(?:; t:[0-9a-f]{9})?$")) then
            ($description | capture("; (?<source>review|issue-comment):(?<id>[1-9][0-9]*); (?:sha256|h):[0-9a-f]{24}(?:; t:[0-9a-f]{9})?$"))
          elif ($description | test("^Security review invalidated at [^;]+; withdrawn issue-comment:[1-9][0-9]* for PR #" + ($number | tostring) + " on head " + $head + "$")) then
@@ -1293,16 +1334,17 @@ read_gate_snapshot() (
   # A snapshot must see changes made since the prior pass, while reads inside
   # this pass and its immediate history checks can still be coalesced.
   rm -f "$REVIEW_READ_CACHE/"*.json
-  local evidence deliveries reviews review_ids thread_summary verdict_selection verdict finding_count security_finding_count security_findings latest_finding_at issue_comment_at review_invalidation_at finding_history_at withdrawal_at
+  local evidence deliveries reviews all_reviews review_ids thread_summary verdict_selection verdict finding_count security_finding_count security_findings latest_finding_at issue_comment_at review_invalidation_at finding_history_at withdrawal_at
   evidence="$(regular_evidence)"
   deliveries="$(jq -c '.deliveries' <<< "$evidence")"
   reviews="$(jq -c '[.deliveries[] | select(.source == "review")]' <<< "$evidence")"
+  all_reviews="$(jq -c '.all_reviews // []' <<< "$evidence")"
   review_ids="$(jq -c '[.deliveries[] | select(.source == "review" and (.dismissed != true)) | .id]' <<< "$evidence")"
   thread_summary="$(regular_review_thread_summary "$review_ids")"
   verdict_selection="$(
     issue_comment_at="$(latest_regular_issue_comment_at)"
     review_invalidation_at="$(latest_regular_review_invalidation_at)"
-    finding_history_at="$(latest_regular_finding_history_at)"
+    finding_history_at="$(latest_regular_finding_history_at "$all_reviews")"
     withdrawal_at="$(withdrawn_evidence_at "$deliveries")"
     jq -cn --argjson deliveries "$deliveries" --argjson reviews "$reviews" --argjson thread_summary "$thread_summary" --arg issue_comment_at "$issue_comment_at" --arg review_invalidation_at "$review_invalidation_at" --arg finding_history_at "$finding_history_at" --arg withdrawal_at "$withdrawal_at" '
       ($thread_summary | map(select(.total_count > 0) | .id)) as $finding_ids
@@ -1713,6 +1755,17 @@ if [[ "$event_name" == pull_request_review_comment && -f "$event_path" ]] &&
      .comment.original_commit_id == $head and
      (.comment.in_reply_to_id == null)' "$event_path" >/dev/null; then
   relayed_review_id="$(jq -r '.comment.pull_request_review_id' "$event_path")"
+  relayed_review_event_at=""
+  case "$(jq -r '.action' "$event_path")" in
+    created) relayed_review_event_at="$(jq -r '.comment.created_at // .comment.updated_at // empty' "$event_path")" ;;
+    edited) relayed_review_event_at="$(jq -r '.comment.updated_at // empty' "$event_path")" ;;
+  esac
+  if [[ -n "$relayed_review_event_at" ]]; then
+    relayed_review_event_at="$(normalize_timestamp "$relayed_review_event_at")"
+    relayed_review_event_suffix="; e:$(timestamp_event_tag "$relayed_review_event_at")"
+  else
+    relayed_review_event_suffix="; event:captured"
+  fi
   if [[ "${relayed_security_finding:-false}" == true ]]; then
     stamp_status "review-security-history" pending \
       "Security findings observed for PR #$pr_number on head $head_sha; review:$relayed_review_id; event:captured" >/dev/null
@@ -1720,7 +1773,7 @@ if [[ "$event_name" == pull_request_review_comment && -f "$event_path" ]] &&
     security_withdrawal_unresolved=true
   else
     stamp_status "review-finding-history" pending \
-      "Regular findings observed for PR #$pr_number on head $head_sha; review:$relayed_review_id; event:captured" >/dev/null
+      "Regular findings observed for PR #$pr_number on head $head_sha; review:$relayed_review_id$relayed_review_event_suffix" >/dev/null
     edited_finding=true
   fi
 fi
