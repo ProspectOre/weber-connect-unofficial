@@ -92,7 +92,7 @@ jobs:
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HISTORY_HEAD_SHA:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          EXPECTED_SHA256: '62d7ee4b2b103b3a7bed370fb1e34fdc9ba0d4438f078e440cbf9d8bfd033aac'
+          EXPECTED_SHA256: '042634d14526d2561a129422c8bac1c45d83ca23188d83fa06b2c7e7e427a8f7'
           EXPECTED_DEPENDENCY_SHA256: '3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455'
           EXPECTED_ISSUE_COMMENT_RECEIPTS_SHA256: ''
         shell: bash
