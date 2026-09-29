@@ -137,7 +137,7 @@ def test_exact_head_changes_requested_reviews_are_always_adverse() -> None:
     evaluator = _evaluator()
     assert 'select((.commit.oid // "") == $head)' in evaluator
     assert (
-        'select(if .state == "CHANGES_REQUESTED" then true else ($body | exact_head) end)'
+        'if .state == "CHANGES_REQUESTED" then [{body: .body}] else .review_gate_sections end'
         in evaluator
     )
     assert 'clean: (.state != "CHANGES_REQUESTED"' in evaluator
