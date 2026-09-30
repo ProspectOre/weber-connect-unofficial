@@ -341,6 +341,14 @@ def check_workflows() -> None:
         fail("CI must enforce at least 100% native integration coverage")
     if "--cov-branch" not in ci:
         fail("CI must include branch coverage in the 100% release floor")
+    fork_route = "github.event.pull_request.head.repo.full_name != github.repository"
+    if ci.count(fork_route) < 4:
+        fail("CI must admit fork pull requests in every required job")
+    hosted_route = "github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]'"
+    if ci.count(hosted_route) != 4:
+        fail("CI must route fork and Dependabot pull requests to hosted Linux runners")
+    if ci.count("persist-credentials: false") < 3:
+        fail("CI checkouts must disable persisted credentials")
     review_gate = (ROOT / ".github" / "workflows" / "review-gate.yml").read_text(encoding="utf-8")
     evaluator = (ROOT / ".github" / "review-gate" / "evaluate.sh").read_text(encoding="utf-8")
     if "candidate-proof" not in review_gate or "EXPECTED_BASE_SHA:" not in review_gate:
