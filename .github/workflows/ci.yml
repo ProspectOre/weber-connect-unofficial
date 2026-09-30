@@ -26,7 +26,7 @@ jobs:
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || 'macos-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,7 +112,7 @@ jobs:
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || 'macos-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -197,7 +197,7 @@ jobs:
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || 'macos-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -293,7 +293,7 @@ jobs:
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     needs: [validate, hassfest, hacs]
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || 'macos-latest' }}
     timeout-minutes: 5
     steps:
       - name: Require every release gate

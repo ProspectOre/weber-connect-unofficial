@@ -82,6 +82,16 @@ def test_ci_and_review_lifecycle_keep_every_trust_guard() -> None:
         assert "reopened" not in workflow
 
 
+def test_ci_uses_hosted_macos_except_for_dependabot() -> None:
+    workflow = _workflow("ci.yml")
+    runs_on = re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE)
+
+    assert len(runs_on) == 4
+    assert all("'macos-latest'" in route for route in runs_on)
+    assert all("'ubuntu-latest'" in route for route in runs_on)
+    assert all("self-hosted" not in route for route in runs_on)
+
+
 def test_opened_ready_pr_with_existing_commits_routes_ci_and_review() -> None:
     for name in ("ci.yml",):
         assert _trusted_lifecycle_routes(_workflow(name), event="opened")
