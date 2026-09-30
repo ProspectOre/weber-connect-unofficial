@@ -1,14 +1,14 @@
 {
   "source": "ProspectOre/dev-workspace",
   "path": "scripts/review-gate/evaluate.sh",
-  "sha256": "1e248ec708bd74ee7a352df8aff92de9f93e90457455d51545c8b09becdde869",
+  "sha256": "a9007c31702578de843b9148746d2f04757d7beadc410f1f808026ef59179b1f",
   "dependencyClassifierSha256": "3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455",
-  "reviewSectionsSha256": "f7f3b9808fa279059ade9705ff3df199bc3e55cf0378efde7e8be87b10993c04",
+  "reviewSectionsSha256": "daf8b44a82b01c7888178fb2c9c1e43b94355679160951f0c6f6b99d252604e6",
   "reviewEventConsumer": {
     "version": 1,
     "workflow": "review-gate.yml",
     "ref": "refs/heads/main",
-    "sha256": "207b45159c42135d1b86a60bd01c887c794a89ca4055124a672df66e2cba19c9",
+    "sha256": "a2be5335eafcb1829af6029356a47bc52f730bb57a949d69d73789a28741905f",
     "completionWorkflow": "review-gate-capture-completion.yml",
     "completionSha256": "30d20ec312bdba367f98c6ed92eaa765b18ff7eddc4ae3f678bb188f9a908791"
   },
