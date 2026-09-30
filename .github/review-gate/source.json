@@ -1,0 +1,22 @@
+{
+  "source": "ProspectOre/dev-workspace",
+  "path": "scripts/review-gate/evaluate.sh",
+  "sha256": "0d0606ab429e491dfa3d3873e4de9316adfd447e628a774d334688ed58e5c32f",
+  "dependencyClassifierSha256": "3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455",
+  "reviewSectionsSha256": "a79153ff75bf60142a502caf7929bf0d253007d8edb459af989fff163c22d4a8",
+  "reviewEventConsumer": {
+    "version": 1,
+    "workflow": "review-gate.yml",
+    "ref": "refs/heads/main",
+    "sha256": "806452327ce306c4480f91e1576503e661767fb8cf366209f6cff13da86d325b",
+    "completionWorkflow": "review-gate-capture-completion.yml",
+    "completionSha256": "30d20ec312bdba367f98c6ed92eaa765b18ff7eddc4ae3f678bb188f9a908791"
+  },
+  "issueCommentReceiptsSha256": "bf9ad41c2e35b4a2e32d6968afeba87c1eaebb48878445bcfeed658ff602afd5",
+  "generated": true,
+  "managedWorkflows": [
+    ".github/workflows/auto-merge.yml",
+    ".github/workflows/review-gate-capture-completion.yml",
+    ".github/workflows/review-gate.yml"
+  ]
+}
