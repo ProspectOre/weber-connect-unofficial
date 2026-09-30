@@ -3,16 +3,16 @@
   "path": "scripts/review-gate/evaluate.sh",
   "sha256": "fb81b436baa2c87ba970362be56504be28efe57c473284c066ceabfc6de9ecb8",
   "dependencyClassifierSha256": "3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455",
-  "reviewSectionsSha256": "2ee16db3b7eee1745e12733d0a05c99367624092c0f6d45105890beb729bed32",
+  "reviewSectionsSha256": "d0a17223d92c730f2f82a5d8def82066dbc8d56af6ff9b26e986649a19f6974d",
   "reviewEventConsumer": {
     "version": 1,
     "workflow": "review-gate.yml",
     "ref": "refs/heads/main",
-    "sha256": "7736e9f03fc0025d3e5dd7d92456a57b4e77ffc6feeec03507a9c6c1769fa168",
+    "sha256": "9e5789c2f5e12f5f455d2c4119c5412d66061a2c82589998337e85439780f4e5",
     "completionWorkflow": "review-gate-capture-completion.yml",
     "completionSha256": "84f85327a2425b773ebae6490fa0f59121231af802e69cd010fbd8634eb3d6d3"
   },
-  "issueCommentReceiptsSha256": "71c098e01308ac354dd3a87f82d42ff47e847a358ec4c4449e9cbdaa77237382",
+  "issueCommentReceiptsSha256": "bf9ad41c2e35b4a2e32d6968afeba87c1eaebb48878445bcfeed658ff602afd5",
   "generated": true,
   "managedWorkflows": [
     ".github/workflows/auto-merge.yml",
