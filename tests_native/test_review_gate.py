@@ -140,7 +140,9 @@ def test_exact_head_changes_requested_reviews_are_always_adverse() -> None:
         'if .state == "CHANGES_REQUESTED" then [{body: .body}] else .review_gate_sections end'
         in evaluator
     )
-    assert 'clean: ($section.parser_ambiguous != true and .state != "CHANGES_REQUESTED"' in evaluator
+    assert (
+        'clean: ($section.parser_ambiguous != true and .state != "CHANGES_REQUESTED"' in evaluator
+    )
 
 
 def test_known_nonsemantic_stock_salutations_remain_accepted() -> None:
