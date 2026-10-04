@@ -3,7 +3,7 @@
   "path": "scripts/review-gate/evaluate.sh",
   "sha256": "0fbb0bef99bbee6182af8a35a56633cffcdf13bfdc15da156a5256791f336d81",
   "dependencyClassifierSha256": "3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455",
-  "reviewSectionsSha256": "64bfa08d3bebb4b8b683da1123b989f37d50b23490261b1b81ea8b81f9adf195",
+  "reviewSectionsSha256": "f89e48bdd543e056b7747fe81265a3e3969d88781d2f3af2163c585ad033c724",
   "markdownRuntime": {
     "version": 1,
     "parser": "mistune",
@@ -23,7 +23,7 @@
     "version": 1,
     "workflow": "review-gate.yml",
     "ref": "refs/heads/main",
-    "sha256": "7c5ec1c96a2bd9f6dbb0738685c1e00c5916c7547b93897a77fa319c9ab79d35",
+    "sha256": "1b40e72d0958bb0a2eff1e9f70b2f2d46be05799119adbdfec4243bfa70ca6da",
     "completionWorkflow": "review-gate-capture-completion.yml",
     "completionSha256": "30d20ec312bdba367f98c6ed92eaa765b18ff7eddc4ae3f678bb188f9a908791"
   },
