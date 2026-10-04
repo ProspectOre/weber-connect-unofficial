@@ -3,12 +3,27 @@
   "path": "scripts/review-gate/evaluate.sh",
   "sha256": "3373831b06f257f447d8fa6aec9afd4b1983ea86ada834f9fadc8eb927df729e",
   "dependencyClassifierSha256": "3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455",
-  "reviewSectionsSha256": "44a525a21008f7609c443ee5be2b75b37765d9edb422551366fa6e05b941304e",
+  "reviewSectionsSha256": "9bf6df98bce33edc5c4fc135ee12dcfd9c9a00583fe71b713ddc52fb09753f1c",
+  "markdownRuntime": {
+    "version": 1,
+    "parser": "mistune",
+    "parserVersion": "3.3.4",
+    "wheels": [
+      {
+        "filename": "mistune-3.3.4-py3-none-any.whl",
+        "sha256": "ee015381e955e370962968befe1d729ab60fafb6a715ac6751763fbce38c8d4a"
+      },
+      {
+        "filename": "typing_extensions-4.15.0-py3-none-any.whl",
+        "sha256": "f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"
+      }
+    ]
+  },
   "reviewEventConsumer": {
     "version": 1,
     "workflow": "review-gate.yml",
     "ref": "refs/heads/main",
-    "sha256": "a63eb1ce0349b4f1c0683ca9ded4b8e9961aa8f2862b4318e67f9df09431ea73",
+    "sha256": "4c011b8eb9aa7d396a49bda353cd466ecc03c25f5213f385b16cb974ed4a44f0",
     "completionWorkflow": "review-gate-capture-completion.yml",
     "completionSha256": "30d20ec312bdba367f98c6ed92eaa765b18ff7eddc4ae3f678bb188f9a908791"
   },
