@@ -32,6 +32,7 @@ from .support import SupportEvent
 _LOGGER = logging.getLogger(__name__)
 CONNECTION_TIMEOUT = 30.0
 PAIRING_RESPONSE_TYPES = frozenset({0x85, 0x87, 0xF0, 0xF1, 0xF2})
+MAX_PAIRING_NOTIFICATIONS = 8
 
 
 class WeberBluetoothError(RuntimeError):
@@ -92,6 +93,23 @@ def _pairing_payload(data: bytes) -> tuple[int, dict[str, Any] | None]:
             "Ignored unauthenticated Bluetooth telemetry during companion pairing."
         )
     return type_value, parsed
+
+
+def _notification_callback(replies: asyncio.Queue[bytes]) -> Callable[[Any, bytearray], None]:
+    """Return a nonblocking callback that keeps only a bounded recent burst."""
+
+    def notify(_sender: Any, data: bytearray) -> None:
+        if replies.full():
+            try:
+                replies.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        try:
+            replies.put_nowait(bytes(data))
+        except asyncio.QueueFull:
+            pass
+
+    return notify
 
 
 async def _connect(
@@ -162,11 +180,10 @@ async def async_pair(
 ) -> PairingResult:
     """Pair Home Assistant after the user confirms on the physical hub."""
 
-    replies: asyncio.Queue[bytes] = asyncio.Queue()
+    replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
     last_polled_response = b""
 
-    def notify(_sender: Any, data: bytearray) -> None:
-        replies.put_nowait(bytes(data))
+    notify = _notification_callback(replies)
 
     # A hub that has just restarted can advertise before its complete GATT
     # table is available through a proxy. Reconnect before asking the user for

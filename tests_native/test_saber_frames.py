@@ -157,6 +157,14 @@ class TlvTests(unittest.TestCase):
         fields = sf.parse_tlv(bytes([1, 5, 0x00]))
         self.assertIn(-1, fields)
 
+    def test_parse_tlv_caps_record_cardinality(self) -> None:
+        payload = bytes([1, 0]) * (sf.MAX_TLV_RECORDS + 7)
+
+        fields = sf.parse_tlv(payload)
+
+        self.assertEqual(len(fields[1]), sf.MAX_TLV_RECORDS)
+        self.assertEqual(fields[-1], [bytes([1, 0]) * 7])
+
 
 class CookSessionStatusTests(unittest.TestCase):
     def _full_probe(self) -> bytes:

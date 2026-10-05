@@ -358,12 +358,21 @@ BURNER_STATES = {
 }
 
 
+MAX_TLV_RECORDS = 128
+
+
 def parse_tlv(payload: bytes) -> dict[int, list[bytes]]:
     """Parse Weber's one-byte tag / one-byte length TLV records."""
 
     fields: dict[int, list[bytes]] = {}
     index = 0
+    records = 0
+    truncated = False
     while index + 2 <= len(payload):
+        if records >= MAX_TLV_RECORDS:
+            fields[-1] = [payload[index:]]
+            truncated = True
+            break
         tag = payload[index]
         length = payload[index + 1]
         start = index + 2
@@ -372,7 +381,8 @@ def parse_tlv(payload: bytes) -> dict[int, list[bytes]]:
             break
         fields.setdefault(tag, []).append(payload[start:end])
         index = end
-    if index != len(payload):
+        records += 1
+    if index != len(payload) and not truncated:
         fields.setdefault(-1, []).append(payload[index:])
     return fields
 

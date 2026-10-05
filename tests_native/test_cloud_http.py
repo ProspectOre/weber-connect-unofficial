@@ -261,8 +261,8 @@ def test_redirect_handler_rejects_unsupported_parent_result() -> None:
             handler.redirect_request(request, None, 302, "Found", {}, request.full_url)
 
 
-def test_unmatched_expected_appliance_does_not_override_unique_association() -> None:
-    assert resolve_associated_appliance_id([{"id": APPLIANCE_ID}], "33" * 16) == APPLIANCE_ID
+def test_unmatched_expected_appliance_rejects_unique_unrelated_association() -> None:
+    assert resolve_associated_appliance_id([{"id": APPLIANCE_ID}], "33" * 16) is None
 
 
 def test_plain_response_and_transport_properties() -> None:

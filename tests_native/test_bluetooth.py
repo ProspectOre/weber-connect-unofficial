@@ -87,6 +87,16 @@ def test_pairing_path_rejects_unauthenticated_status_telemetry() -> None:
         transport._pairing_payload(_appliance_status())
 
 
+def test_pairing_notification_queue_is_bounded_and_drops_oldest() -> None:
+    queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=transport.MAX_PAIRING_NOTIFICATIONS)
+    callback = transport._notification_callback(queue)
+    for value in range(transport.MAX_PAIRING_NOTIFICATIONS + 2):
+        callback(None, bytearray([value]))
+
+    assert queue.qsize() == transport.MAX_PAIRING_NOTIFICATIONS
+    assert queue.get_nowait() == bytes([2])
+
+
 class FakeClient:
     """Small connected GATT client with scripted response reads."""
 

@@ -120,8 +120,7 @@ def resolve_associated_appliance_id(
                 candidates.append(normalized)
     if expected_appliance_id:
         expected = expected_appliance_id.replace(":", "").strip().lower()
-        if expected in candidates:
-            return expected
+        return expected if expected in candidates else None
     return candidates[0] if len(candidates) == 1 else None
 
 
