@@ -43,7 +43,6 @@ jobs:
             exit 1
           fi
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        if: runner.os == 'Linux'
         with:
           python-version: "3.14"
           cache: pip
@@ -139,6 +138,10 @@ jobs:
             requirements_test.txt
             requirements_test_pre_commit.txt
             pyproject.toml
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: runner.os != 'Linux'
+        with:
+          python-version: "3.14"
       - name: Configure local Hassfest runtime
         if: runner.os != 'Linux'
         run: |
@@ -225,6 +228,10 @@ jobs:
             action
             custom_components/hacs
             requirements_action.txt
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: runner.os != 'Linux'
+        with:
+          python-version: "3.14"
       - name: Configure local HACS runtime
         if: runner.os != 'Linux'
         run: |
