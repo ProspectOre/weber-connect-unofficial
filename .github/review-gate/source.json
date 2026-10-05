@@ -1,0 +1,11 @@
+{
+  "source": "ProspectOre/dev-workspace",
+  "path": "scripts/review-gate/evaluate.sh",
+  "sha256": "042634d14526d2561a129422c8bac1c45d83ca23188d83fa06b2c7e7e427a8f7",
+  "dependencyClassifierSha256": "3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455",
+  "generated": true,
+  "managedWorkflows": [
+    ".github/workflows/auto-merge.yml",
+    ".github/workflows/review-gate.yml"
+  ]
+}
