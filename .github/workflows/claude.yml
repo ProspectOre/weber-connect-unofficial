@@ -6,7 +6,7 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [opened, assigned]
+    types: [opened]
   pull_request_review:
     types: [submitted]
 
@@ -36,6 +36,7 @@ jobs:
           ACTOR_LOGIN: ${{ github.actor }}
           PR_NUMBER: ${{ github.event.issue.number }}
           PR_URL: ${{ github.event.issue.pull_request.url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -53,6 +54,13 @@ jobs:
             && "$actor_permission" != "push" \
             && "$actor_permission" != "write" ]]; then
             echo "$ACTOR_LOGIN has $actor_permission permission; write access is required."
+          elif [[ "$EVENT_NAME" == "issues" ]]; then
+            if issue_author="$(gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.user.login')" \
+              && [[ "$issue_author" == "$ACTOR_LOGIN" ]]; then
+              trusted=true
+            else
+              echo "Could not bind issue instructions to the authorized actor; refusing the privileged action."
+            fi
           elif [[ "$EVENT_NAME" != "issue_comment" || -z "$PR_URL" ]]; then
             trusted=true
           elif pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")" \

@@ -24,7 +24,8 @@ jobs:
       && github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))
-    runs-on: [self-hosted, macOS, ARM64, weber, mbp]
+    # Pull-request source and build dependencies run on an ephemeral hosted worker.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 60
     steps:
       - name: Checkout

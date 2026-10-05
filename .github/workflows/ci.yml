@@ -16,8 +16,8 @@ concurrency:
 jobs:
   validate:
     name: Native integration
-    # Persistent runners accept only trusted same-repository branches. Fork
-    # pull requests are hard-stopped and never execute submitted code locally.
+    # Pull-request code runs on ephemeral hosted workers; the persistent local
+    # runner validates only the protected default-branch push.
     if: >-
       github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
@@ -26,19 +26,21 @@ jobs:
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    # Candidate code and its dependencies run on ephemeral hosted workers so
+    # repository-writer changes cannot persist onto later secret-bearing local jobs.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Require local disk headroom
+      - name: Require job disk headroom
         run: |
           set -euo pipefail
           available_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')"
           minimum_kb=$((8 * 1024 * 1024))
           if (( available_kb < minimum_kb )); then
-            echo "Local runner has ${available_kb} KiB free; 8 GiB is required before validation."
+            echo "Runner has ${available_kb} KiB free; 8 GiB is required before validation."
             exit 1
           fi
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -112,7 +114,7 @@ jobs:
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -197,7 +199,7 @@ jobs:
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -293,7 +295,7 @@ jobs:
       && github.event.sender.type != 'Bot'
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     needs: [validate, hassfest, hacs]
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 5
     steps:
       - name: Require every release gate
