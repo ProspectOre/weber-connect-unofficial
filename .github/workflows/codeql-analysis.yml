@@ -20,10 +20,10 @@ jobs:
     if: >-
       (github.event.repository.private == false || github.event_name == 'workflow_dispatch')
       && (github.event_name != 'pull_request'
-      || (github.event.pull_request.head.repo.full_name == github.repository
-      && github.event.pull_request.user.type != 'Bot'
+      || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
-      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
     # Pull-request source and build dependencies run on an ephemeral hosted worker.
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 60
@@ -42,3 +42,5 @@ jobs:
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           category: "/language:python"
+          # Fork runs use a read-only GITHUB_TOKEN; keep analysis local to the job.
+          upload: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}

@@ -21,11 +21,11 @@ jobs:
     if: >-
       github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
-      && github.event.pull_request.head.repo.full_name == github.repository
       && (github.event.pull_request.user.login == 'dependabot[bot]'
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
-      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     # Candidate code and its dependencies run on ephemeral hosted workers so
     # repository-writer changes cannot persist onto later secret-bearing local jobs.
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
@@ -109,11 +109,11 @@ jobs:
     if: >-
       github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
-      && github.event.pull_request.head.repo.full_name == github.repository
       && (github.event.pull_request.user.login == 'dependabot[bot]'
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
-      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 15
     steps:
@@ -194,11 +194,11 @@ jobs:
     if: >-
       github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
-      && github.event.pull_request.head.repo.full_name == github.repository
       && (github.event.pull_request.user.login == 'dependabot[bot]'
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
-      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 15
     steps:
@@ -289,11 +289,11 @@ jobs:
       always()
       && (github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
-      && github.event.pull_request.head.repo.full_name == github.repository
       && (github.event.pull_request.user.login == 'dependabot[bot]'
       || (github.event.pull_request.user.type != 'Bot'
       && github.event.sender.type != 'Bot'
-      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))))
     needs: [validate, hassfest, hacs]
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","macOS","ARM64","weber","mbp"]') }}
     timeout-minutes: 5

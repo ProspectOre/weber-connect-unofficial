@@ -97,6 +97,37 @@ def test_pairing_notification_queue_is_bounded_and_drops_oldest() -> None:
     assert queue.get_nowait() == bytes([2])
 
 
+def test_pairing_notification_callback_tolerates_queue_state_races() -> None:
+    class QueueRace:
+        """Model a consumer changing a bounded queue between callback operations."""
+
+        def __init__(self, *, fail_drop: bool = False, fail_put: bool = False) -> None:
+            self.fail_drop = fail_drop
+            self.fail_put = fail_put
+            self.items: list[bytes] = []
+
+        def full(self) -> bool:
+            return True
+
+        def get_nowait(self) -> bytes:
+            if self.fail_drop:
+                raise asyncio.QueueEmpty
+            return self.items.pop(0)
+
+        def put_nowait(self, item: bytes) -> None:
+            if self.fail_put:
+                raise asyncio.QueueFull
+            self.items.append(item)
+
+    emptied = QueueRace(fail_drop=True)
+    transport._notification_callback(emptied)(None, bytearray(b"new"))
+    assert emptied.items == [b"new"]
+
+    refilled = QueueRace(fail_drop=True, fail_put=True)
+    transport._notification_callback(refilled)(None, bytearray(b"new"))
+    assert refilled.items == []
+
+
 class FakeClient:
     """Small connected GATT client with scripted response reads."""
 
