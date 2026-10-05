@@ -395,7 +395,12 @@ async def test_pairing_notification_queue_and_ignored_confirmation_telemetry(pai
         if commands == 1:
             callback(None, bytearray(_pairing_required()))
         elif commands == 2:
-            for frame in (_status(), _pairing_required(), _pairing_confirmed()):
+            frames = [
+                *([_status()] * (transport.MAX_PAIRING_NOTIFICATIONS + 3)),
+                _pairing_required(),
+                _pairing_confirmed(),
+            ]
+            for frame in frames:
                 callback(None, bytearray(frame))
 
     client.write_gatt_char = write
