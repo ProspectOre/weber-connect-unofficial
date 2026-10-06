@@ -97,16 +97,25 @@ def _pairing_payload(data: bytes) -> tuple[int, dict[str, Any] | None]:
 
 
 def _is_pairing_response_frame(data: bytes) -> bool:
-    """Recognize a complete plaintext pairing response without decoding its payload."""
+    """Recognize a complete plaintext pairing reply without decoding its payload."""
 
-    if len(data) < 97 or data[6] != 0xAB or data[9] != 0 or data[-1] != 0x54:
+    if (
+        len(data) < 16
+        or data[6] != 0xAB
+        or data[7] != 0
+        or data[8] != 0
+        or data[9] != 0
+        or data[-1] != 0x54
+    ):
         return False
     body_length = int.from_bytes(data[10:12], "little")
+    type_value = data[13]
+    minimum_body_length = 83 if type_value == 0x85 else 2
     return (
         int.from_bytes(data[4:6], "little") == len(data) - 6
-        and body_length >= 83
+        and type_value in PAIRING_RESPONSE_TYPES
+        and body_length >= minimum_body_length
         and len(data) == 14 + body_length
-        and data[13] == 0x85
         and data[-2] == crc8(data[7:-2])
     )
 

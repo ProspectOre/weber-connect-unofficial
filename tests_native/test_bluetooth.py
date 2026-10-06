@@ -114,6 +114,61 @@ def test_pairing_response_queue_is_bounded_and_separate_from_telemetry() -> None
     assert pairing_replies.get_nowait() == confirmation
 
 
+@pytest.mark.parametrize(
+    ("type_value", "payload"),
+    [
+        (0x85, bytes(range(16)) + bytes(range(64)) + b"\x00"),
+        (0x87, b"\x00\x01\x00"),
+        (0xF0, b""),
+        (0xF1, b""),
+        (0xF2, b""),
+    ],
+)
+def test_all_pairing_reply_types_survive_telemetry_burst(type_value, payload) -> None:
+    notifications: asyncio.Queue[bytes] = asyncio.Queue(maxsize=transport.MAX_PAIRING_NOTIFICATIONS)
+    pairing_replies: asyncio.Queue[bytes] = asyncio.Queue(
+        maxsize=transport.MAX_PAIRING_NOTIFICATIONS
+    )
+    callback = transport._notification_callback(notifications, pairing_replies)
+    reply = build_command_frame(1, 10, type_value, payload)
+
+    callback(None, bytearray(reply))
+    for _ in range(transport.MAX_PAIRING_NOTIFICATIONS + 3):
+        callback(None, bytearray(_status()))
+
+    assert notifications.qsize() == transport.MAX_PAIRING_NOTIFICATIONS
+    assert pairing_replies.qsize() == 1
+    assert pairing_replies.get_nowait() == reply
+
+
+def test_pairing_response_queue_rejects_malformed_and_encrypted_frames() -> None:
+    valid = build_command_frame(1, 10, 0xF1, b"")
+    bad_crc = bytearray(valid)
+    bad_crc[-2] ^= 0xFF
+    bad_tail = bytearray(valid)
+    bad_tail[-1] = 0
+    nonzero_message_count = bytearray(valid)
+    nonzero_message_count[7] = 1
+    nonzero_message_count[-2] = crc8(bytes(nonzero_message_count[7:-2]))
+    encrypted = build_command_frame(1, 10, 0xF1, b"", message_type=1)
+    short_confirmation = build_command_frame(1, 10, 0x85, b"")
+    malformed = [bad_crc, bad_tail, nonzero_message_count, encrypted, short_confirmation]
+
+    notifications: asyncio.Queue[bytes] = asyncio.Queue(maxsize=transport.MAX_PAIRING_NOTIFICATIONS)
+    pairing_replies: asyncio.Queue[bytes] = asyncio.Queue(
+        maxsize=transport.MAX_PAIRING_NOTIFICATIONS
+    )
+    callback = transport._notification_callback(notifications, pairing_replies)
+    for frame in malformed:
+        callback(None, bytearray(frame))
+
+    assert pairing_replies.empty()
+    routed_to_telemetry = []
+    while not notifications.empty():
+        routed_to_telemetry.append(notifications.get_nowait())
+    assert routed_to_telemetry == [bytes(frame) for frame in malformed]
+
+
 def test_pairing_notification_callback_tolerates_queue_state_races() -> None:
     class QueueRace:
         """Model a consumer changing a bounded queue between callback operations."""
@@ -455,6 +510,44 @@ async def test_pairing_notification_queue_preserves_confirmation_over_telemetry(
     with patch.object(transport, "_connect", AsyncMock(return_value=client)):
         result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
     assert result.appliance_id == bytes(range(16)).hex()
+    assert client.disconnected
+
+
+async def test_pairing_notification_queue_preserves_handshake_error_over_telemetry(
+    pairing_clock,
+):
+    client = FakeClient()
+    original_write = client.write_gatt_char
+    commands = 0
+
+    async def write(uuid, data, response=True):
+        nonlocal commands
+        await original_write(uuid, data, response)
+        if uuid != transport.COMMAND_UUID:
+            return
+        commands += 1
+        callback = client.callbacks[transport.RESPONSE_UUID]
+        if commands == 1:
+            callback(None, bytearray(build_command_frame(1, 10, 0x87, b"\x00\x01\x00")))
+            for _ in range(transport.MAX_PAIRING_NOTIFICATIONS + 3):
+                callback(None, bytearray(_status()))
+        elif commands == 2:
+            callback(None, bytearray(_pairing_required()))
+        elif commands == 3:
+            callback(None, bytearray(_pairing_confirmed()))
+
+    client.write_gatt_char = write
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+
+    assert result.message_version == 10
+    assert result.appliance_id == bytes(range(16)).hex()
+    versions = [
+        transport._decoded(data)["envelope"]["body_plain_candidate"]["message_version"]
+        for uuid, data, _response in client.writes
+        if uuid == transport.COMMAND_UUID
+    ]
+    assert versions == [11, 10, 10, 10]
     assert client.disconnected
 
 
