@@ -25,6 +25,7 @@ from .saber_frames import (
     build_command_frame,
     build_handshake_body,
     build_pairing_body,
+    crc8,
     decode_hex_frame,
 )
 from .support import SupportEvent
@@ -95,17 +96,41 @@ def _pairing_payload(data: bytes) -> tuple[int, dict[str, Any] | None]:
     return type_value, parsed
 
 
-def _notification_callback(replies: asyncio.Queue[bytes]) -> Callable[[Any, bytearray], None]:
-    """Return a nonblocking callback that keeps only a bounded recent burst."""
+def _is_pairing_response_frame(data: bytes) -> bool:
+    """Recognize a complete plaintext pairing response without decoding its payload."""
+
+    if len(data) < 97 or data[6] != 0xAB or data[9] != 0 or data[-1] != 0x54:
+        return False
+    body_length = int.from_bytes(data[10:12], "little")
+    return (
+        int.from_bytes(data[4:6], "little") == len(data) - 6
+        and body_length >= 83
+        and len(data) == 14 + body_length
+        and data[13] == 0x85
+        and data[-2] == crc8(data[7:-2])
+    )
+
+
+def _notification_callback(
+    replies: asyncio.Queue[bytes],
+    pairing_replies: asyncio.Queue[bytes] | None = None,
+) -> Callable[[Any, bytearray], None]:
+    """Keep bounded recent notifications and reserve a queue for pairing replies."""
 
     def notify(_sender: Any, data: bytearray) -> None:
-        if replies.full():
+        frame = bytes(data)
+        target = (
+            pairing_replies
+            if pairing_replies is not None and _is_pairing_response_frame(frame)
+            else replies
+        )
+        if target.full():
             try:
-                replies.get_nowait()
+                target.get_nowait()
             except asyncio.QueueEmpty:
                 pass
         try:
-            replies.put_nowait(bytes(data))
+            target.put_nowait(frame)
         except asyncio.QueueFull:
             pass
 
@@ -181,9 +206,10 @@ async def async_pair(
     """Pair Home Assistant after the user confirms on the physical hub."""
 
     replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
+    pairing_replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
     last_polled_response = b""
 
-    notify = _notification_callback(replies)
+    notify = _notification_callback(replies, pairing_replies)
 
     # A hub that has just restarted can advertise before its complete GATT
     # table is available through a proxy. Reconnect before asking the user for
@@ -239,9 +265,12 @@ async def async_pair(
             deadline = asyncio.get_running_loop().time() + timeout
             while asyncio.get_running_loop().time() < deadline:
                 try:
-                    queued = replies.get_nowait()
+                    queued = pairing_replies.get_nowait()
                 except asyncio.QueueEmpty:
-                    queued = b""
+                    try:
+                        queued = replies.get_nowait()
+                    except asyncio.QueueEmpty:
+                        queued = b""
                 if queued:
                     return queued
                 try:
