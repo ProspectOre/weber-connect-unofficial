@@ -79,3 +79,21 @@ def test_claude_issue_instructions_are_opened_by_author_only() -> None:
     assert "gh api \"repos/$REPOSITORY/issues/$ISSUE_NUMBER\" --jq '.user.login'" in workflow
     assert '[[ "$issue_author" == "$ACTOR_LOGIN" ]]' in workflow
     assert "trusted=true" in workflow
+
+
+def test_claude_responder_isolated_on_trusted_default_branch_events() -> None:
+    workflow = _workflow("claude.yml")
+    triggers = workflow.split("on:\n", 1)[1].split("\njobs:", 1)[0]
+
+    assert "issue_comment:" in triggers
+    assert "issues:" in triggers
+    assert "pull_request_review_comment:" not in triggers
+    assert "pull_request_review:" not in triggers
+    assert "pull_request_target:" not in triggers
+    assert "pull_request:" not in triggers
+    assert re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE) == ["ubuntu-latest"]
+    checkout = workflow.split("- name: Checkout repository", 1)[1].split(
+        "- name: Run Claude Code", 1
+    )[0]
+    assert "ref: ${{ github.sha }}" in checkout
+    assert "persist-credentials: false" in checkout
