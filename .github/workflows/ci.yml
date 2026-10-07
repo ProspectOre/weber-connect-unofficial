@@ -91,7 +91,7 @@ jobs:
         run: >-
           pip-audit --requirement requirements-runtime.txt
           --no-deps --disable-pip
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.25.x"
           cache: false
@@ -118,7 +118,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb
+      - uses: home-assistant/actions/hassfest@58bff37c8947f690ace498be413a9b78d6f30f93
         if: runner.os == 'Linux'
       # The pinned container digest used by the old macOS path is the 2026.8.3
       # image, built from this exact Home Assistant Core commit. Use its source
