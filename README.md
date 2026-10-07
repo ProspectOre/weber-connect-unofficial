@@ -237,6 +237,13 @@ are welcome; see [Contributing](CONTRIBUTING.md) for the safe details to include
 - If the hub recently restarted, wait for it to finish booting before retrying;
   its advertisement can appear before its complete GATT service table is ready.
 
+Built-in grill controllers may expose fewer Bluetooth characteristics than the
+standalone hub. Pairing uses the channels the controller actually provides.
+Genesis compatibility is still being investigated in
+[issue 65](https://github.com/ProspectOre/weber-connect-unofficial/issues/65):
+if pairing reports an invalid transport frame, use **Get help / report a problem**
+to share its structural diagnostics. Do not post raw Bluetooth packets or credentials.
+
 ### Setup waits for Weber Cloud
 
 Initial setup requires both Home Assistant internet access and a working
