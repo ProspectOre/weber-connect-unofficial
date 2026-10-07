@@ -68,6 +68,13 @@ def test_association_resolution_never_guesses_between_multiple_hubs() -> None:
     assert resolve_associated_appliance_id([{"oven_id": "invalid"}, {"id": 4}]) is None
 
 
+def test_known_oven_id_survives_conflicting_generic_id_field() -> None:
+    assert (
+        resolve_associated_appliance_id([{"oven_id": APPLIANCE_ID, "id": "33" * 16}], APPLIANCE_ID)
+        == APPLIANCE_ID
+    )
+
+
 def test_authenticate_builds_companion_registration_and_caches_token() -> None:
     client = WeberCloudClient(CloudConfig(DEVICE_ID, "password"))
     payload = {"token": {"access_token": "token", "expires_in": 3600}}
@@ -261,8 +268,9 @@ def test_redirect_handler_rejects_unsupported_parent_result() -> None:
             handler.redirect_request(request, None, 302, "Found", {}, request.full_url)
 
 
-def test_unmatched_expected_appliance_does_not_override_unique_association() -> None:
-    assert resolve_associated_appliance_id([{"id": APPLIANCE_ID}], "33" * 16) == APPLIANCE_ID
+@pytest.mark.parametrize("key", ["oven_id", "appliance_id", "device_id", "id"])
+def test_unmatched_expected_appliance_rejects_unique_unrelated_association(key: str) -> None:
+    assert resolve_associated_appliance_id([{key: APPLIANCE_ID}], "33" * 16) is None
 
 
 def test_plain_response_and_transport_properties() -> None:

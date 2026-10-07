@@ -29,6 +29,7 @@ from .saber_frames import (
     build_command_frame,
     build_handshake_body,
     build_pairing_body,
+    crc8,
     decode_hex_frame,
 )
 from .support import SupportEvent
@@ -36,6 +37,7 @@ from .support import SupportEvent
 _LOGGER = logging.getLogger(__name__)
 CONNECTION_TIMEOUT = 30.0
 PAIRING_RESPONSE_TYPES = frozenset({0x85, 0x87, 0xF0, 0xF1, 0xF2})
+MAX_PAIRING_NOTIFICATIONS = 8
 
 
 class WeberBluetoothError(RuntimeError):
@@ -119,6 +121,56 @@ def _pairing_payload(data: bytes) -> tuple[int, dict[str, Any] | None]:
     return type_value, parsed
 
 
+def _is_pairing_response_frame(data: bytes) -> bool:
+    """Recognize a complete plaintext pairing reply without decoding its payload."""
+
+    if (
+        len(data) < 16
+        or data[6] != 0xAB
+        or data[7] != 0
+        or data[8] != 0
+        or data[9] != 0
+        or data[-1] != 0x54
+    ):
+        return False
+    body_length = int.from_bytes(data[10:12], "little")
+    type_value = data[13]
+    minimum_body_length = 83 if type_value == 0x85 else 2
+    return (
+        int.from_bytes(data[4:6], "little") == len(data) - 6
+        and type_value in PAIRING_RESPONSE_TYPES
+        and body_length >= minimum_body_length
+        and len(data) == 14 + body_length
+        and data[-2] == crc8(data[7:-2])
+    )
+
+
+def _notification_callback(
+    replies: asyncio.Queue[bytes],
+    pairing_replies: asyncio.Queue[bytes] | None = None,
+) -> Callable[[Any, bytearray], None]:
+    """Keep bounded recent notifications and reserve a queue for pairing replies."""
+
+    def notify(_sender: Any, data: bytearray) -> None:
+        frame = bytes(data)
+        target = (
+            pairing_replies
+            if pairing_replies is not None and _is_pairing_response_frame(frame)
+            else replies
+        )
+        if target.full():
+            try:
+                target.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        try:
+            target.put_nowait(frame)
+        except asyncio.QueueFull:
+            pass
+
+    return notify
+
+
 async def _connect(
     hass: HomeAssistant,
     address: str,
@@ -187,7 +239,8 @@ async def async_pair(
 ) -> PairingResult:
     """Pair Home Assistant after the user confirms on the physical hub."""
 
-    replies: asyncio.Queue[bytes] = asyncio.Queue()
+    replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
+    pairing_replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
     last_polled_response = b""
 
     # A hub that has just restarted can advertise before its complete GATT
@@ -213,12 +266,9 @@ async def async_pair(
 
                 # Each connection owns its queue. Notifications received during
                 # failed service setup must not become the next link's greeting.
-                replies = asyncio.Queue()
-
-                def notify(
-                    _sender: Any, data: bytearray, queue: asyncio.Queue[bytes] = replies
-                ) -> None:
-                    queue.put_nowait(bytes(data))
+                replies = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
+                pairing_replies = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
+                notify = _notification_callback(replies, pairing_replies)
 
                 for uuid in (RESPONSE_UUID, STATUS_UUID, NOTIFICATION_UUID):
                     characteristic = client.services.get_characteristic(uuid)
@@ -273,9 +323,12 @@ async def async_pair(
             deadline = asyncio.get_running_loop().time() + timeout
             while asyncio.get_running_loop().time() < deadline:
                 try:
-                    queued = replies.get_nowait()
+                    queued = pairing_replies.get_nowait()
                 except asyncio.QueueEmpty:
-                    queued = b""
+                    try:
+                        queued = replies.get_nowait()
+                    except asyncio.QueueEmpty:
+                        queued = b""
                 if queued:
                     return queued
                 try:

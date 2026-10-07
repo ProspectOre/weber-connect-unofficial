@@ -1,0 +1,27 @@
+{
+  "candidate": "3.2.2rc2",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-07",
+  "runtime_sha256": "9ee203507eae2df0095501c613f37de6dd7189978a232af2cbb7a7bc2b41a947",
+  "home_assistant_test_framework": "2026.7.2",
+  "python": "3.14.8",
+  "tests": {
+    "passed": 388,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100,
+    "required_coverage_percent": 100,
+    "status": "passed"
+  },
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "pip_audit": "passed",
+    "actionlint": "passed",
+    "git_diff_check": "passed"
+  },
+  "hosted_gates": {
+    "final_release_pr": "Required on the updated PR #63 head before merge; recorded in GitHub checks."
+  }
+}
