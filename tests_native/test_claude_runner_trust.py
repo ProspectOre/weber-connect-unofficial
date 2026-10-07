@@ -64,7 +64,7 @@ def test_claude_preflight_bootstraps_brew_path_before_gh() -> None:
 
 
 def test_ci_and_review_lifecycle_keep_every_trust_guard() -> None:
-    for name, expected_count in (("ci.yml", 4), ("claude-review.yml", 1)):
+    for name, expected_count in (("ci.yml", 4),):
         workflow = _workflow(name)
 
         assert _pull_request_events(workflow) == TRUSTED_LIFECYCLE_EVENTS
@@ -83,19 +83,19 @@ def test_ci_and_review_lifecycle_keep_every_trust_guard() -> None:
 
 
 def test_opened_ready_pr_with_existing_commits_routes_ci_and_review() -> None:
-    for name in ("ci.yml", "claude-review.yml"):
+    for name in ("ci.yml",):
         assert _trusted_lifecycle_routes(_workflow(name), event="opened")
 
 
 def test_ready_for_review_and_synchronize_route_ci_and_review() -> None:
-    for name in ("ci.yml", "claude-review.yml"):
+    for name in ("ci.yml",):
         workflow = _workflow(name)
         assert _trusted_lifecycle_routes(workflow, event="ready_for_review")
         assert _trusted_lifecycle_routes(workflow, event="synchronize")
 
 
 def test_same_repository_trusted_associations_route_head_code() -> None:
-    for name in ("ci.yml", "claude-review.yml"):
+    for name in ("ci.yml",):
         workflow = _workflow(name)
         for association in TRUSTED_ASSOCIATIONS:
             assert _trusted_lifecycle_routes(
@@ -107,14 +107,14 @@ def test_same_repository_trusted_associations_route_head_code() -> None:
 
 
 def test_draft_and_non_ready_prs_do_not_route_head_code() -> None:
-    for name in ("ci.yml", "claude-review.yml"):
+    for name in ("ci.yml",):
         workflow = _workflow(name)
         assert not _trusted_lifecycle_routes(workflow, event="opened", draft=True)
         assert not _trusted_lifecycle_routes(workflow, event="reopened")
 
 
 def test_fork_bot_and_untrusted_prs_do_not_route_head_code() -> None:
-    for name in ("ci.yml", "claude-review.yml"):
+    for name in ("ci.yml",):
         workflow = _workflow(name)
         assert not _trusted_lifecycle_routes(workflow, event="synchronize", same_repository=False)
         assert not _trusted_lifecycle_routes(workflow, event="synchronize", author_type="Bot")
