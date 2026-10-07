@@ -1,0 +1,29 @@
+{
+  "candidate": "3.2.2rc2",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-07",
+  "runtime_sha256": "42a3a9a5418833af355677bae07b73f21956f7f361e40ab51a9bd8ed73b5f4a9",
+  "home_assistant_test_framework": "2026.7.2",
+  "python": "3.14.8",
+  "tests": {
+    "passed": 389,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100,
+    "required_coverage_percent": 100,
+    "status": "passed"
+  },
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "pip_audit": "passed",
+    "actionlint": "passed",
+    "git_diff_check": "passed"
+  },
+  "hosted_gates": {
+    "final_release_pr": "Required on updated PR #54 head before merge; recorded in GitHub checks."
+  },
+  "dependency": "websockets 17.1",
+  "compatibility_control": "Real loopback TLS connection through WeberCloudSession; synthetic bearer headers, binary frame echo and close."
+}

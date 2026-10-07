@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.2.2rc2 — 2026-10-07 (candidate)
+
+- Update websockets to 17.1 with real loopback TLS API compatibility coverage.
+
+- Bound pairing notification queues per connection while keeping pairing replies
+  separate from telemetry bursts.
+- Apply the shared TLV record limit to pairing error responses as well as status.
+- Require the BLE-confirmed appliance to match cloud association.
+- Bind privileged issue instructions to their live author and authorized actor.
+- Run CI, CodeQL and Claude on ephemeral hosted Ubuntu workers; retain the
+  review-gate retirement from main.
+- Hardware and stable-release acceptance remain pending.
+
 ## 3.2.2rc1 — 2026-10-06 (prerelease)
 
 - Detect pairing channels from the connected controller's GATT table, allowing
