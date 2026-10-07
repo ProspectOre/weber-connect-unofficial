@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, call, patch
+from unittest.mock import ANY, AsyncMock, Mock, call, patch
 
 import pytest
 from bleak.exc import BleakCharacteristicNotFoundError, BleakError
@@ -96,17 +96,35 @@ class FakeClient:
         self.writes: list[tuple[str, bytes, bool]] = []
         self.disconnected = False
         self.is_connected = True
+        self.characteristics = {
+            uuid: SimpleNamespace(properties=properties)
+            for uuid, properties in (
+                (transport.COMMAND_UUID, ["write"]),
+                (transport.RESPONSE_UUID, ["read", "notify"]),
+                (transport.STATUS_UUID, ["read", "notify"]),
+                (transport.NOTIFICATION_UUID, ["notify"]),
+                (transport.SESSION_UUID, ["write"]),
+            )
+        }
+        self.services = SimpleNamespace(get_characteristic=self.characteristics.get)
+        self.clear_cache = AsyncMock(return_value=True)
 
     async def start_notify(self, uuid: str, callback: object) -> None:
+        if uuid not in self.characteristics:
+            raise BleakCharacteristicNotFoundError(uuid)
         self.callbacks[uuid] = callback
 
     async def stop_notify(self, uuid: str) -> None:
         self.callbacks.pop(uuid, None)
 
     async def read_gatt_char(self, uuid: str) -> bytes:
+        if uuid not in self.characteristics:
+            raise BleakCharacteristicNotFoundError(uuid)
         return self.responses.pop(0) if self.responses else b""
 
     async def write_gatt_char(self, uuid: str, data: bytes, response: bool = True) -> None:
+        if uuid not in self.characteristics:
+            raise BleakCharacteristicNotFoundError(uuid)
         self.writes.append((uuid, bytes(data), response))
 
     async def disconnect(self) -> None:
@@ -138,10 +156,8 @@ async def test_pairing_confirms_and_releases_proxy_connection(
     assert result.appliance_id == bytes(range(16)).hex()
     assert client.disconnected
     assert any(uuid == transport.COMMAND_UUID for uuid, _data, _response in client.writes)
-    clear_advertisement_history.assert_called_once_with(  # type: ignore[attr-defined]
-        ANY,
-        ADDRESS,
-    )
+    clear_advertisement_history.assert_not_called()  # type: ignore[attr-defined]
+    client.clear_cache.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -172,10 +188,7 @@ async def test_pairing_releases_connection_when_setup_is_interrupted(
             await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
 
     assert client.disconnected is True
-    clear_advertisement_history.assert_called_once_with(  # type: ignore[attr-defined]
-        ANY,
-        ADDRESS,
-    )
+    clear_advertisement_history.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -252,7 +265,8 @@ async def test_pairing_reconnects_when_restarted_hub_services_are_incomplete(
     assert connect.await_count == 2
     assert stale_client.disconnected is True
     sleep.assert_awaited_once_with(1.0)
-    clear_advertisement_history.assert_any_call(ANY, ADDRESS)  # type: ignore[attr-defined]
+    stale_client.clear_cache.assert_awaited_once()
+    clear_advertisement_history.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
@@ -271,9 +285,119 @@ async def test_pairing_explains_services_that_never_become_ready() -> None:
             await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
 
     assert all(client.disconnected for client in clients)
+    assert all(client.clear_cache.await_count == 1 for client in clients)
     assert connect.await_count == 3
     assert sleep.await_args_list == [call(1.0), call(2.0)]
     assert error.value.__cause__ is clients[-1].start_notify.side_effect
+
+
+@pytest.mark.parametrize(
+    "optional_channels",
+    [[], [transport.STATUS_UUID], [transport.NOTIFICATION_UUID], [transport.SESSION_UUID]],
+)
+async def test_pairing_uses_only_the_controllers_advertised_channels(
+    pairing_clock, clear_advertisement_history, optional_channels
+):
+    """The reported Genesis table omits NOTIFICATION and SESSION, not pairing."""
+    client = FakeClient([_pairing_required(), _pairing_confirmed()])
+    for uuid in (transport.STATUS_UUID, transport.NOTIFICATION_UUID, transport.SESSION_UUID):
+        if uuid not in optional_channels:
+            del client.characteristics[uuid]
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)) as connect:
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    connect.assert_awaited_once()
+    assert set(client.callbacks) == {transport.RESPONSE_UUID} | (
+        set(optional_channels) - {transport.SESSION_UUID}
+    )
+    assert any(uuid == transport.SESSION_UUID for uuid, _, _ in client.writes) == (
+        transport.SESSION_UUID in optional_channels
+    )
+    client.clear_cache.assert_not_awaited()
+    clear_advertisement_history.assert_not_called()
+    assert client.disconnected
+
+
+async def test_pairing_skips_subscriptions_on_read_only_characteristics(pairing_clock):
+    client = FakeClient([_pairing_required(), _pairing_confirmed()])
+    for uuid in (transport.RESPONSE_UUID, transport.STATUS_UUID, transport.NOTIFICATION_UUID):
+        client.characteristics[uuid].properties = ["read"]
+    client.start_notify = AsyncMock(side_effect=AssertionError("Read-only channel"))
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    client.start_notify.assert_not_awaited()
+
+
+@pytest.mark.parametrize("missing", [transport.COMMAND_UUID, transport.RESPONSE_UUID])
+async def test_pairing_refreshes_gatt_without_losing_a_slow_advertising_device(
+    pairing_clock, clear_advertisement_history, missing
+):
+    """Reconnect must work even if no new advertisement arrives between links."""
+    stale = FakeClient()
+    del stale.characteristics[missing]
+    fresh = FakeClient([_pairing_required(), _pairing_confirmed()])
+    device = SimpleNamespace(address=ADDRESS)
+    resolve = Mock(return_value=device)
+    clear_advertisement_history.side_effect = lambda *_: setattr(resolve, "return_value", None)
+    with (
+        patch.object(transport.bluetooth, "async_ble_device_from_address", resolve),
+        patch.object(
+            transport.bluetooth,
+            "async_address_reachability_diagnostics",
+            return_value="unknown (never seen by any scanner)",
+        ),
+        patch.object(
+            transport, "establish_connection", AsyncMock(side_effect=[stale, fresh])
+        ) as establish,
+    ):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    assert establish.await_count == 2
+    assert all(
+        attempt.args[0] is transport.BleakClientWithServiceCache
+        and attempt.kwargs["use_services_cache"] is False
+        for attempt in establish.await_args_list
+    )
+    assert not stale.writes  # No greeting or physical approval on the incomplete link.
+    stale.clear_cache.assert_awaited_once()
+    clear_advertisement_history.assert_not_called()
+    assert stale.disconnected and fresh.disconnected
+
+
+@pytest.mark.parametrize("failure", [BleakError("cache unavailable"), asyncio.CancelledError()])
+async def test_pairing_releases_client_when_gatt_cache_clear_fails(pairing_clock, failure):
+    stale = FakeClient()
+    del stale.characteristics[transport.COMMAND_UUID]
+    stale.clear_cache.side_effect = failure
+    fresh = FakeClient([_pairing_required(), _pairing_confirmed()])
+    with patch.object(transport, "_connect", AsyncMock(side_effect=[stale, fresh])) as connect:
+        if isinstance(failure, asyncio.CancelledError):
+            with pytest.raises(asyncio.CancelledError):
+                await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+            assert connect.await_count == 1
+        else:
+            assert (await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)).appliance_id
+            assert fresh.disconnected
+    assert stale.disconnected
+
+
+async def test_pairing_does_not_reuse_notifications_from_failed_service_setup(pairing_clock):
+    stale = FakeClient()
+    original_notify = stale.start_notify
+
+    async def subscribe(uuid, callback):
+        await original_notify(uuid, callback)
+        callback(None, bytearray(b"not a transport frame"))
+        if uuid == transport.STATUS_UUID:
+            raise BleakCharacteristicNotFoundError(uuid)
+
+    stale.start_notify = subscribe
+    fresh = FakeClient([_pairing_required(), _pairing_confirmed()])
+    with patch.object(transport, "_connect", AsyncMock(side_effect=[stale, fresh])):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    assert stale.disconnected and fresh.disconnected
 
 
 @pytest.mark.asyncio

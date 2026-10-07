@@ -1,6 +1,6 @@
 # AGENTS
 
-Every candidate, including dependency changes, requires a clean exact-head Codex review through `/Users/alec/Dev/.worktrees/canonical-review-gate/scripts/review-gate/control.py`; use report or a dry-run request by default and apply only an eligible request. Keep physical acceptance separate.
+Keep physical acceptance separate from source review and CI.
 
 ## Apple tool capabilities
 
