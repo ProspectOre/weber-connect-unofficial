@@ -10,12 +10,16 @@ from typing import Any
 
 from bleak import BleakClient
 from bleak.exc import BleakCharacteristicNotFoundError, BleakError
-from bleak_retry_connector import BleakOutOfConnectionSlotsError, establish_connection
+from bleak_retry_connector import (
+    BleakClientWithServiceCache,
+    BleakOutOfConnectionSlotsError,
+    establish_connection,
+)
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
 from .const import NAME
-from .models import CompanionIdentity, PairingResult
+from .models import BluetoothFrameSummary, CompanionIdentity, PairingResult
 from .saber_frames import (
     COMMAND_UUID,
     NOTIFICATION_UUID,
@@ -44,6 +48,23 @@ class WeberBluetoothTelemetryError(WeberBluetoothError):
     """An unauthenticated status frame appeared on the setup-only channel."""
 
 
+class WeberBluetoothFrameError(WeberBluetoothError):
+    """A rejected frame with privacy-safe structural evidence for support."""
+
+    def __init__(self, message: str, data: bytes, decoded: dict[str, Any]) -> None:
+        super().__init__(message)
+        envelope = decoded.get("envelope") or {}
+        self.frame_summary = BluetoothFrameSummary(
+            received_bytes=len(data),
+            transport_present="length_ok" in decoded,
+            transport_length_ok=decoded.get("length_ok"),
+            transport_has_extra=bool(decoded.get("extra_hex")),
+            envelope_present=bool(envelope),
+            envelope_crc_ok=envelope.get("crc_ok"),
+            envelope_tail_ok=envelope.get("tail_byte") == 0x54 if envelope else None,
+        )
+
+
 def generate_identity() -> CompanionIdentity:
     """Generate the opaque identity shape used by the official companion."""
 
@@ -68,14 +89,18 @@ def _payload(data: bytes) -> tuple[int | None, dict[str, Any] | None]:
 
     decoded = _decoded(data)
     if decoded.get("length_ok") is not True or decoded.get("extra_hex"):
-        raise WeberBluetoothError("The hub returned an invalid transport frame.")
+        raise WeberBluetoothFrameError(
+            "The hub returned an invalid transport frame.", data, decoded
+        )
     envelope = decoded.get("envelope") or {}
     if (
         envelope.get("crc_ok") is not True
         or envelope.get("tail_byte") != 0x54
         or envelope.get("extra_hex")
     ):
-        raise WeberBluetoothError("The hub returned a corrupted protocol envelope.")
+        raise WeberBluetoothFrameError(
+            "The hub returned a corrupted protocol envelope.", data, decoded
+        )
     candidate = envelope.get("body_plain_candidate")
     if not isinstance(candidate, dict):
         raise WeberBluetoothError("The hub returned an unsupported encrypted response.")
@@ -153,7 +178,7 @@ async def _connect(
     max_attempts: int = 1,
     use_services_cache: bool = True,
     disconnected_callback: Callable[[BleakClient], None] | None = None,
-) -> BleakClient:
+) -> BleakClientWithServiceCache:
     device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
     if device is None:
         reason = bluetooth.async_address_reachability_diagnostics(
@@ -167,7 +192,7 @@ async def _connect(
         )
     try:
         return await establish_connection(
-            BleakClient,
+            BleakClientWithServiceCache,
             device,
             NAME,
             disconnected_callback=disconnected_callback,
@@ -218,12 +243,10 @@ async def async_pair(
     pairing_replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
     last_polled_response = b""
 
-    notify = _notification_callback(replies, pairing_replies)
-
     # A hub that has just restarted can advertise before its complete GATT
     # table is available through a proxy. Reconnect before asking the user for
     # approval; no pairing request has reached the hub at this point.
-    client: BleakClient | None = None
+    client: BleakClientWithServiceCache | None = None
     try:
         last_service_error: BleakCharacteristicNotFoundError | None = None
         for service_attempt in range(3):
@@ -234,7 +257,25 @@ async def async_pair(
                 use_services_cache=False,
             )
             try:
+                # COMMAND and RESPONSE carry the pairing exchange. A built-in
+                # controller may omit STATUS, NOTIFICATION and SESSION entirely;
+                # their absence does not establish an incomplete service cache.
+                for uuid in (COMMAND_UUID, RESPONSE_UUID):
+                    if client.services.get_characteristic(uuid) is None:
+                        raise BleakCharacteristicNotFoundError(uuid)
+
+                # Each connection owns its queue. Notifications received during
+                # failed service setup must not become the next link's greeting.
+                replies = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
+                pairing_replies = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
+                notify = _notification_callback(replies, pairing_replies)
+
                 for uuid in (RESPONSE_UUID, STATUS_UUID, NOTIFICATION_UUID):
+                    characteristic = client.services.get_characteristic(uuid)
+                    if characteristic is None or not {"notify", "indicate"}.intersection(
+                        characteristic.properties
+                    ):
+                        continue
                     try:
                         await client.start_notify(uuid, notify)
                     except BleakCharacteristicNotFoundError:
@@ -245,12 +286,20 @@ async def async_pair(
                             uuid,
                             exc_info=True,
                         )
-                await client.write_gatt_char(SESSION_UUID, b"\x01", response=True)
+                if client.services.get_characteristic(SESSION_UUID) is not None:
+                    await client.write_gatt_char(SESSION_UUID, b"\x01", response=True)
             except BleakCharacteristicNotFoundError as exc:
+                last_service_error = exc
+                # ESPHome remote caching can ignore use_services_cache=False.
+                # Clear the actual GATT cache while connected, never discovery
+                # history (which would discard the route needed for reconnect).
+                try:
+                    async with asyncio.timeout(5.0):
+                        await client.clear_cache()
+                except Exception:
+                    _LOGGER.debug("Could not clear Weber GATT services cache", exc_info=True)
                 await _safe_disconnect(client)
                 client = None
-                bluetooth.async_clear_advertisement_history(hass, address)
-                last_service_error = exc
                 if service_attempt == 2:
                     continue
                 _LOGGER.debug(
@@ -386,4 +435,3 @@ async def async_pair(
         # Avoid extra GATT stop-notify traffic after a link has already dropped.
         if client is not None:
             await _safe_disconnect(client)
-        bluetooth.async_clear_advertisement_history(hass, address)

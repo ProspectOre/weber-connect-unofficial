@@ -1,0 +1,17 @@
+{
+  "candidate": "3.2.2rc2",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-07",
+  "runtime_sha256": "9ee203507eae2df0095501c613f37de6dd7189978a232af2cbb7a7bc2b41a947",
+  "identifiers": "redacted",
+  "status": "pending_hardware_validation",
+  "verified": {},
+  "pending": [
+    "Genesis physical approval and pairing",
+    "Genesis response framing",
+    "Cloud association and live readings",
+    "Standalone hub pairing/recovery and endurance matrix",
+    "Security hardening pairing/regression hardware validation"
+  ],
+  "instructions": "docs/validation/3.2.2rc2-readiness.md"
+}
