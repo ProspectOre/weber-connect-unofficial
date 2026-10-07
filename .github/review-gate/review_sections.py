@@ -3739,10 +3739,13 @@ def _scan_actual_metadata(
     fence_length = 0
     fence_quotes = 0
     fence_list_indent = 0
+    fence_parent_list: tuple[int, int] | None = None
     indented_code = False
     block_boundary = True
     html_paragraph_boundary = True
     active_list_indent: int | None = None
+    active_list_quotes: int | None = None
+    list_parents: list[tuple[int, int]] = []
     list_has_blank = False
     html_tag_open = False
     html_tag_quote = ""
@@ -3753,6 +3756,20 @@ def _scan_actual_metadata(
     html_block_list_indent = 0
     previous_quotes = 0
     offset = 0
+
+    def retains_list_parent(line: str, parent: tuple[int, int]) -> bool:
+        parent_indent, parent_depth = parent
+        parent_plain, found = _strip_quote_prefix(line.expandtabs(4), parent_depth)
+        return found == parent_depth and (
+            not parent_plain.strip(" \t")
+            or _column_indent(parent_plain) >= parent_indent
+        )
+
+    def prune_list_parents(line: str) -> None:
+        for index, parent in enumerate(list_parents):
+            if not retains_list_parent(line, parent):
+                del list_parents[index:]
+                break
 
     def finish_html_block(end: int) -> None:
         nonlocal html_block_active, block_boundary, html_paragraph_boundary
@@ -3779,7 +3796,9 @@ def _scan_actual_metadata(
         offset += len(line)
         if fence_char is not None:
             # Tabs affect container columns, but the original code line stays inert.
-            content, found_quotes = _strip_quote_prefix(source_line.expandtabs(4), fence_quotes)
+            content, found_quotes = _strip_quote_prefix(
+                source_line.expandtabs(4), fence_quotes
+            )
             container_ended = found_quotes != fence_quotes or (
                 fence_list_indent
                 and content.strip(" \t")
@@ -3791,9 +3810,14 @@ def _scan_actual_metadata(
                 fence_char = None
                 fence_length = 0
                 fence_quotes = 0
-                if fence_list_indent:
+                if (
+                    fence_parent_list is not None
+                    and not retains_list_parent(source_line, fence_parent_list)
+                ) or fence_list_indent:
                     active_list_indent = None
-                    list_has_blank = False
+                    active_list_quotes = None
+                fence_parent_list = None
+                list_has_blank = False
                 fence_list_indent = 0
                 block_boundary = True
                 html_paragraph_boundary = True
@@ -3809,10 +3833,17 @@ def _scan_actual_metadata(
                 )
                 masked.append(_mask_code_line(line))
                 if closing:
+                    prune_list_parents(source_line)
                     fence_char = None
                     fence_length = 0
                     fence_quotes = 0
                     fence_list_indent = 0
+                    if fence_parent_list is not None and not retains_list_parent(
+                        source_line, fence_parent_list
+                    ):
+                        active_list_indent = None
+                        active_list_quotes = None
+                    fence_parent_list = None
                     block_boundary = True
                     html_paragraph_boundary = True
                 continue
@@ -3830,6 +3861,7 @@ def _scan_actual_metadata(
                 finish_html_block(line_start)
                 if container_ended and html_block_list_indent:
                     active_list_indent = None
+                    active_list_quotes = None
                     list_has_blank = False
             else:
                 masked.append(line)
@@ -3849,14 +3881,70 @@ def _scan_actual_metadata(
             continue
 
         fence_content, quotes, list_indent = _block_prefix(source_line.expandtabs(4))
+        fence_plain, _ = _strip_quote_prefix(source_line.expandtabs(4))
+        # Child lists have their own code indentation. Retain
+        # the enclosing list until its quote and indentation actually end.
+        prune_list_parents(source_line)
+        if (
+            active_list_quotes is None
+            or quotes < active_list_quotes
+            or (
+                quotes == active_list_quotes
+                and fence_plain.strip()
+                and _column_indent(fence_plain) < (active_list_indent or 0)
+                and (block_boundary or list_has_blank)
+            )
+        ):
+            while list_parents:
+                parent = list_parents[-1]
+                if quotes > parent[1]:
+                    break
+                list_parents.pop()
+                if quotes == parent[1]:
+                    active_list_indent, active_list_quotes = parent
+                    break
+        inherited_fence_indent = (
+            active_list_indent
+            if not list_indent
+            and active_list_indent is not None
+            and quotes == active_list_quotes
+            and _column_indent(fence_plain) >= active_list_indent
+            else 0
+        )
+        if inherited_fence_indent:
+            fence_content = _strip_list_indent(fence_content, inherited_fence_indent)
         match = FENCE_LINE.match(fence_content)
         if match and match.group("char") == "`" and "`" in match.group("info"):
             match = None
         if match:
+            parent_plain, parent_quotes = _strip_quote_prefix(
+                source_line.expandtabs(4), active_list_quotes
+            )
+            fence_parent_list = (
+                (active_list_indent, active_list_quotes)
+                if active_list_indent is not None
+                and active_list_quotes is not None
+                and (
+                    quotes > active_list_quotes
+                    or (
+                        quotes == active_list_quotes
+                        and list_indent > active_list_indent
+                    )
+                )
+                and parent_quotes == active_list_quotes
+                and _column_indent(parent_plain) >= active_list_indent
+                else None
+            )
             fence_char = match.group("char")
             fence_length = len(match.group("count")) + 1
             fence_quotes = quotes
-            fence_list_indent = list_indent
+            fence_list_indent = list_indent or inherited_fence_indent
+            if list_indent and fence_parent_list is not None:
+                list_parents.append(fence_parent_list)
+            if fence_list_indent or fence_parent_list is None:
+                active_list_indent = fence_list_indent or None
+                active_list_quotes = quotes if active_list_indent is not None else None
+            list_has_blank = False
             masked.append(_mask_code_line(line))
             block_boundary = True
             indented_code = False
@@ -3874,24 +3962,68 @@ def _scan_actual_metadata(
             html_paragraph_boundary = True
             continue
 
+        parent_plain, parent_quotes = _strip_quote_prefix(
+            source_line.expandtabs(4), active_list_quotes
+        )
+        parent_indent = _column_indent(parent_plain)
+        nested_quote = (
+            active_list_indent is not None
+            and active_list_quotes is not None
+            and quotes > active_list_quotes
+            and parent_quotes == active_list_quotes
+            and parent_indent >= active_list_indent
+        )
+        thematic_break = bool(
+            re.fullmatch(
+                r"[ ]{0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})",
+                plain,
+            )
+        )
+        if (
+            thematic_break
+            and active_list_indent is not None
+            and quotes == active_list_quotes
+            and indent < active_list_indent
+        ):
+            active_list_indent = None
+            active_list_quotes = None
+            list_has_blank = False
+            list_indent = 0
         if list_indent:
+            if nested_quote or (
+                active_list_indent is not None
+                and quotes == active_list_quotes
+                and list_indent > active_list_indent
+                and parent_indent >= active_list_indent
+            ):
+                list_parents.append((active_list_indent, active_list_quotes))
             active_list_indent = list_indent
+            active_list_quotes = quotes
             list_has_blank = False
         elif active_list_indent is not None:
-            starts_root_block = bool(
+            starts_root_block = parent_indent < active_list_indent and bool(
                 RESULT_HEADING.match(content)
                 or re.match(
                     r"^[ ]{0,3}(?:#{1,6}[ \t]|>|[-+*][ \t]|[0-9]+[.)][ \t])",
                     content,
                 )
             )
-            if (list_has_blank and indent < active_list_indent) or starts_root_block:
+            if (
+                (quotes != active_list_quotes and not nested_quote)
+                or (list_has_blank and parent_indent < active_list_indent)
+                or starts_root_block
+            ):
                 active_list_indent = None
+                active_list_quotes = None
                 list_has_blank = False
             else:
                 list_has_blank = False
 
-        code_indent = 4 + (list_indent or active_list_indent or 0)
+        code_indent = 4 + (
+            list_indent
+            or (active_list_indent if quotes == active_list_quotes else 0)
+            or 0
+        )
         if indent >= code_indent and (indented_code or block_boundary):
             masked.append(_mask_code_line(line))
             indented_code = True
@@ -3900,7 +4032,11 @@ def _scan_actual_metadata(
         indented_code = False
 
         raw_content = content
-        inherited_indent = 0 if list_indent else (active_list_indent or 0)
+        inherited_indent = (
+            (active_list_indent or 0)
+            if not list_indent and quotes == active_list_quotes
+            else 0
+        )
         if inherited_indent:
             raw_content = _strip_list_indent(raw_content, inherited_indent)
         terminator = _html_block_end(
@@ -3909,6 +4045,15 @@ def _scan_actual_metadata(
         )
         previous_quotes = quotes
         if terminator is not None:
+            if (
+                active_list_indent is not None
+                and quotes == active_list_quotes
+                and indent < active_list_indent
+            ):
+                active_list_indent = None
+                active_list_quotes = None
+                list_has_blank = False
+                inherited_indent = 0
             html_block_active = True
             html_block_terminator = terminator
             html_block_start = line_start
@@ -3929,13 +4074,15 @@ def _scan_actual_metadata(
             continue
 
         masked.append(line)
-        stripped = line.rstrip("\r\n")
         block_content = content.strip()
+        # Quote markers do not end a paragraph: unmarked lazy continuations
+        # can remain visible even with four or more leading spaces.
         block_boundary = bool(
             RESULT_HEADING.match(content)
             or (quotes and not block_content)
             or (list_indent and not block_content)
-            or re.match(r"^[ ]{0,3}(?:#{1,6}[ \t]|>)", stripped)
+            or re.match(r"^[ ]{0,3}#{1,6}(?:[ \t]|$)", content)
+            or thematic_break
         )
         html_paragraph_boundary = bool(
             re.match(r"^[ ]{0,3}#{1,6}(?:[ \t]|$)", content)
@@ -5636,6 +5783,24 @@ def _empty_comment_priority_source(source):
     return False
 
 
+def _may_contain_rendered_report_link(source):
+    """Cheap conservative prefilter; the Markdown AST remains authoritative."""
+    if "[" not in source:
+        return False
+    # Do not delete source while prefiltering: escaped text, code spans and
+    # comments can all contain delimiters. A subsequence can over-approximate
+    # markup-split labels; only the Markdown AST can confirm an actual link.
+    folded = html.unescape(source).casefold()
+    position = 0
+    for word in ("view", "security", "finding", "report"):
+        for character in word:
+            position = folded.find(character, position)
+            if position < 0:
+                return False
+            position += 1
+    return True
+
+
 def _rendered_report_link(tokens, *, literal_only=False):
     pending = list(reversed(tokens))
     code_depth = 0
@@ -5652,7 +5817,9 @@ def _rendered_report_link(tokens, *, literal_only=False):
                 code_depth = max(0, code_depth - 1) if tag.group(1) else code_depth + 1
         if (kind == "link" and not code_depth and not token.get("_review_url")
                 and (not literal_only or token.get("_literal_report_link"))):
-            rendered = _markdown_text(token.get("children", ()))
+            rendered = _markdown_text(
+                token.get("children", ()), diagnostic_comments=True
+            )
             label = " ".join(rendered.split()).casefold()
             if label == "view security finding report":
                 return True
@@ -5910,7 +6077,7 @@ def _parse_markdown_document(text, mistune, *, diagnostic_bare=False):
     heading_nodes = []
     report_link_rows = set()
     literal_report_rows = set()
-    has_report_candidate = "report" in source.casefold()
+    report_link_candidate = _may_contain_rendered_report_link(text)
     for index, line in enumerate(source_rows):
         if "<!--" in line and _empty_comment_priority_source(line):
             composed = re.sub(r"<!--[ \t]*-->", "", line)
@@ -6099,7 +6266,7 @@ def _parse_markdown_document(text, mistune, *, diagnostic_bare=False):
     for token_index, token in enumerate(tokens):
         position = token.get("_review_start", 0)
         first = bisect_right(starts, position) - 1
-        if has_report_candidate and _rendered_report_link([token]):
+        if report_link_candidate and _rendered_report_link([token]):
             report_link_rows.add(first)
             if _rendered_report_link([token], literal_only=True):
                 literal_report_rows.add(first)
@@ -6428,7 +6595,7 @@ def _details_code_masked_source(text):
         raw = source[first:last]
         # Keep nested raw HTML blocks, including literal backticks in divs.
         clean = _without_inline_code(raw)
-        def composed_priority(piece, first=first):
+        def composed_priority(piece, first=first, raw=raw):
             # Both a priority and the report-link label require an ASCII P.
             # Keep entity spellings eligible before any visibility/code masks;
             # image-only regions otherwise need no inline AST construction.
@@ -6443,7 +6610,8 @@ def _details_code_masked_source(text):
             tokens = md.inline(original_visible, env)
             visible = _markdown_text(tokens)
             visible_priorities = Counter(_PRIORITY_CANDIDATE.findall(visible))
-            if _rendered_report_link(tokens):
+            if (_may_contain_rendered_report_link(raw)
+                    and _rendered_report_link(tokens)):
                 unknown.add(bisect_right(starts, first) - 1)
                 return piece
             # The comparisons below can only subtract from this counter.
@@ -6681,16 +6849,29 @@ def _raw_html_partial_code_projection(source, *, preserve_markup_lines=True):
     return _markdown_text(tokens, raw_html_entities=True)
 
 
+def _raw_html_priority_inventory(source):
+    """Count priority labels visible in a raw-HTML projection."""
+    normalized = _DEFAULT_IGNORABLE.sub("", source)
+    inventory = Counter(
+        "bracket:" + match.group().casefold()
+        for match in re.finditer(r"\[(?:P[0-3]|[0-3]P)\]", normalized, re.I)
+    )
+    for row in _markdown_lines(normalized):
+        match = re.match(BARE_PRIORITY_PREFIX + r"(?:P[0-3]|[0-3]P)\b", row, re.I)
+        if match:
+            label = re.search(r"(?:P[0-3]|[0-3]P)\b", match.group(), re.I)
+            inventory["bare:" + label.group().casefold()] += 1
+    return inventory
+
+
 @lru_cache(maxsize=8)
 def _security_raw_block_priority_uncertain(text):
-    """Keep unowned raw HTML priorities after a completed clean result pending."""
+    """Keep partial code priorities and unowned clean-result tails pending."""
     source = _mask_markdown_link_metadata(_without_inline_code(_actual_metadata(text)))
     blocks = _html_block_spans(source)
     if not blocks:
         return False
     boundary = _completed_clean_boundary(source, "security")
-    if boundary is None:
-        return False
     # Details bodies and summaries can contain real Markdown code spans.
     # Require a priority in the original structured rendered view first.
     structured_priority = any(
@@ -6699,8 +6880,8 @@ def _security_raw_block_priority_uncertain(text):
     )
     # Parsed lists, quotes and tables outside raw blocks already have physical
     # per-unit ownership. Do not reclassify those units from container prefixes.
-    fragment = "\n".join(source[max(start, boundary):end]
-                         for start, end in blocks if end > boundary)
+    fragment = "\n".join(source[max(start, boundary or 0):end]
+                         for start, end in blocks if end > (boundary or 0))
     visible = _visible_html(
         fragment, mask_attributes=True, decode_entities=True,
         strip_inline_markup=True,
@@ -6712,7 +6893,11 @@ def _security_raw_block_priority_uncertain(text):
                 or re.search(r"(?im)^[^\S\r\n]*P[0-3]\b", partial_code)
                 or any(_unicode_priority_uncertain(row)
                        for row in _markdown_lines(partial_code))):
-            return True
+            if (_raw_html_priority_inventory(partial_code)
+                    - _raw_html_priority_inventory(visible)):
+                return True
+    if boundary is None:
+        return False
     if not structured_priority:
         return False
     candidates = [
@@ -6859,8 +7044,8 @@ def _security_priority_uncertain(kind: str, text: str, finding: bool, projection
 
 @lru_cache(maxsize=8)
 def _nested_regular_marker_uncertain(kind, text):
-    """Keep unsupported HTML marker ownership pending after a clean result."""
-    if (kind not in ("regular", "unheaded")
+    """Keep unsupported HTML marker ownership pending in review results."""
+    if (kind not in ("regular", "unheaded", "security")
             or "codex-security-review-finding" not in text.casefold()):
         return False
     source = _without_inline_code(_actual_metadata(
@@ -6869,7 +7054,7 @@ def _nested_regular_marker_uncertain(kind, text):
     visible = _visible_html(source, preserve_source_offsets=True)
     if not SECURITY_MARKER_COMMENT.search(visible):
         return False
-    boundary = _completed_clean_boundary(source, "regular")
+    boundary = 0 if kind == "security" else _completed_clean_boundary(source, "regular")
     if boundary is None:
         return False
     # Inspect actual complete tags once; attribute text is not markup. A
@@ -6901,6 +7086,29 @@ def _security_facts(kind: str, section: str, projection: str = "") -> tuple[bool
     # Raw HTML blocks render emphasis literally. Normalize only Markdown
     # regions and retain offsets used by report links and summary ranges.
     raw_blocks = _html_block_spans(source)
+    if raw_blocks and HTML_INLINE_CODE_OPEN.search(source):
+        # Diagnostic rendering may join partly code-owned priorities. Finding
+        # authority must retain the code barrier, including in raw HTML blocks.
+        chunks = []
+        position = 0
+        adjusted_blocks = []
+        offset_delta = 0
+        for first, last in raw_blocks:
+            chunks.append(source[position:first])
+            visible = _visible_html(
+                source[first:last], mask_attributes=True,
+                preserve_inline_markup=True, preserve_block_markup=True,
+                preserve_markup_lines=True, preserve_markdown_comments=True,
+            )
+            chunks.append(visible)
+            adjusted_blocks.append((first + offset_delta, first + offset_delta + len(visible)))
+            offset_delta += len(visible) - (last - first)
+            position = last
+        chunks.append(source[position:])
+        source = "".join(chunks)
+        # Keep each original raw block's ownership after tags shorten its text.
+        raw_blocks = adjusted_blocks
+        projection = _priority_projection(source)
     raw_block_starts = [start for start, _ in raw_blocks]
     raw_block_ends = [end for _, end in raw_blocks]
     visible_summaries: list[tuple[int, int]] = []
@@ -7276,7 +7484,8 @@ def _classify_body(body: str) -> dict[str, Any]:
         priority_uncertain = _security_priority_uncertain(
             kind, text, security_finding, projection
         )
-        priority_uncertain |= _nested_regular_marker_uncertain(kind, text)
+        if kind != "security" or not security_finding:
+            priority_uncertain |= _nested_regular_marker_uncertain(kind, text)
         # Supported rendered links diagnose compositions outside the legacy
         # literal report-link protocol; they cannot manufacture source authority.
         if kind == "security" and not SECURITY_REPORT_LINK.search(text):

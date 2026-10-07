@@ -115,7 +115,7 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_PR: ${{ github.event.issue.number }}
           POLICY_REF: ${{ github.workflow_sha }}
-          EXPECTED_REVIEW_SECTIONS_SHA256: '30b622237fa506d8a735a25a3ceed31c62c5b8290abe227be199e28be0488040'
+          EXPECTED_REVIEW_SECTIONS_SHA256: '27a45240800c41400e7e82cd0a8b453377f6f9b3b02f49eb27a6e16cc45a598b'
         shell: bash
         run: |
           set -euo pipefail
@@ -147,19 +147,128 @@ jobs:
             echo "Unable to publish pending review-gate status on $target_head after three attempts." >&2
             return 1
           }
-          live_head=""
-          for attempt in 1 2 3; do
-            if pr_snapshot="$(gh api "repos/$REPO/pulls/$EVENT_PR")" \
-                && live_head="$(jq -er '.head.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<< "$pr_snapshot")" \
-                && [[ "$live_head" =~ ^[0-9a-f]{40}$ ]]; then break; fi
+          hold_unverified_footer_association() {
+            if [[ -z "$live_head" ]]; then
+              if resolve_live_pr_head; then
+                write_pending_gate_status "$live_head" \
+                  "Recording unverified connector review delivery for PR #$EVENT_PR" || exit 1
+              else
+                echo "Could not verify connector commit association or resolve a safe live PR status target." >&2
+                exit 1
+              fi
+            fi
+            echo "Could not verify connector commit association; live PR head $live_head remains pending." >&2
+            exit 1
+          }
+          # The connector footer supplies only a pending hint. Resolve the
+          # normal ten-character abbreviation uniquely, then prove its full
+          # OID belongs to this PR before classification. Neither form supplies
+          # a qualified review verdict.
+          comment_heads="$(jq -r --arg pr "$EVENT_PR" '
+            select(.issue.pull_request != null and (.issue.number | tostring) == $pr)
+            | [.comment.body // "", .changes.body.from // ""]
+            | [.[] | select(type == "string")
+              | scan("(?im)^[ ]{0,3}[*]{0,2}reviewed commit:[*]{0,2}[ \\t]*\\x60([0-9a-f]{40}|[0-9a-f]{10})\\x60[ \\t]*\\r?$")
+              | .[0] | ascii_downcase] | unique[]' "$GITHUB_EVENT_PATH")"
+          resolve_live_pr_head() {
+            local attempt pr_snapshot resolved_head
+            for attempt in 1 2 3; do
+              if pr_snapshot="$(gh api "repos/$REPO/pulls/$EVENT_PR")" \
+                  && resolved_head="$(jq -er '.head.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<< "$pr_snapshot")" \
+                  && [[ "$resolved_head" =~ ^[0-9a-f]{40}$ ]]; then
+                live_head="$resolved_head"
+                return 0
+              fi
+              resolved_head=""
+              [[ "$attempt" != 3 ]] || break
+              sleep "$attempt"
+            done
             live_head=""
-            [[ "$attempt" != 3 ]] || exit 1
-            sleep "$attempt"
-          done
-          # Revoke a prior green result before fallible parser or association
-          # reads. Neutral deliveries can be reconciled by the evaluator.
-          write_pending_gate_status "$live_head" \
-            "Recording connector review delivery for PR #$EVENT_PR" || exit 1
+            return 1
+          }
+          live_head=""
+          resolve_live_pr_head || true
+          # Hold the actual PR candidate before the fallible footer association
+          # lookup, which may refer to an older commit or return malformed data.
+          if [[ -n "$live_head" ]]; then
+            write_pending_gate_status "$live_head" \
+              "Recording connector review delivery for PR #$EVENT_PR" || exit 1
+          fi
+          while IFS= read -r comment_head; do
+            [[ "$comment_head" =~ ^([0-9a-f]{40}|[0-9a-f]{10})$ ]] || continue
+            if [[ "${#comment_head}" == 10 ]]; then
+              comment_prefix="$comment_head"
+              if ! comment_head="$(gh api "repos/$REPO/commits/$comment_prefix" \
+                  --jq '.sha | select(type == "string" and test("^[0-9a-f]{40}$"))')" \
+                  || [[ ! "$comment_head" =~ ^[0-9a-f]{40}$ \
+                    || "${comment_head:0:10}" != "$comment_prefix" ]]; then
+                hold_unverified_footer_association
+              fi
+            fi
+            # If GitHub cannot resolve the live PR, revoke any exact-head
+            # success named by this authenticated connector delivery before
+            # the fallible association lookup. This is pending-only evidence;
+            # the footer still cannot classify or qualify the review.
+            if [[ -z "$live_head" ]]; then
+              write_pending_gate_status "$comment_head" \
+                "Recording unverified connector review delivery for PR #$EVENT_PR" || true
+              # A failed hint must not prevent association from recovering and
+              # strictly holding the actual live head before historical writes.
+            fi
+            if ! association_pages="$(gh api "repos/$REPO/commits/$comment_head/pulls?per_page=100" \
+                --paginate --slurp)"; then
+              hold_unverified_footer_association
+            fi
+            if ! association_result="$(jq -r --arg repo "$REPO" --argjson pr "$EVENT_PR" '
+                if type != "array" or any(.[]; type != "array") then
+                  error("Invalid commit-associated PR pages")
+                elif any(.[][]; type != "object" or (.number | type != "number")
+                    or (.base.repo.full_name | type != "string")) then
+                  error("Invalid commit-associated PR entry")
+                else
+                  [.[][] | select(.number == $pr and .base.repo.full_name == $repo)
+                    | .head.sha] as $heads
+                  | if ($heads | length) == 0 then
+                      "not-associated"
+                    elif any($heads[]; if type == "string" then
+                        (test("^[0-9a-f]{40}$") | not)
+                      else true end) then
+                      error("Invalid associated pull-request head")
+                    elif ($heads | unique | length) != 1 then
+                      error("Conflicting associated pull-request heads")
+                    else
+                      "associated\t" + $heads[0]
+                    end
+                end' <<< "$association_pages")"; then
+              hold_unverified_footer_association
+            fi
+            case "$association_result" in
+              associated$'\t'* )
+                associated_head="${association_result#*$'\t'}"
+                [[ "$associated_head" =~ ^[0-9a-f]{40}$ ]] || hold_unverified_footer_association
+                # The commit-association response includes the PR's current
+                # head. If the direct PR read was transiently unavailable,
+                # use this independently validated full OID to hold that
+                # candidate before classifying an older footer.
+                if [[ -z "$live_head" || "$live_head" != "$associated_head" ]]; then
+                  live_head="$associated_head"
+                  if [[ "$comment_head" != "$associated_head" ]]; then
+                    write_pending_gate_status "$live_head" \
+                      "Recording connector review delivery for PR #$EVENT_PR" || exit 1
+                  fi
+                fi
+                write_pending_gate_status "$comment_head" \
+                  "Bound connector delivery pending classification for PR #$EVENT_PR" || exit 1
+                ;;
+              not-associated) ;;
+              *) hold_unverified_footer_association ;;
+            esac
+          done <<< "$comment_heads"
+          if [[ -z "$live_head" ]]; then
+            resolve_live_pr_head || exit 1
+            write_pending_gate_status "$live_head" \
+              "Recording connector review delivery for PR #$EVENT_PR" || exit 1
+          fi
           fail_closed_load() {
             local reason="$1"
             write_pending_gate_status "$live_head" \
@@ -552,8 +661,10 @@ jobs:
           [[ "$FORWARDED_EVENT_SIGNATURE" =~ ^[0-9a-f]{64}$ && "$REVIEW_EVENT_RELAY_SECRET" =~ ^[0-9a-f]{64}$ ]] || exit 1
           event_bytes="$(printf '%s' "$FORWARDED_EVENT" | wc -c | tr -d ' ')"
           (( event_bytes > 0 && event_bytes <= 60000 )) || exit 1
+          [[ "$EXPECTED_DEFAULT_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] || exit 1
           jq -e --arg repo "$EXPECTED_REPO" --arg id "$EXPECTED_REPO_ID" \
             --arg pr "$TARGET_PR" --arg base "$EXPECTED_DEFAULT_BRANCH" \
+            --arg matic "ProspectOre/matic-home-assistant" --arg maintenance "release/0.4" \
             --arg event "$FORWARDED_EVENT_NAME" '
               def sha: type == "string" and test("^[0-9a-f]{40}$");
               def actor: type == "object" and (.id | type == "number" and . > 0)
@@ -562,7 +673,8 @@ jobs:
               type == "object" and .schema_version == 1
               and .repository.full_name == $repo and (.repository.id | tostring) == $id
               and (.pull_request.number | tostring) == $pr
-              and .pull_request.base.ref == $base
+              and (.pull_request.base.ref == $base
+                or ($repo == $matic and .pull_request.base.ref == $maintenance))
               and (.pull_request.head.sha | sha) and (.pull_request.base.sha | sha)
               and .event_name == $event
               and ((if $event == "pull_request_review" then
@@ -726,10 +838,10 @@ jobs:
           EVENT_HEAD_SHA: ${{ steps.signal-relay-event.outputs.head || github.event.pull_request.head.sha }}
           HISTORY_HEAD_SHA: ${{ steps.signal-relay-event.outputs.history_head }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          EXPECTED_SHA256: '3f292b51bb0520315b692db47d63fd093757e7e846b8e08874ce1d2b62650d8a'
+          EXPECTED_SHA256: 'cf394a343946c120927ab816fa9f9515b4e0900fed972332dbaac7b01622e663'
           EXPECTED_DEPENDENCY_SHA256: '3dfc642b88404487cd5a7cb91c60ab054067f617b867813a5bacb0c80a701455'
-          EXPECTED_REVIEW_SECTIONS_SHA256: '30b622237fa506d8a735a25a3ceed31c62c5b8290abe227be199e28be0488040'
-          EXPECTED_ISSUE_COMMENT_RECEIPTS_SHA256: '372a2f5289eaccbbc1983821c91bc18a9b8b5c0d02ffc0c5f7b367c601f6b077'
+          EXPECTED_REVIEW_SECTIONS_SHA256: '27a45240800c41400e7e82cd0a8b453377f6f9b3b02f49eb27a6e16cc45a598b'
+          EXPECTED_ISSUE_COMMENT_RECEIPTS_SHA256: 'eecfa47a7879df2aa4415fb6bb2487292f0af924018312bdf8d7ee1fbf9b72ec'
         shell: bash
         run: |
           set -euo pipefail
