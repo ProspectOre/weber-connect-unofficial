@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "weber_connect"
-VERSION = "3.2.1"
+VERSION = "3.2.2rc1"
 # A presentation-only release may reuse evidence for an unchanged runtime. Keep
 # each exception keyed to the exact release so changing VERSION automatically
 # requires matching fresh evidence unless a new exception is deliberately added.
@@ -81,6 +81,25 @@ def runtime_fingerprint() -> str:
             content = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
         digest.update(relative.encode() + b"\0" + hashlib.sha256(content).digest())
     return digest.hexdigest()
+
+
+def check_candidate_acceptance(physical: dict[str, object], automated: dict[str, object]) -> None:
+    """Permit explicitly labelled RC hardware trials; stable keeps its full matrix."""
+
+    if re.fullmatch(r"\d+\.\d+\.\d+rc[1-9]\d*", VERSION) is None:
+        check_runtime_acceptance(physical, automated)
+        return
+    if any(
+        record.get("candidate") != VERSION
+        or record.get("release_channel") != "prerelease"
+        or record.get("runtime_sha256") != runtime_fingerprint()
+        for record in (physical, automated)
+    ):
+        fail("RC evidence must bind the exact prerelease version and runtime")
+    if physical.get("status") != "pending_hardware_validation":
+        fail("RC evidence must explicitly disclose pending hardware validation")
+    if "runtime_amendment" in physical:
+        fail("RC hardware trials cannot inherit a stable physical receipt")
 
 
 def check_runtime_acceptance(physical: dict[str, object], automated: dict[str, object]) -> None:
@@ -329,7 +348,7 @@ def check_privacy_and_scope() -> None:
         or float(tests.get("combined_statement_branch_coverage_percent", 0)) < 100
     ):
         fail("automated validation evidence must record 100% combined coverage")
-    check_runtime_acceptance(evidence, automated)
+    check_candidate_acceptance(evidence, automated)
 
 
 def check_workflows() -> None:

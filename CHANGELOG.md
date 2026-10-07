@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.2.2rc1 — 2026-10-06 (prerelease)
+
+- Detect pairing channels from the connected controller's GATT table, allowing
+  absent optional NOTIFICATION and SESSION characteristics on built-in controllers.
+- Clear the actual GATT service cache on incomplete setup while preserving
+  Bluetooth discovery history for reconnects and manual retries.
+- Isolate notification queues between connection attempts.
+- Add structural diagnostics for rejected pairing frames to support reports,
+  without raw packets or credentials. Frame validation remains strict.
+- Genesis response framing and physical pairing remain unverified. This RC is
+  for targeted hardware validation; it does not certify Genesis compatibility.
+
 ## 3.2.1 — 2026-09-13
 
 - Add reviewable support reports to setup errors, settings, and credential

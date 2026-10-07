@@ -23,6 +23,7 @@ from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_MESSAGE_VERSION
+from .models import BluetoothFrameSummary
 
 INTEGRATION_VERSION: str = json.loads(Path(__file__).with_name("manifest.json").read_text())[
     "version"
@@ -89,6 +90,19 @@ class SupportJournal:
         if error is not None:
             item["error"] = error_category(error)
             if isinstance(error, Exception):
+                summary = getattr(error, "frame_summary", None)
+                if isinstance(summary, BluetoothFrameSummary):
+                    # Keep only the fixed structural fields, even if an error
+                    # carries other metadata. No bytes or decoded bodies.
+                    item["bluetooth_frame"] = {
+                        "received_bytes": summary.received_bytes,
+                        "transport_present": summary.transport_present,
+                        "transport_length_ok": summary.transport_length_ok,
+                        "transport_has_extra": summary.transport_has_extra,
+                        "envelope_present": summary.envelope_present,
+                        "envelope_crc_ok": summary.envelope_crc_ok,
+                        "envelope_tail_ok": summary.envelope_tail_ok,
+                    }
                 # Restrict locations to integration source files. No absolute
                 # paths, exception text, locals, or external library frames.
                 locations = []
