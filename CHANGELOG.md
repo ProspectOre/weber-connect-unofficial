@@ -2,6 +2,8 @@
 
 ## 3.2.2rc2 — 2026-10-07 (candidate)
 
+- Update websockets to 17.1 with real loopback TLS API compatibility coverage.
+
 - Bound pairing notification queues per connection while keeping pairing replies
   separate from telemetry bursts.
 - Apply the shared TLV record limit to pairing error responses as well as status.
