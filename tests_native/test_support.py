@@ -11,9 +11,11 @@ import pytest
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.weber_connect import bluetooth as transport
 from custom_components.weber_connect.config_flow import WeberConnectConfigFlow
 from custom_components.weber_connect.const import CONF_MESSAGE_VERSION, DOMAIN
 from custom_components.weber_connect.diagnostics import async_get_config_entry_diagnostics
+from custom_components.weber_connect.saber_frames import build_command_frame
 from custom_components.weber_connect.support import (
     SupportEvent,
     SupportJournal,
@@ -75,6 +77,54 @@ def test_report_is_bounded_copyable_and_excludes_exception_text() -> None:
     assert json.loads(body.split("```json\n")[1].split("\n```")[0]) == report
     assert len(placeholders["report_url"]) < 8000
     assert report["integration_version"] and report["home_assistant_version"]
+
+
+@pytest.mark.parametrize("shape", ["envelope_only", "extra", "truncated", "bad_crc", "raw"])
+def test_rejected_pairing_frames_export_structure_without_packet_contents(shape: str) -> None:
+    frame = build_command_frame(1, 11, 0x85, SECRET.encode())
+    if shape == "envelope_only":
+        frame = frame[6:]
+    elif shape == "extra":
+        frame += SECRET.encode()
+    elif shape == "truncated":
+        frame = frame[:-1]
+    elif shape == "bad_crc":
+        damaged = bytearray(frame)
+        damaged[-2] ^= 0xFF
+        frame = bytes(damaged)
+    else:
+        frame = SECRET.encode()
+    journal = SupportJournal()
+    with pytest.raises(transport.WeberBluetoothFrameError) as caught:
+        transport._pairing_payload(frame)
+    journal.record(SupportEvent.FAILED, caught.value)
+    report = support_report(stage="pairing_failed", journal=journal)
+    summary = report["events"][-1]["bluetooth_frame"]
+    assert summary["received_bytes"] == len(frame)
+    assert set(summary) == {
+        "received_bytes",
+        "transport_present",
+        "transport_length_ok",
+        "transport_has_extra",
+        "envelope_present",
+        "envelope_crc_ok",
+        "envelope_tail_ok",
+    }
+    if shape == "envelope_only":
+        assert summary["transport_present"] is False
+        assert summary["envelope_present"] is True
+        assert summary["envelope_crc_ok"] is True
+    assert SECRET not in str(report_placeholders(report))
+    assert SECRET.encode().hex(":") not in str(report)
+
+
+def test_report_ignores_arbitrary_protocol_metadata() -> None:
+    journal = SupportJournal()
+    error = RuntimeError(SECRET)
+    error.frame_summary = {"raw": SECRET}
+    journal.record(SupportEvent.FAILED, error)
+    assert "bluetooth_frame" not in journal.snapshot()[-1]
+    assert SECRET not in str(journal.snapshot())
 
 
 @pytest.mark.parametrize("path", ["local", "remote", "unknown"])

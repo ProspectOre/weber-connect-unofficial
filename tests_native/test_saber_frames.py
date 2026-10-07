@@ -146,6 +146,15 @@ class KnownPayloadTests(unittest.TestCase):
         parsed = sf.parse_known_payload(0x87, tlv(0, bytes([0xFF])))
         self.assertEqual(parsed["error_type"], "UNKNOWN")
 
+    def test_pairing_error_dispatch_obeys_shared_record_limit(self) -> None:
+        # The 129th record must remain an explicit tail, not override the error
+        # already parsed through the same 0x87 pairing dispatch.
+        prefix = tlv(0, b"\x00") + tlv(2, b"") * 127
+        tail = tlv(0, b"\xff")
+        parsed = sf.parse_known_payload(0x87, prefix + tail)
+        self.assertEqual(parsed["error_type"], "UNSUPPORTED_MESSAGE_VERSION")
+        self.assertEqual(parsed["unparsed_tail_hex"], tail.hex(":"))
+
 
 class TlvTests(unittest.TestCase):
     def test_parse_tlv_captures_trailing_bytes(self) -> None:
@@ -156,6 +165,14 @@ class TlvTests(unittest.TestCase):
     def test_parse_tlv_breaks_on_overlong_length(self) -> None:
         fields = sf.parse_tlv(bytes([1, 5, 0x00]))
         self.assertIn(-1, fields)
+
+    def test_parse_tlv_caps_record_cardinality(self) -> None:
+        payload = bytes([1, 0]) * (sf.MAX_TLV_RECORDS + 7)
+
+        fields = sf.parse_tlv(payload)
+
+        self.assertEqual(len(fields[1]), sf.MAX_TLV_RECORDS)
+        self.assertEqual(fields[-1], [bytes([1, 0]) * 7])
 
 
 class CookSessionStatusTests(unittest.TestCase):

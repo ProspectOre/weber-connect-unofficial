@@ -1,5 +1,15 @@
 # Production readiness
 
+## 3.2.2rc1 hardware-validation prerelease
+
+This candidate fixes the confirmed GATT capability and retry defects in issue 65.
+Genesis response framing, physical approval, and cloud association remain
+unverified. The prerelease validator requires exact version/runtime bindings and
+an explicit pending hardware record. Stable releases still require the complete
+physical and endurance matrix; prior 3.2.1 receipts are not reused.
+
+See [RC validation and rollback steps](docs/validation/3.2.2rc1-readiness.md).
+
 The current candidate is release-ready only when every automated gate and the
 authenticated cloud/pairing matrix pass. Optional compatibility rows are
 explicitly marked and do not become claims until exercised. A passing matrix

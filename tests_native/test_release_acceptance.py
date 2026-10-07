@@ -37,6 +37,46 @@ def test_complete_evidence_accepts_current_runtime() -> None:
     release.check_runtime_acceptance(*evidence())
 
 
+def rc_evidence() -> tuple[dict, dict]:
+    binding = {
+        "candidate": "3.2.2rc1",
+        "release_channel": "prerelease",
+        "runtime_sha256": release.runtime_fingerprint(),
+    }
+    return {**binding, "status": "pending_hardware_validation"}, dict(binding)
+
+
+def test_rc_permits_pending_hardware_only_on_bound_prerelease(monkeypatch) -> None:
+    monkeypatch.setattr(release, "VERSION", "3.2.2rc1")
+    release.check_candidate_acceptance(*rc_evidence())
+
+
+@pytest.mark.parametrize("version", ["3.2.2", "3.2.2rc0", "3.2.2-unknown"])
+def test_pending_rc_evidence_cannot_authorize_a_stable_or_unknown_version(monkeypatch, version):
+    monkeypatch.setattr(release, "VERSION", version)
+    with pytest.raises(SystemExit):
+        release.check_candidate_acceptance(*rc_evidence())
+
+
+@pytest.mark.parametrize("which", [0, 1])
+@pytest.mark.parametrize("field", ["candidate", "release_channel", "runtime_sha256"])
+def test_rc_rejects_unbound_or_mislabelled_evidence(monkeypatch, which, field):
+    monkeypatch.setattr(release, "VERSION", "3.2.2rc1")
+    records = list(rc_evidence())
+    records[which][field] = "invalid"
+    with pytest.raises(SystemExit):
+        release.check_candidate_acceptance(*records)
+
+
+@pytest.mark.parametrize("change", [{"status": "passed"}, {"runtime_amendment": {}}])
+def test_rc_cannot_claim_passed_or_inherited_physical_acceptance(monkeypatch, change):
+    monkeypatch.setattr(release, "VERSION", "3.2.2rc1")
+    physical, automated = rc_evidence()
+    physical.update(change)
+    with pytest.raises(SystemExit):
+        release.check_candidate_acceptance(physical, automated)
+
+
 @pytest.mark.parametrize("which", [0, 1])
 def test_other_runtime_evidence_cannot_authorize_release(which: int) -> None:
     records = list(evidence())

@@ -358,12 +358,21 @@ BURNER_STATES = {
 }
 
 
+MAX_TLV_RECORDS = 128
+
+
 def parse_tlv(payload: bytes) -> dict[int, list[bytes]]:
     """Parse Weber's one-byte tag / one-byte length TLV records."""
 
     fields: dict[int, list[bytes]] = {}
     index = 0
+    records = 0
+    truncated = False
     while index + 2 <= len(payload):
+        if records >= MAX_TLV_RECORDS:
+            fields[-1] = [payload[index:]]
+            truncated = True
+            break
         tag = payload[index]
         length = payload[index + 1]
         start = index + 2
@@ -372,7 +381,8 @@ def parse_tlv(payload: bytes) -> dict[int, list[bytes]]:
             break
         fields.setdefault(tag, []).append(payload[start:end])
         index = end
-    if index != len(payload):
+        records += 1
+    if index != len(payload) and not truncated:
         fields.setdefault(-1, []).append(payload[index:])
     return fields
 
@@ -648,17 +658,7 @@ def parse_appliance_status_payload(payload: bytes) -> dict[str, Any]:
 
 
 def parse_error_payload(payload: bytes) -> dict[str, Any]:
-    fields: dict[int, list[bytes]] = {}
-    index = 0
-    while index + 2 <= len(payload):
-        tag = payload[index]
-        length = payload[index + 1]
-        start = index + 2
-        end = start + length
-        if end > len(payload):
-            break
-        fields.setdefault(tag, []).append(payload[start:end])
-        index = end
+    fields = parse_tlv(payload)
 
     error_type_value = None
     if fields.get(0):
@@ -675,7 +675,7 @@ def parse_error_payload(payload: bytes) -> dict[str, Any]:
         "error_type_value": error_type_value,
         "error_type": _lookup(ERROR_TYPES, error_type_value),
         "appliance_software_version": software_version,
-        "unparsed_tail_hex": bytes_to_hex(payload[index:]),
+        "unparsed_tail_hex": bytes_to_hex(fields[-1][-1]) if -1 in fields else "",
     }
 
 

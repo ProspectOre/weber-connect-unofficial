@@ -33,6 +33,20 @@ pip-audit --requirement requirements-runtime.txt --no-deps --disable-pip
 
 Hassfest and HACS validation run in GitHub Actions.
 
+## CI routing
+
+This public repository uses standard GitHub-hosted Ubuntu runners for CI,
+CodeQL, and review jobs. Standard runner minutes are
+[free for public repositories](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+Required tests, HACS, Hassfest, security analysis, and exact-head review remain
+merge requirements. Physical pairing and appliance acceptance are separate.
+
+The retired hosted-runner policy workflow sampled private-repository minute
+allowances and forced hosted-runner variables off. CI routing is defined in
+workflow source without that billing switch or a local runner fallback.
+Larger runners are billed even for public repositories; artifact storage and
+cache allowances have separate billing boundaries.
+
 ## Design constraints
 
 - Use Home Assistant's documented Bluetooth manager. Never connect directly to
