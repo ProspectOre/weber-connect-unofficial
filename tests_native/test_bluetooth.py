@@ -672,7 +672,7 @@ async def test_connect_normalizes_transport_errors_and_safe_disconnect() -> None
 
 
 @pytest.fixture
-def pairing_clock():
+async def pairing_clock():
     """Advance protocol deadlines without waiting on wall-clock Bluetooth timeouts."""
     clock = SimpleNamespace(now=0.0)
     real_loop = asyncio.get_running_loop()
