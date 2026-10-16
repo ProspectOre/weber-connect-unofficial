@@ -177,9 +177,20 @@ def normalize_state(
     ]
     burner_states = [row.get("state") for row in burners_by_number.values()]
     activity_reported = bool(all_session_states or burner_states or state["cook_mode"] is not None)
+    # A pellet grill has no burners and needs no probe session to cook: a SmokeFire
+    # holding 350 F in grill mode with a probe plugged in (reported PROBED, which is
+    # "inserted", not a session) read "not cooking". The appliance saying it is
+    # active in a real cook mode is the answer there. Cleaning is a burn-off, not a
+    # cook, and "unknown" is no mode at all.
+    holding_a_cook_mode = raw.get("device_state") == "active" and state["cook_mode"] not in (
+        None,
+        "unknown",
+        "clean",
+    )
     state["cooking"] = (
         any(value in ACTIVE_SESSION_STATES for value in all_session_states)
         or any(value in {"on", "ignition_requested"} for value in burner_states)
+        or holding_a_cook_mode
         if activity_reported
         else None
     )
