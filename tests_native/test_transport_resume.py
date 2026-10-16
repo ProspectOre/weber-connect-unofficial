@@ -8,13 +8,13 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from homeassistant.const import CONF_ADDRESS
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.weber_connect import coordinator as coordinator_module
 from custom_components.weber_connect import entity as entity_module
 from custom_components.weber_connect.bluetooth import WeberBluetoothError
 from custom_components.weber_connect.const import (
-    CONF_ADDRESS,
     CONF_APPLIANCE_ID,
     CONF_CAPABILITIES,
     CONF_CLOUD_PASSWORD,
@@ -269,9 +269,14 @@ async def test_replaced_pairing_reference_after_reconnect_cannot_overwrite_entry
 @pytest.mark.asyncio
 async def test_portable_coordinator_closes_without_cloud_client(hass: object) -> None:
     entry = _entry(hass, family=TransportFamily.PORTABLE.value, reference=None)
-    entry.data.pop(CONF_COMPANION_ID)
-    entry.data.pop(CONF_CLOUD_PASSWORD)
-    entry.data.pop(CONF_APPLIANCE_ID)
+    hass.config_entries.async_update_entry(
+        entry,
+        data={
+            key: value
+            for key, value in entry.data.items()
+            if key not in (CONF_COMPANION_ID, CONF_CLOUD_PASSWORD, CONF_APPLIANCE_ID)
+        },
+    )
     portable_session = FakeTransport()
     with patch.object(coordinator_module, "PortableSession", return_value=portable_session):
         coordinator = WeberCoordinator(hass, entry)  # type: ignore[arg-type]

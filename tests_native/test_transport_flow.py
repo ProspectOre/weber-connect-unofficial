@@ -382,7 +382,9 @@ async def test_portable_model_selection_progress_retry_and_no_cloud(hass: Any) -
         result = await finish_progress(hass, result)
         assert result["type"] is FlowResultType.MENU
         assert result["step_id"] == "portable_failed"
-        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "retry_portable"}
+        )
         assert result["type"] is FlowResultType.SHOW_PROGRESS
         result = await finish_progress(hass, result)
 
