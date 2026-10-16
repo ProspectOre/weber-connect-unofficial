@@ -5,9 +5,10 @@
 - Select Weber Bluetooth transport families from advertisement schema and GATT
   evidence, with shared automatic/manual discovery and redacted diagnostics.
 - Keep SiLabs appliances and portable probes out of the Saber pairing path.
-- Add an isolated SiLabs P-256/ECDH/AES-GCM exchange contract with synthetic
-  pairing, authentication, tampering and replay tests. Live SiLabs and portable
-  pairing, identity persistence and device interoperability remain unfinished.
+- Add SiLabs P-256/ECDH/AES-GCM setup, private pairing storage, stored-key
+  resume and authenticated capability negotiation. Add a separate read-only
+  portable probe session. Hardware interoperability remains pending; tests use
+  synthetic peers, storage and Bluetooth routes.
 - Preserve RC3 evidence and bind this changed runtime to pending hardware gates.
 
 ## 3.2.2rc3 — 2026-10-16 (beta prerelease)

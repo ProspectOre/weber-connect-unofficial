@@ -20,6 +20,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import NAME
 from .models import BluetoothFrameSummary, CompanionIdentity, PairingResult
+from .pairing_storage import PairingKeyStore
 from .saber_frames import (
     COMMAND_UUID,
     NOTIFICATION_UUID,
@@ -32,6 +33,8 @@ from .saber_frames import (
     crc8,
     decode_hex_frame,
 )
+from .silabs_pairing import SiLabsPairingResult, async_pair_exchange, async_resume_exchange
+from .silabs_secure import SiLabsExchange, SiLabsSecurityError, SiLabsSigningKeys
 from .support import SupportEvent
 from .transport_family import TransportEvidence, classify_service_shapes
 
@@ -244,6 +247,115 @@ async def async_qualify_gatt(
             for characteristic in service.characteristics:
                 shapes[characteristic.uuid.lower()] = set(characteristic.properties)
         return classify_service_shapes(evidence, shapes)
+    finally:
+        if client is not None:
+            await _safe_disconnect(client)
+
+
+class GattResponseChannel:
+    """Bounded response stream using properties on the selected GATT table."""
+
+    def __init__(self, client: BleakClientWithServiceCache, response_uuid: str) -> None:
+        self.client = client
+        self.response_uuid = response_uuid
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
+        self._can_read = False
+        self._last_read = b""
+
+    async def async_open(self) -> None:
+        characteristic = self.client.services.get_characteristic(self.response_uuid)
+        if characteristic is None:
+            raise WeberBluetoothError("The controller's response characteristic is missing.")
+        self._can_read = "read" in characteristic.properties
+        can_notify = bool({"notify", "indicate"}.intersection(characteristic.properties))
+        if not self._can_read and not can_notify:
+            raise WeberBluetoothError("The controller has no usable response channel.")
+        if can_notify:
+            try:
+                async with asyncio.timeout(CONNECTION_TIMEOUT):
+                    await self.client.start_notify(
+                        self.response_uuid, _notification_callback(self._queue)
+                    )
+            except BleakError, TimeoutError:
+                if not self._can_read:
+                    raise
+
+    async def async_write(self, data: bytes) -> None:
+        command = self.client.services.get_characteristic(COMMAND_UUID)
+        if command is None or "write" not in command.properties:
+            raise WeberBluetoothError("The controller has no usable command channel.")
+        async with asyncio.timeout(CONNECTION_TIMEOUT):
+            await self.client.write_gatt_char(COMMAND_UUID, data, response=True)
+
+    async def async_receive(self) -> bytes:
+        while True:
+            try:
+                data = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                if self._can_read:
+                    async with asyncio.timeout(CONNECTION_TIMEOUT):
+                        data = bytes(await self.client.read_gatt_char(self.response_uuid))
+                else:
+                    data = await self._queue.get()
+            if data and data != self._last_read:
+                self._last_read = data
+                return data
+            if self._can_read:
+                await asyncio.sleep(0.25)
+
+
+async def async_pair_silabs(
+    hass: HomeAssistant,
+    address: str,
+    identity: CompanionIdentity,
+    keys: SiLabsSigningKeys,
+    *,
+    confirmation_timeout: float = 60.0,
+    progress_callback: Callable[[SupportEvent], None] | None = None,
+) -> SiLabsPairingResult:
+    """Pair a SiLabs appliance through the same HA adapter/proxy routing."""
+
+    client: BleakClientWithServiceCache | None = None
+    try:
+        exchange = SiLabsExchange(bytes.fromhex(identity.companion_id), NAME, keys)
+        if keys.public_key.hex() != identity.public_key:
+            raise SiLabsSecurityError("The SiLabs companion public key does not match.")
+        client = await _connect(hass, address, max_attempts=3, use_services_cache=False)
+        channel = GattResponseChannel(client, RESPONSE_UUID)
+        await channel.async_open()
+        if progress_callback is not None:
+            progress_callback(SupportEvent.SERVICES)
+        return await async_pair_exchange(
+            channel,
+            exchange,
+            confirmation_timeout=confirmation_timeout,
+            progress_callback=progress_callback,
+        )
+    except ValueError as exc:
+        raise WeberBluetoothError(str(exc)) from exc
+    except (BleakError, TimeoutError) as exc:
+        raise WeberBluetoothError("The SiLabs pairing transport failed or timed out.") from exc
+    finally:
+        if client is not None:
+            await _safe_disconnect(client)
+
+
+async def async_reconnect_silabs(
+    hass: HomeAssistant, address: str, reference: str, appliance_id: str
+) -> dict[str, int]:
+    """Resume stored keys and negotiate capabilities without re-pairing."""
+
+    client: BleakClientWithServiceCache | None = None
+    try:
+        credentials = await PairingKeyStore(hass, reference).async_load(appliance_id)
+        client = await _connect(hass, address, use_services_cache=False)
+        channel = GattResponseChannel(client, RESPONSE_UUID)
+        await channel.async_open()
+        return await async_resume_exchange(channel, credentials)
+    except ValueError as exc:
+        raise WeberBluetoothError(str(exc)) from exc
+    except (BleakError, TimeoutError) as exc:
+        raise WeberBluetoothError("The SiLabs reconnect transport failed or timed out.") from exc
     finally:
         if client is not None:
             await _safe_disconnect(client)

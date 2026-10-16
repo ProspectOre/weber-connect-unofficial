@@ -24,22 +24,39 @@ with usable `3103`/`3108`, or portable service `a9ad69c3…` with its temperatur
 characteristic. Ambiguous or incomplete services remain unqualified. This check
 does not write to a device or register a cloud companion.
 
-The SiLabs frame parser validates the seven-byte header, sequence, boot count,
-flag, and wire-body length. The isolated `silabs_secure` contract builds a
-P-256 public key from two 32-byte coordinates, derives an AES-256 key from
-SHA-256(ECDH shared secret), and checks AES-GCM messages with a 12-byte nonce
-and 16-byte tag. Synthetic peers exercise the plaintext version-11 pairing
-request (`0x0a`), confirmation/rejection/timeout response (`0x85`), plaintext
-greeting (`0x70`), encrypted handshake success (`0xf2`), tampering and replay.
-This contract has no GATT writes, cloud calls or identity persistence yet;
-consequently it does not enable live SiLabs setup. Portable probes use a separate
-GATT contract and are never fed appliance frames. Their authenticated pairing
-and reading mapping have not been independently verified. Both families show a
-specific qualification screen before cloud registration or pairing, with a
-privacy-safe support report. Existing Saber pairing and cloud telemetry remain
-active; successful entries store their transport family and discovery schema.
-Reauthentication checks a currently visible advertisement again while retaining
-the old entry until replacement pairing and cloud association succeed.
+The SiLabs adapter uses a seven-byte header and a source-backed authenticated
+setup flow: P-256 pairing request, physical confirmation response, ECDH plus
+SHA-256 to derive AES-256-GCM, plaintext companion greeting, authenticated
+handshake success, then encrypted capability negotiation. Reads, writes and
+response counts are bounded. Invalid tags, keys, framing and duplicate
+nonces/sequences within one connection are rejected. The transport header is
+not GCM authenticated by the app protocol, and session freshness across separate
+connections has no demonstrated challenge/response guarantee.
+
+After Bluetooth setup, the existing cloud association check must match the
+BLE-confirmed appliance identity. Only then are keys saved in a separate Home
+Assistant private (0600), atomic storage file; config data contains its reference
+and a capability summary. This is private-file protection, not an encrypted-at-
+rest or OS-keychain guarantee. Protect Home Assistant backups like other secrets.
+A stored-key resume path repeats the authenticated greeting and capabilities
+without a new pairing request. Normal grill telemetry and recovery continue
+through the existing cloud session. Replacement pairing preserves the old entry
+until the new cloud association and private save succeed; deletion removes the
+private record. Capabilities select available probe slots without name rules.
+
+Portable probes use their own local GATT read/notify transport with no appliance
+pairing command or cloud registration. The app's packed sequence/boot count,
+battery byte, sensor count and signed deci-C readings are parsed separately;
+WASP uses ambient temperature and BATWOMAN uses the coldest non-ambient segment.
+An unknown catalogue model requires the owner to select the probe type. This
+application payload has no demonstrated cryptographic authentication. Link
+bond/authorization requirements and the app's portable account association
+coroutine remain unestablished; a GATT authorization failure is reported without
+attempting a bond or changing security settings.
+
+Tests use generated synthetic peers, mock storage and mock HA Bluetooth routes.
+They do not establish any grill or probe's hardware acceptance. Unknown or
+conflicting evidence still stops before credentials or commands are generated.
 
 The static source for this contract is the official Android
 `com.weber.connect` `2.12.0.2665` base APK (SHA-256
@@ -55,8 +72,8 @@ used by the separate JOSL path. All tests here use synthetic peers and frames.
 ## Hardware gates
 
 The code provides first-class classification and explicit adapter boundaries;
-it does **not** claim physical SiLabs or portable pairing acceptance. To enable
-those adapters, obtain consented sanitized evidence for each controller type:
+it does **not** claim physical SiLabs or portable acceptance. Before a hardware
+compatibility claim, obtain consented sanitized evidence for each controller type:
 
 1. Manufacturer company ID, payload length, schema, model/SKU fields (redact
    serial/address), and GATT service/characteristic properties.
@@ -64,8 +81,8 @@ those adapters, obtain consented sanitized evidence for each controller type:
    count, encryption flag, message type, accepted/rejected/timeout outcomes.
    Do not include keys, nonces, ciphertext or account identifiers.
 3. Validate the independent secure-session implementation against consented
-   device evidence, then add protected identity persistence and reconnect
-   handling before live pairing or claiming authenticated telemetry.
+   device evidence, including protected identity persistence and reconnect
+   behavior. Local portable readings have no application authentication claim.
 4. Capability and message-version outcomes, cloud association, restart/reconnect,
    and a live cook or probe reading for the exact product/firmware candidate.
 

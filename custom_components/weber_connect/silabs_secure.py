@@ -127,8 +127,10 @@ class SiLabsExchange:
         self.appliance_id: bytes | None = None
         self.appliance_public_key: bytes | None = None
         self.cipher: SiLabsCipher | None = None
+        self.message_version = MESSAGE_VERSION
         self._request_sequence: int | None = None
         self._seen_incoming: set[tuple[int | None, int]] = set()
+        self._seen_nonces: set[bytes] = set()
 
     def pairing_request(self, sequence: int) -> bytes:
         if self.state is not ExchangeState.NEW:
@@ -150,7 +152,7 @@ class SiLabsExchange:
         if frame.encrypted or frame.sequence != (self._request_sequence or 0) & 0x0FFFFFFF:
             raise SiLabsSecurityError("SiLabs pairing response has the wrong trust context.")
         body = frame.plaintext_body()
-        if len(body) != 83 or body[1] != PAIRING_RESPONSE or body[0] > MESSAGE_VERSION:
+        if len(body) != 83 or body[1] != PAIRING_RESPONSE or not 5 <= body[0] <= MESSAGE_VERSION:
             raise SiLabsSecurityError("SiLabs pairing response has an invalid envelope.")
         status = body[82]
         if status == 1:
@@ -166,6 +168,7 @@ class SiLabsExchange:
         self.appliance_id = body[2:18]
         self.appliance_public_key = peer_key
         self.cipher = cipher
+        self.message_version = body[0]
         self.state = ExchangeState.PAIRED
 
     def handshake_greeting(self, sequence: int) -> bytes:
@@ -173,17 +176,35 @@ class SiLabsExchange:
             raise SiLabsSecurityError("A confirmed pairing is required for the handshake.")
         self.state = ExchangeState.HANDSHAKING
         return build_outgoing_frame(
-            sequence, bytes((MESSAGE_VERSION, HANDSHAKE_GREETING)) + self.companion_id
+            sequence, bytes((self.message_version, HANDSHAKE_GREETING)) + self.companion_id
         )
 
     def accept_handshake(self, raw_frame: bytes) -> int:
         if self.state is not ExchangeState.HANDSHAKING:
             raise SiLabsSecurityError("No SiLabs secure handshake is in progress.")
         body = self.authenticated_body(raw_frame)
-        if len(body) < 2 or body[1] != HANDSHAKE_SUCCESS or body[0] > MESSAGE_VERSION:
+        if len(body) < 2 or body[1] != HANDSHAKE_SUCCESS or not 5 <= body[0] <= MESSAGE_VERSION:
             raise SiLabsSecurityError("SiLabs handshake success has an invalid message type.")
         self.state = ExchangeState.ACTIVE
+        self.message_version = body[0]
         return body[0]
+
+    def restore(self, appliance_id: bytes, peer_public_key: bytes, version: int) -> None:
+        """Resume a stored identity without issuing a new pairing request."""
+
+        if self.state is not ExchangeState.NEW or len(appliance_id) != 16 or not 5 <= version <= 11:
+            raise SiLabsSecurityError("Cannot restore the SiLabs pairing record.")
+        self.cipher = SiLabsCipher(self.keys, peer_public_key)
+        self.appliance_id = appliance_id
+        self.appliance_public_key = peer_public_key
+        self.message_version = version
+        self.state = ExchangeState.PAIRED
+
+    def encrypted_request(self, sequence: int, message_type: int, payload: bytes = b"") -> bytes:
+        if self.state is not ExchangeState.ACTIVE or self.cipher is None:
+            raise SiLabsSecurityError("A successful SiLabs handshake is required.")
+        sealed = self.cipher.seal(bytes((self.message_version, message_type)) + payload)
+        return build_outgoing_frame(sequence, sealed, encrypted=True)
 
     def authenticated_body(self, raw_frame: bytes) -> bytes:
         frame: SiLabsFrame = parse_incoming_frame(raw_frame)
@@ -193,9 +214,11 @@ class SiLabsExchange:
             raise SiLabsFrameError("SiLabs encrypted frame is truncated.")
         body = self.cipher.open(frame.body)
         marker = (frame.boot_count, frame.sequence)
-        if marker in self._seen_incoming:
+        nonce = frame.body[:12]
+        if marker in self._seen_incoming or nonce in self._seen_nonces:
             raise SiLabsSecurityError("SiLabs incoming sequence was replayed.")
         self._seen_incoming.add(marker)
+        self._seen_nonces.add(nonce)
         return body
 
     def cancel(self) -> None:
@@ -205,4 +228,4 @@ class SiLabsExchange:
             ExchangeState.TIMED_OUT,
         ):
             self.state = ExchangeState.CANCELLED
-            self.cipher = None
+        self.cipher = None

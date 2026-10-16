@@ -4,7 +4,8 @@
     "progress": {
       "preparing_companion": "**Step 1 of 3 \u00b7 Preparing your connection.** This usually takes a few seconds. No action is needed yet.",
       "approve_hub": "**Step 2 of 3 \u00b7 Connecting and pairing with {name}.** Using {path}. An active proxy may take up to 90 seconds to establish the Bluetooth connection; reaching this screen does not mean an approval request has reached the device.\n\nWhen the device requests approval:\n\n**Standalone hub:** when all four probe lights turn on, press down once on the top/display within 60 seconds.\n\n**Grill controller:** use its dial or confirmation control when prompted.\n\nIf no prompt appears, wait for the result. The error screen offers a support report with the connection milestones.",
-      "finishing_setup": "**Step 3 of 3 \u00b7 Connecting to Weber Cloud \u00b7 {remaining} remaining.** Physical approval is complete. No further button press is needed; this screen advances automatically."
+      "finishing_setup": "**Step 3 of 3 \u00b7 Connecting to Weber Cloud \u00b7 {remaining} remaining.** Physical approval is complete. No further button press is needed; this screen advances automatically.",
+      "reading_probe": "Connecting to the portable probe and checking a local temperature reading. Keep it awake and close the Weber app while Home Assistant connects."
     },
     "step": {
       "user": {
@@ -24,7 +25,7 @@
       },
       "confirm": {
         "title": "Connect {name}",
-        "description": "Initial setup requires working internet access from Home Assistant.\n\nBefore continuing:\n\n1. Turn off Bluetooth on your phone or tablet. In the Weber app, confirm **{name} is still online through Wi-Fi**.\n2. Fully close the app and leave Bluetooth off on every phone or tablet that uses the hub.\n3. Wake the hub. Home Assistant will connect through **{path}**.\n\nNext, you will approve the connection on the physical hub. The final online check can take up to five minutes."
+        "description": "For a grill, initial setup requires working internet access from Home Assistant. Portable probes use local Bluetooth readings.\n\nBefore continuing:\n\n1. Fully close the Weber app on every phone or tablet that uses this device. For a grill, turn phone/tablet Bluetooth off and confirm the grill remains online through Wi-Fi.\n2. Wake the device. Home Assistant will connect through **{path}**.\n\nA grill will request approval on its physical controller and then complete the Weber Cloud check. Portable probes need a local reading. New controller support still requires hardware validation for the exact model and firmware."
       },
       "pairing_failed": {
         "title": "Pairing did not finish",
@@ -89,6 +90,22 @@
         "description": "[Open a prefilled GitHub report]({report_url}), describe what happened, then submit it on GitHub. To reply to an existing issue, copy the report below into your comment.\n\nThis report contains versions, connection checks, and recent diagnostic events. It excludes names, addresses, credentials, QR codes, packet contents, and raw logs. Nothing is submitted automatically.\n\n```json\n{report}\n```\n\nSelect **Return to error** to return to the error and keep your retry options.",
         "menu_options": {
           "return_to_error": "Return to error"
+        }
+      },
+      "portable_model": {
+        "title": "Choose your portable probe",
+        "description": "Select the probe type printed on your device. This chooses the matching ambient or wireless temperature interpretation. Readings use the local Bluetooth connection; no Weber account is required.",
+        "data": {
+          "model": "Probe type"
+        }
+      },
+      "portable_failed": {
+        "title": "The portable probe did not provide a reading",
+        "description": "Wake the probe, close the Weber app, and keep it near an active Home Assistant Bluetooth adapter or proxy. This setup reads the local temperature characteristic; it does not create an Android bond or a Weber cloud association.",
+        "menu_options": {
+          "retry_portable": "Try the local reading again",
+          "choose_hub": "Choose another device",
+          "support": "Get help / report a problem"
         }
       }
     },

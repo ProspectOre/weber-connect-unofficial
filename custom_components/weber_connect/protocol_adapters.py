@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .silabs_frames import SiLabsFrame, parse_incoming_frame
-from .transport_family import TransportEvidence, TransportFamily
+from .transport_family import Qualification, TransportEvidence, TransportFamily
 
 
 class ProtocolQualificationRequired(RuntimeError):
@@ -35,7 +35,7 @@ class SaberAdapter:
 
 @dataclass(frozen=True, slots=True)
 class SiLabsApplianceAdapter:
-    """Validated framing boundary; authenticated pairing awaits device evidence."""
+    """Source-backed authenticated setup; exact hardware acceptance is separate."""
 
     family: TransportFamily = TransportFamily.SILABS_APPLIANCE
 
@@ -43,11 +43,13 @@ class SiLabsApplianceAdapter:
         return parse_incoming_frame(data)
 
     def require_pairing_support(self, evidence: TransportEvidence) -> None:
-        raise ProtocolQualificationRequired(
-            "This SiLabs grill has a distinct encrypted pairing protocol. "
-            "A sanitized greeting and pairing result plus secure-session validation "
-            "are required before Home Assistant can pair it."
-        )
+        if (
+            evidence.family is not self.family
+            or evidence.qualification is not Qualification.NEEDS_SECURE_SESSION
+        ):
+            raise ProtocolQualificationRequired(
+                "SiLabs appliance GATT qualification is incomplete."
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,10 +59,11 @@ class PortableProbeAdapter:
     family: TransportFamily = TransportFamily.PORTABLE
 
     def require_pairing_support(self, evidence: TransportEvidence) -> None:
-        raise ProtocolQualificationRequired(
-            "This portable probe uses separate GATT characteristics. Its pairing "
-            "and authenticated reading contract has not been validated."
-        )
+        if (
+            evidence.family is not self.family
+            or evidence.qualification is not Qualification.READING_READY
+        ):
+            raise ProtocolQualificationRequired("Portable probe GATT qualification is incomplete.")
 
 
 @dataclass(frozen=True, slots=True)

@@ -131,10 +131,10 @@ def test_gatt_selects_silabs_appliance_or_portable_and_rejects_ambiguity() -> No
     portable = classify_service_shapes(evidence, portable_services)
     assert appliance.family is TransportFamily.SILABS_APPLIANCE
     assert portable.family is TransportFamily.PORTABLE
-    assert appliance.qualification is portable.qualification is Qualification.NEEDS_SECURE_SESSION
+    assert appliance.qualification is Qualification.NEEDS_SECURE_SESSION
+    assert portable.qualification is Qualification.READING_READY
     for family in (appliance, portable):
-        with pytest.raises(ProtocolQualificationRequired):
-            adapter_for(family).require_pairing_support(family)
+        adapter_for(family).require_pairing_support(family)
     assert (
         classify_service_shapes(evidence, appliance_services | portable_services).family
         is TransportFamily.UNKNOWN
@@ -154,7 +154,7 @@ def test_legacy_portable_ids_require_portable_gatt(model_id: int) -> None:
         evidence, {PORTABLE_SERVICE_UUID: set(), PORTABLE_TEMPERATURE_UUID: {"read"}}
     )
     assert portable.family is TransportFamily.PORTABLE
-    assert portable.qualification is Qualification.NEEDS_SECURE_SESSION
+    assert portable.qualification is Qualification.READING_READY
     for services in (
         {},
         {APPLIANCE_SERVICE_UUID: set(), COMMAND_UUID: {"write"}, RESPONSE_UUID: {"notify"}},
@@ -222,7 +222,7 @@ async def test_read_only_gatt_qualifier_selects_portable_and_disconnects() -> No
 @pytest.mark.usefixtures("enable_custom_integrations")
 @pytest.mark.parametrize("automatic", [False, True])
 @pytest.mark.parametrize("family", [TransportFamily.SILABS_APPLIANCE, TransportFamily.PORTABLE])
-async def test_simulated_setup_stops_before_cloud_or_pairing(
+async def test_simulated_setup_routes_by_qualified_protocol(
     hass: object, automatic: bool, family: TransportFamily
 ) -> None:
     """Both setup paths classify controller evidence before side effects."""
@@ -256,7 +256,11 @@ async def test_simulated_setup_stops_before_cloud_or_pairing(
             "custom_components.weber_connect.config_flow.async_qualify_gatt",
             new=AsyncMock(return_value=evidence),
         ) as qualify,
-        patch.object(flow, "_start_cloud_preparation") as cloud,
+        patch.object(
+            flow,
+            "async_step_preparing",
+            new=AsyncMock(return_value={"type": FlowResultType.FORM, "step_id": "preparing"}),
+        ) as cloud,
         patch("custom_components.weber_connect.config_flow.async_pair") as pair,
     ):
         if automatic:
@@ -267,12 +271,13 @@ async def test_simulated_setup_stops_before_cloud_or_pairing(
             shown = await flow.async_step_user({"address": discovery.address})
         assert shown["step_id"] == "confirm"
         stopped = await flow.async_step_confirm({})
-    assert stopped["type"] is FlowResultType.MENU
-    assert stopped["step_id"] == "protocol_qualification"
-    assert flow._support_snapshot["protocol"]["family"] == family.value
+    assert stopped["type"] is FlowResultType.FORM
+    assert stopped["step_id"] == (
+        "preparing" if family is TransportFamily.SILABS_APPLIANCE else "portable_model"
+    )
     assert flow._identity is None
     qualify.assert_awaited_once()
-    cloud.assert_not_called()
+    assert cloud.await_count == int(family is TransportFamily.SILABS_APPLIANCE)
     pair.assert_not_called()
 
 

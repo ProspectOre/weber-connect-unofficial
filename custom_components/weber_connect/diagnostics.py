@@ -16,6 +16,7 @@ from .const import (
     CONF_MANUFACTURER_ID,
     CONF_MANUFACTURER_SCHEMA,
     CONF_MODEL_ID,
+    CONF_PAIRING_KEY_REF,
     CONF_TRANSPORT_FAMILY,
 )
 from .models import WeberRuntimeData
@@ -26,6 +27,7 @@ TO_REDACT = {
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
+    CONF_PAIRING_KEY_REF,
     "companion_private_key",
     "companion_public_key",
     "appliance_public_key",

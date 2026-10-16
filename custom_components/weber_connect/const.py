@@ -24,6 +24,8 @@ CONF_TRANSPORT_FAMILY: Final = "transport_family"
 CONF_MANUFACTURER_ID: Final = "manufacturer_id"
 CONF_MANUFACTURER_SCHEMA: Final = "manufacturer_schema"
 CONF_MODEL_ID: Final = "model_id"
+CONF_PAIRING_KEY_REF: Final = "pairing_key_ref"
+CONF_CAPABILITIES: Final = "device_capabilities"
 
 CONF_CONNECTION: Final = "connection"
 CONF_CONNECTION_MODE: Final = "connection_mode"

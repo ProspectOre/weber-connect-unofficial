@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
@@ -20,9 +21,12 @@ from .const import (
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
+    CONF_MODEL_ID,
+    CONF_TRANSPORT_FAMILY,
     DOMAIN,
 )
 from .options import WeberOptions
+from .portable import PortableSession
 from .state import normalize_state
 from .support import SupportEvent, SupportJournal
 from .weber_cloud import CloudConfig, WeberCloudClient
@@ -50,7 +54,9 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
         self.options = WeberOptions.from_mapping(entry.options)
-        self.source = "cloud"
+        self.source = (
+            "bluetooth" if entry.data.get(CONF_TRANSPORT_FAMILY) == "portable" else "cloud"
+        )
         self._transport_task: asyncio.Task[None] | None = None
         self.support_journal = SupportJournal()
         self.last_error: str | None = None
@@ -59,17 +65,25 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.successful_updates = 0
         self.failed_updates = 0
 
-        appliance_id = str(entry.data[CONF_APPLIANCE_ID])
-        config = CloudConfig.from_mapping(
-            {
-                "device_id": entry.data[CONF_COMPANION_ID],
-                "device_password": entry.data[CONF_CLOUD_PASSWORD],
-                "appliance_id": appliance_id,
-            }
-        )
-        self.cloud_client = WeberCloudClient(config)
-        self.cloud_session = WeberCloudSession(hass, self.cloud_client, appliance_id)
-        self._transport: _TransportSession = self.cloud_session
+        self.cloud_client: WeberCloudClient | None = None
+        self.cloud_session: WeberCloudSession | None = None
+        self._transport: _TransportSession
+        if self.source == "bluetooth":
+            self._transport = PortableSession(
+                hass, str(entry.data[CONF_ADDRESS]), int(entry.data[CONF_MODEL_ID])
+            )
+        else:
+            appliance_id = str(entry.data[CONF_APPLIANCE_ID])
+            config = CloudConfig.from_mapping(
+                {
+                    "device_id": entry.data[CONF_COMPANION_ID],
+                    "device_password": entry.data[CONF_CLOUD_PASSWORD],
+                    "appliance_id": appliance_id,
+                }
+            )
+            self.cloud_client = WeberCloudClient(config)
+            self.cloud_session = WeberCloudSession(hass, self.cloud_client, appliance_id)
+            self._transport = self.cloud_session
 
         super().__init__(
             hass,
@@ -204,4 +218,5 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await task
         await self._transport.async_close()
         await self.async_shutdown()
-        await self.hass.async_add_executor_job(self.cloud_client.close)
+        if self.cloud_client is not None:
+            await self.hass.async_add_executor_job(self.cloud_client.close)

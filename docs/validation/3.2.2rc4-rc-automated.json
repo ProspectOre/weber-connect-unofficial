@@ -10,8 +10,8 @@
     "failed": 0,
     "combined_statement_branch_coverage_percent": 100,
     "required_coverage_percent": 100,
-    "status": "passed",
-    "scope": "local native suite; SiLabs peers and frames are synthetic"
+    "status": "previous_runtime_passed_current_runtime_pending",
+    "scope": "Previous qualification-only runtime result; runtime adapters now require a fresh measured test run."
   },
   "local_gates": {
     "ruff": "passed",

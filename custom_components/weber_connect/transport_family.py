@@ -47,6 +47,7 @@ class Qualification(StrEnum):
     NAME_ONLY = "name_only"
     NEEDS_GATT = "needs_gatt"
     NEEDS_SECURE_SESSION = "needs_secure_session"
+    READING_READY = "reading_ready"
     INVALID_ADVERTISEMENT = "invalid_advertisement"
     UNKNOWN_CONTROLLER = "unknown_controller"
 
@@ -185,7 +186,9 @@ def classify_service_shapes(
     return replace(
         evidence,
         family=TransportFamily.SILABS_APPLIANCE if appliance else TransportFamily.PORTABLE,
-        qualification=Qualification.NEEDS_SECURE_SESSION,
+        qualification=Qualification.NEEDS_SECURE_SESSION
+        if appliance
+        else Qualification.READING_READY,
     )
 
 
