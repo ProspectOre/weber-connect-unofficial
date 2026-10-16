@@ -27,6 +27,7 @@ show_error_codes = true
 asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests_native"]
+timeout = 60
 
 [tool.coverage.run]
 branch = true
