@@ -495,6 +495,17 @@ async def test_pairing_uses_notify_only_response_without_reading(pairing_clock):
     client.read_gatt_char.assert_not_awaited()
 
 
+async def test_pairing_notify_only_silence_never_attempts_a_read(pairing_clock):
+    client = FakeClient()
+    client.characteristics[transport.RESPONSE_UUID].properties = ["notify"]
+    client.read_gatt_char = AsyncMock(side_effect=AssertionError("response is not readable"))
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        with pytest.raises(transport.WeberBluetoothError, match="did not confirm"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY, confirmation_timeout=1)
+    client.read_gatt_char.assert_not_awaited()
+    assert client.disconnected
+
+
 async def test_pairing_retries_when_notify_only_response_subscription_fails(pairing_clock):
     stale = [FakeClient() for _ in range(3)]
     for client in stale:
