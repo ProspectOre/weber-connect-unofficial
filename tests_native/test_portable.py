@@ -9,12 +9,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from bleak.exc import BleakError
+from homeassistant.const import CONF_ADDRESS
 
 from custom_components.weber_connect import coordinator as coordinator_module
 from custom_components.weber_connect import entity as entity_module
 from custom_components.weber_connect import portable
 from custom_components.weber_connect.bluetooth import WeberBluetoothError
-from custom_components.weber_connect.const import CONF_ADDRESS, CONF_MODEL_ID, CONF_TRANSPORT_FAMILY
+from custom_components.weber_connect.const import CONF_MODEL_ID, CONF_TRANSPORT_FAMILY
 from custom_components.weber_connect.coordinator import WeberCoordinator
 from custom_components.weber_connect.entity import WeberEntity, known_probe_numbers
 from custom_components.weber_connect.transport_family import PORTABLE_TEMPERATURE_UUID

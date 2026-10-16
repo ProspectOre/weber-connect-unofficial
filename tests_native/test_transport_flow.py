@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import AsyncMock, Mock, patch
@@ -34,6 +35,13 @@ from custom_components.weber_connect.transport_family import (
 )
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
+
+@pytest.fixture(autouse=True)
+def mock_bluetooth_dependencies() -> Generator[None]:
+    with patch("homeassistant.setup._async_process_dependencies", new=AsyncMock(return_value=[])):
+        yield
+
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
 COMPANION_ID = "11" * 16
@@ -151,10 +159,10 @@ async def prepare_flow(hass: Any, route: str, discovery: SimpleNamespace) -> dic
                 DOMAIN,
                 context={"source": config_entries.SOURCE_USER},
             )
-        assert result["step_id"] == "user"
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_ADDRESS: ADDRESS}
-        )
+            assert result["step_id"] == "user"
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {CONF_ADDRESS: ADDRESS}
+            )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "confirm"
     return result
@@ -457,7 +465,7 @@ async def test_pairing_key_save_failure_does_not_create_entry(hass: Any) -> None
         source=config_entries.SOURCE_USER,
         entry_data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: APPLIANCE_ID},
     )
-    flow.async_create_entry = Mock(return_value={"type": "created"})  # type: ignore[method-assign]
+    flow.async_create_entry = Mock(return_value={"type": FlowResultType.CREATE_ENTRY})  # type: ignore[method-assign]
     with (
         patch(
             "custom_components.weber_connect.config_flow.PairingKeyStore.async_save",
@@ -482,7 +490,7 @@ async def test_saber_entry_completion_does_not_write_silabs_key_storage(hass: An
         entry_data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: APPLIANCE_ID},
     )
     flow._pairing_result = PairingResult(11, APPLIANCE_ID)
-    flow.async_create_entry = Mock(return_value={"type": "created"})  # type: ignore[method-assign]
+    flow.async_create_entry = Mock(return_value={"type": FlowResultType.CREATE_ENTRY})  # type: ignore[method-assign]
     with patch(
         "custom_components.weber_connect.config_flow.PairingKeyStore.async_save",
         new=AsyncMock(),
