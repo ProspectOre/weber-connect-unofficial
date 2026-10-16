@@ -1,0 +1,18 @@
+{
+  "candidate": "3.2.2rc4",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-16",
+  "runtime_sha256": "9de5bfb63ea0a759a3c77cd34eb55c88035dbc0b7869959077f489d76040fc9b",
+  "identifiers": "redacted",
+  "status": "pending_hardware_validation",
+  "verified": {},
+  "pending": [
+    "Standalone Hub exact-candidate pairing, cloud association, live readings, app coexistence, recovery, entity identity and endurance",
+    "SmokeFire EX4 Gen2 exact-candidate cook, app coexistence, recovery and entity identity",
+    "Genesis manufacturer and framing evidence, physical approval, cloud association and live readings",
+    "SiLabs GATT orchestration, protected identity persistence, reconnect and capability negotiation",
+    "Portable probe pairing, authenticated reading mapping and hardware acceptance",
+    "Performer exact-candidate pairing, recovery and endurance"
+  ],
+  "instructions": "docs/validation/3.2.2rc4-readiness.md"
+}

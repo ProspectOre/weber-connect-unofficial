@@ -172,9 +172,9 @@ integration; Home Assistant owns adapter selection and credentials.
 
 ## Compatibility and validation
 
-Version **3.2.2rc3 is a beta prerelease for hardware trials**. Its model and
+Version **3.2.2rc4 is an unpublished qualification candidate**. Its model and
 firmware evidence, including pending SmokeFire and Genesis checks, is recorded in
-the [candidate matrix](docs/validation/3.2.2rc3-readiness.md). The historical
+the [candidate matrix](docs/validation/3.2.2rc4-readiness.md). The historical
 results below do not certify the changed candidate runtime. Stable 3.2.1 remains
 the rollback release.
 
