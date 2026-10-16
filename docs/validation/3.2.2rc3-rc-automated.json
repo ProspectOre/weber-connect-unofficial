@@ -2,7 +2,7 @@
   "candidate": "3.2.2rc3",
   "release_channel": "prerelease",
   "evidence_date": "2026-10-16",
-  "runtime_sha256": "f10217fd347fd1d6408ef6bc66a964f3d8f1e15f7e4df38d745a72619e2f92fb",
+  "runtime_sha256": "de1d525b7cc59683c7d1ab8bb4af227b19f395b2d61277f754b81c26c99825ee",
   "home_assistant_test_framework": "2026.7.2",
   "python": "3.14.8",
   "tests": {

@@ -354,11 +354,13 @@ async def async_pair(
                         async with asyncio.timeout_at(deadline):
                             value = bytes(await client.read_gatt_char(RESPONSE_UUID))
                     except Exception:
-                        pass
+                        value = b""
                 if value and value != last_polled_response:
                     last_polled_response = value
                     return value
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(
+                    min(0.25, max(0.0, deadline - asyncio.get_running_loop().time()))
+                )
             return None
 
         version = initial_version
