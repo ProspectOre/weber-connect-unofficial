@@ -6,11 +6,11 @@
   "home_assistant_test_framework": "2026.7.2",
   "python": "3.14.8",
   "tests": {
-    "passed": 0,
+    "passed": 400,
     "failed": 0,
-    "combined_statement_branch_coverage_percent": 0,
+    "combined_statement_branch_coverage_percent": 100,
     "required_coverage_percent": 100,
-    "status": "pending_ci"
+    "status": "passed"
   },
   "local_gates": {
     "ruff": "passed",
@@ -19,6 +19,9 @@
     "compileall": "passed"
   },
   "hosted_gates": {
-    "candidate_pr": "pending exact-head CI and review"
+    "measured_test_run": "https://github.com/ProspectOre/weber-connect-unofficial/actions/runs/38853464611",
+    "measured_commit": "983e788c71212eb35d121af688ffdc36f0b46012",
+    "bandit": "passed",
+    "final_candidate_pr": "pending exact-head CI and review"
   }
 }
