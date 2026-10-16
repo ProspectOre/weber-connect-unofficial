@@ -274,6 +274,11 @@ async def test_pairing_report_keeps_visibility_before_cleanup(hass: object) -> N
     from unittest.mock import AsyncMock
 
     from custom_components.weber_connect.bluetooth import WeberBluetoothError
+    from custom_components.weber_connect.transport_family import (
+        Qualification,
+        TransportEvidence,
+        TransportFamily,
+    )
 
     flow = WeberConnectConfigFlow()
     flow.hass = hass
@@ -281,6 +286,9 @@ async def test_pairing_report_keeps_visibility_before_cleanup(hass: object) -> N
     flow._address = SECRET
     flow._identity = SimpleNamespace()
     flow._cloud_config = SimpleNamespace()
+    flow._transport_evidence = TransportEvidence(
+        TransportFamily.SABER, Qualification.PAIRING_READY, company_id=0x07C5, model_id=1
+    )
     visible = {"selected_connectable": True, "selected_advertisement_visible": True}
     with (
         patch(

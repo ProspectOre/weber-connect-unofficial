@@ -33,6 +33,7 @@ from .saber_frames import (
     decode_hex_frame,
 )
 from .support import SupportEvent
+from .transport_family import TransportEvidence, classify_service_shapes
 
 _LOGGER = logging.getLogger(__name__)
 CONNECTION_TIMEOUT = 30.0
@@ -227,6 +228,25 @@ async def _safe_disconnect(client: BleakClient) -> None:
             await client.disconnect()
     except Exception:
         _LOGGER.debug("Could not disconnect from the Weber hub cleanly", exc_info=True)
+
+
+async def async_qualify_gatt(
+    hass: HomeAssistant, address: str, evidence: TransportEvidence
+) -> TransportEvidence:
+    """Read only the GATT table to distinguish SiLabs appliances and probes."""
+
+    client: BleakClientWithServiceCache | None = None
+    try:
+        client = await _connect(hass, address, use_services_cache=False)
+        shapes: dict[str, set[str]] = {}
+        for service in client.services.services.values():
+            shapes[service.uuid.lower()] = set()
+            for characteristic in service.characteristics:
+                shapes[characteristic.uuid.lower()] = set(characteristic.properties)
+        return classify_service_shapes(evidence, shapes)
+    finally:
+        if client is not None:
+            await _safe_disconnect(client)
 
 
 async def async_pair(

@@ -36,6 +36,15 @@
           "support": "Get help / report a problem"
         }
       },
+      "protocol_qualification": {
+        "title": "This Weber controller needs protocol validation",
+        "description": "**{reason}**\n\nHome Assistant stopped before registering a cloud companion or sending a pairing command. This device remains unchanged. The support report contains only structural protocol classification; a sanitized advertisement and greeting result are needed to qualify this controller.",
+        "menu_options": {
+          "choose_hub": "Choose another hub",
+          "start_over": "Start over",
+          "support": "Get help / report a problem"
+        }
+      },
       "cloud_preparation_failed": {
         "title": "The private Weber connection could not be prepared",
         "description": "Home Assistant stopped before contacting the hub, so no approval is needed yet. Confirm Home Assistant can reach the internet, then try again. The same private identity will be reused.",
