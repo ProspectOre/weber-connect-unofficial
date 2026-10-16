@@ -695,7 +695,7 @@ def parse_envelope(payload: bytes) -> EncryptionEnvelope | None:
     footer_crc = payload[body_end]
     calculated_crc = crc8(payload[1:body_end])
     plain_candidate = None
-    if payload[0] == 0xAB and payload[1] == 0 and payload[2] == 0:
+    if payload[0] == 0xAB and payload[1] == 0 and payload[2] == 0 and payload[3] == 0:
         plain_candidate = parse_appliance_payload(body)
 
     return EncryptionEnvelope(

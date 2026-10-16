@@ -1,9 +1,16 @@
 # Changelog
 
-## Unreleased
+## 3.2.2rc3 — 2026-10-16 (beta prerelease)
 
-- Discover SmokeFire pellet grills, which advertise only a `SmokeFire XXXX`
-  local name without Weber manufacturer data.
+- Discover SmokeFire local names reported by 6Firewall6 in
+  [PR #71](https://github.com/ProspectOre/weber-connect-unofficial/pull/71),
+  with the same boundary-aware identity filter for automatic and manual setup.
+- Require usable COMMAND and RESPONSE GATT capabilities, retain the best
+  Home Assistant adapter or proxy route during cache refresh, and bound GATT
+  response reads to their pairing deadlines.
+- Require the plaintext envelope type throughout frame decoding and pairing.
+- Physical validation of this changed runtime remains pending. SmokeFire EX4
+  Gen 2 full-cook readings and Genesis response framing are unverified.
 
 ## 3.2.2rc2 — 2026-10-07 (candidate)
 

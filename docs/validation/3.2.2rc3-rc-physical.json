@@ -1,0 +1,16 @@
+{
+  "candidate": "3.2.2rc3",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-16",
+  "runtime_sha256": "f10217fd347fd1d6408ef6bc66a964f3d8f1e15f7e4df38d745a72619e2f92fb",
+  "identifiers": "redacted",
+  "status": "pending_hardware_validation",
+  "verified": {},
+  "pending": [
+    "Standalone Hub exact-candidate pairing, cloud association, fresh readings, app coexistence, restart/recovery, entity stability and endurance",
+    "SmokeFire EX4 Gen 2 exact-candidate full-cook readings, app coexistence, restart/recovery and entity stability",
+    "Genesis response framing, physical approval, cloud association and live readings",
+    "Performer exact-candidate pairing, recovery and endurance"
+  ],
+  "instructions": "docs/validation/3.2.2rc3-readiness.md"
+}

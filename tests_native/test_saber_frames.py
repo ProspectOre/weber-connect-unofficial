@@ -66,6 +66,12 @@ class EnvelopeTransportTests(unittest.TestCase):
         self.assertEqual(candidate["type_name"], "OUTGOING_FETCH_STATUS")
         self.assertEqual(candidate["message_version"], 11)
 
+    def test_non_plain_envelope_does_not_offer_plaintext_candidate(self) -> None:
+        frame = sf.build_command_frame(5, 11, 0xF1, b"", message_type=1)
+        decoded = sf.decode_hex_frame(sf.bytes_to_hex(frame))
+        self.assertTrue(decoded["envelope"]["crc_ok"])
+        self.assertIsNone(decoded["envelope"]["body_plain_candidate"])
+
     def test_parse_appliance_payload_needs_two_bytes(self) -> None:
         self.assertIsNone(sf.parse_appliance_payload(b"\x0b"))
 

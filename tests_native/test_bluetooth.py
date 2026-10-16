@@ -79,6 +79,10 @@ def test_payload_rejects_bad_length_crc_tail_and_extra_bytes() -> None:
     with pytest.raises(transport.WeberBluetoothError, match="encrypted"):
         transport._payload(bytes(encrypted))
 
+    wrong_envelope_type = build_command_frame(1, 10, 0xF1, b"", message_type=1)
+    with pytest.raises(transport.WeberBluetoothError, match="corrupted"):
+        transport._payload(wrong_envelope_type)
+
 
 def test_pairing_path_rejects_unauthenticated_status_telemetry() -> None:
     with pytest.raises(transport.WeberBluetoothError, match="unauthenticated"):
@@ -442,6 +446,69 @@ async def test_pairing_skips_subscriptions_on_read_only_characteristics(pairing_
     client.start_notify.assert_not_awaited()
 
 
+async def test_pairing_skips_read_only_optional_session(pairing_clock):
+    client = FakeClient([_pairing_required(), _pairing_confirmed()])
+    client.characteristics[transport.SESSION_UUID].properties = ["read"]
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    assert all(uuid != transport.SESSION_UUID for uuid, _, _ in client.writes)
+
+
+@pytest.mark.parametrize(
+    ("uuid", "properties"),
+    [
+        (transport.COMMAND_UUID, ["read"]),
+        (transport.RESPONSE_UUID, ["write"]),
+    ],
+)
+async def test_pairing_refreshes_unusable_required_characteristics(pairing_clock, uuid, properties):
+    stale = [FakeClient() for _ in range(3)]
+    for client in stale:
+        client.characteristics[uuid].properties = properties
+    with (
+        patch.object(transport, "_connect", AsyncMock(side_effect=stale)) as connect,
+        patch.object(transport.asyncio, "sleep", AsyncMock()),
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="services were not ready"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert connect.await_count == 3
+    assert all(client.clear_cache.await_count == 1 and client.disconnected for client in stale)
+
+
+async def test_pairing_uses_notify_only_response_without_reading(pairing_clock):
+    client = FakeClient()
+    client.characteristics[transport.RESPONSE_UUID].properties = ["notify"]
+    client.read_gatt_char = AsyncMock(side_effect=AssertionError("response is not readable"))
+    original_write = client.write_gatt_char
+
+    async def write(uuid, data, response=True):
+        await original_write(uuid, data, response)
+        if uuid == transport.COMMAND_UUID:
+            reply = _pairing_required() if len(client.writes) == 2 else _pairing_confirmed()
+            client.callbacks[transport.RESPONSE_UUID](None, bytearray(reply))
+
+    client.write_gatt_char = write
+    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+        result = await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert result.appliance_id == bytes(range(16)).hex()
+    client.read_gatt_char.assert_not_awaited()
+
+
+async def test_pairing_retries_when_notify_only_response_subscription_fails(pairing_clock):
+    stale = [FakeClient() for _ in range(3)]
+    for client in stale:
+        client.characteristics[transport.RESPONSE_UUID].properties = ["notify"]
+        client.start_notify = AsyncMock(side_effect=BleakError("subscription failed"))
+    with (
+        patch.object(transport, "_connect", AsyncMock(side_effect=stale)),
+        patch.object(transport.asyncio, "sleep", AsyncMock()),
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="services were not ready"):
+            await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY)
+    assert all(client.clear_cache.await_count == 1 and client.disconnected for client in stale)
+
+
 @pytest.mark.parametrize("missing", [transport.COMMAND_UUID, transport.RESPONSE_UUID])
 async def test_pairing_refreshes_gatt_without_losing_a_slow_advertising_device(
     pairing_clock, clear_advertisement_history, missing
@@ -608,16 +675,13 @@ async def test_connect_normalizes_transport_errors_and_safe_disconnect() -> None
 def pairing_clock():
     """Advance protocol deadlines without waiting on wall-clock Bluetooth timeouts."""
     clock = SimpleNamespace(now=0.0)
+    real_loop = asyncio.get_running_loop()
 
     async def advance(delay):
         clock.now += delay
 
     with (
-        patch.object(
-            transport.asyncio,
-            "get_running_loop",
-            return_value=SimpleNamespace(time=lambda: clock.now),
-        ),
+        patch.object(real_loop, "time", side_effect=lambda: clock.now),
         patch.object(transport.asyncio, "sleep", side_effect=advance),
     ):
         yield clock
@@ -737,6 +801,49 @@ async def test_pairing_retries_silent_handshake_and_times_out_confirmation(pairi
         with pytest.raises(transport.WeberBluetoothError, match="did not confirm"):
             await transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY, confirmation_timeout=3)
     assert len([write for write in client.writes if write[0] == transport.COMMAND_UUID]) == 4
+    assert client.disconnected
+
+
+async def test_pairing_deadline_cancels_a_stalled_response_read():
+    client = FakeClient()
+    read_cancelled = asyncio.Event()
+
+    async def stalled_read(_uuid):
+        try:
+            await asyncio.Future()
+        finally:
+            read_cancelled.set()
+
+    client.read_gatt_char = stalled_read
+    with (
+        patch.object(transport, "_connect", AsyncMock(return_value=client)),
+        patch.object(transport, "HANDSHAKE_RESPONSE_TIMEOUT", 0.01),
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="did not confirm"):
+            await asyncio.wait_for(
+                transport.async_pair(
+                    SimpleNamespace(), ADDRESS, IDENTITY, confirmation_timeout=0.02
+                ),
+                timeout=0.2,
+            )
+    assert read_cancelled.is_set()
+    assert client.disconnected
+
+
+async def test_pairing_bounds_a_stalled_command_write():
+    client = FakeClient()
+    del client.characteristics[transport.SESSION_UUID]
+
+    async def stalled_write(*_args, **_kwargs):
+        await asyncio.Future()
+
+    client.write_gatt_char = stalled_write
+    with (
+        patch.object(transport, "_connect", AsyncMock(return_value=client)),
+        patch.object(transport, "CONNECTION_TIMEOUT", 0.01),
+    ):
+        with pytest.raises(transport.WeberBluetoothError, match="timed out"):
+            await asyncio.wait_for(transport.async_pair(SimpleNamespace(), ADDRESS, IDENTITY), 0.2)
     assert client.disconnected
 
 
