@@ -9,7 +9,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER
+from .const import CONF_CAPABILITIES, CONF_TRANSPORT_FAMILY, DOMAIN, MANUFACTURER
 from .coordinator import WeberCoordinator
 
 
@@ -22,14 +22,22 @@ def build_entity_unique_id(identity: str, key: str) -> str:
 def known_probe_numbers(hass: HomeAssistant, entry: ConfigEntry) -> set[int]:
     """Keep known physical slots available even before new telemetry arrives."""
 
+    if entry.data.get(CONF_TRANSPORT_FAMILY) == "portable":
+        return {1}
     identity = entry.unique_id or entry.entry_id
     registered = {
         entity.unique_id
         for entity in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     }
-    return {1, 2} | {
+    capability_count = entry.data.get(CONF_CAPABILITIES, {}).get("probe_count")
+    initial = (
+        set(range(1, min(max(capability_count, 0), 4) + 1))
+        if type(capability_count) is int
+        else {1, 2}
+    )
+    return initial | {
         number
-        for number in (3, 4)
+        for number in (1, 2, 3, 4)
         if any(
             build_entity_unique_id(identity, f"probe_{number}_{suffix}") in registered
             for suffix in ("temperature", "reading_status")
@@ -51,6 +59,8 @@ class WeberEntity(CoordinatorEntity[WeberCoordinator]):
             identifiers={(DOMAIN, identity)},
             connections={(CONNECTION_BLUETOOTH, str(entry.data[CONF_ADDRESS]))},
             manufacturer=MANUFACTURER,
-            model="Connect Smart Grilling Hub",
+            model="Portable Smart Probe"
+            if entry.data.get(CONF_TRANSPORT_FAMILY) == "portable"
+            else "Connect Smart Grilling Hub",
             name=entry.title,
         )

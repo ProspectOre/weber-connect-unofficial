@@ -164,7 +164,7 @@ controls.
 - A connectable Home Assistant Bluetooth adapter or active ESPHome Bluetooth
   proxy in range during setup.
 - Home Assistant internet access and a hub that is already online in Weber
-  Cloud for every initial installation and for live telemetry.
+  Cloud for grill setup and live grill telemetry. Portable probes use local Bluetooth.
 
 For an ESPHome proxy, `bluetooth_proxy.active` must be enabled and a connection
 slot must be available. No proxy address or encryption key is entered into this
@@ -172,11 +172,19 @@ integration; Home Assistant owns adapter selection and credentials.
 
 ## Compatibility and validation
 
-Version **3.2.2rc3 is a beta prerelease for hardware trials**. Its model and
+Version **3.2.2rc4 is an unpublished qualification candidate**. Its model and
 firmware evidence, including pending SmokeFire and Genesis checks, is recorded in
-the [candidate matrix](docs/validation/3.2.2rc3-readiness.md). The historical
+the [candidate matrix](docs/validation/3.2.2rc4-readiness.md). The historical
 results below do not certify the changed candidate runtime. Stable 3.2.1 remains
 the rollback release.
+
+The ongoing transport-family work is described in [Bluetooth transport
+qualification](docs/transport-families.md). The official Android `2.12.0.2665`
+code provides distinct Saber, SiLabs appliance, and portable paths. This
+integration routes SiLabs appliances through their authenticated pairing and
+capability exchange, and portable probes through a local read/notify session.
+These paths have synthetic test coverage; exact model/firmware hardware
+acceptance remains pending. A catalogue model is not a compatibility claim.
 
 Testing uses a Weber Connect Hub running `2.0.3_7398`, Home Assistant Yellow on
 Home Assistant `2026.7.2`, Weber app `2.10.0.2439` on a Samsung Galaxy Tab A9+
@@ -379,6 +387,7 @@ credential.
 ## Project documents
 
 - [Architecture](ARCHITECTURE.md)
+- [Bluetooth transport qualification](docs/transport-families.md)
 - [ADR 0001: superseded proxy relay](docs/adr/0001-home-assistant-bluetooth-proxy-transport.md)
 - [ADR 0002: native transport lifecycle](docs/adr/0002-native-transport-lifecycle.md)
 - [ADR 0003: authenticated telemetry boundary](docs/adr/0003-authenticated-telemetry-boundary.md)

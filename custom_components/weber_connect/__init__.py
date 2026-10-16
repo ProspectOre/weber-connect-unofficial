@@ -5,9 +5,10 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import PLATFORMS
+from .const import CONF_PAIRING_KEY_REF, PLATFORMS
 from .coordinator import WeberCoordinator
 from .models import WeberRuntimeData
+from .pairing_storage import PairingKeyStore
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -33,3 +34,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         await runtime.coordinator.async_close()
     return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove the private pairing record only when its entry is deleted."""
+
+    reference = entry.data.get(CONF_PAIRING_KEY_REF)
+    if reference is not None:
+        await PairingKeyStore(hass, reference).async_remove()

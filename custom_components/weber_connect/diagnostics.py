@@ -13,6 +13,11 @@ from .const import (
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
+    CONF_MANUFACTURER_ID,
+    CONF_MANUFACTURER_SCHEMA,
+    CONF_MODEL_ID,
+    CONF_PAIRING_KEY_REF,
+    CONF_TRANSPORT_FAMILY,
 )
 from .models import WeberRuntimeData
 from .support import error_category, report_placeholders, support_report
@@ -22,6 +27,7 @@ TO_REDACT = {
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
+    CONF_PAIRING_KEY_REF,
     "companion_private_key",
     "companion_public_key",
     "appliance_public_key",
@@ -48,6 +54,12 @@ async def async_get_config_entry_diagnostics(
         "stored_options": async_redact_data(dict(entry.options), set(entry.options)),
         "effective_options": async_redact_data(coordinator.options.as_dict(), {"probes"}),
         "transport": coordinator.source,
+        "bluetooth_protocol": {
+            "family": entry.data.get(CONF_TRANSPORT_FAMILY, "saber"),
+            "manufacturer_id": entry.data.get(CONF_MANUFACTURER_ID),
+            "manufacturer_schema": entry.data.get(CONF_MANUFACTURER_SCHEMA),
+            "model_id": entry.data.get(CONF_MODEL_ID),
+        },
         "connected": state.get("connected", False),
         "last_successful_update": coordinator.last_successful_update,
         "consecutive_failures": coordinator.consecutive_failures,
