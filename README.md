@@ -172,6 +172,12 @@ integration; Home Assistant owns adapter selection and credentials.
 
 ## Compatibility and validation
 
+Version **3.2.2rc3 is a beta prerelease for hardware trials**. Its model and
+firmware evidence, including pending SmokeFire and Genesis checks, is recorded in
+the [candidate matrix](docs/validation/3.2.2rc3-readiness.md). The historical
+results below do not certify the changed candidate runtime. Stable 3.2.1 remains
+the rollback release.
+
 Testing uses a Weber Connect Hub running `2.0.3_7398`, Home Assistant Yellow on
 Home Assistant `2026.7.2`, Weber app `2.10.0.2439` on a Samsung Galaxy Tab A9+
 (`SM-X210`, Android 16), and one ESPHome Bluetooth proxy running ESPHome

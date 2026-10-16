@@ -36,6 +36,7 @@ from .support import SupportEvent
 
 _LOGGER = logging.getLogger(__name__)
 CONNECTION_TIMEOUT = 30.0
+HANDSHAKE_RESPONSE_TIMEOUT = 10.0
 PAIRING_RESPONSE_TYPES = frozenset({0x85, 0x87, 0xF0, 0xF1, 0xF2})
 MAX_PAIRING_NOTIFICATIONS = 8
 
@@ -97,6 +98,7 @@ def _payload(data: bytes) -> tuple[int | None, dict[str, Any] | None]:
         envelope.get("crc_ok") is not True
         or envelope.get("tail_byte") != 0x54
         or envelope.get("extra_hex")
+        or envelope.get("message_type") != 0
     ):
         raise WeberBluetoothFrameError(
             "The hub returned a corrupted protocol envelope.", data, decoded
@@ -242,6 +244,7 @@ async def async_pair(
     replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
     pairing_replies: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
     last_polled_response = b""
+    response_can_read = False
 
     # A hub that has just restarted can advertise before its complete GATT
     # table is available through a proxy. Reconnect before asking the user for
@@ -260,15 +263,22 @@ async def async_pair(
                 # COMMAND and RESPONSE carry the pairing exchange. A built-in
                 # controller may omit STATUS, NOTIFICATION and SESSION entirely;
                 # their absence does not establish an incomplete service cache.
-                for uuid in (COMMAND_UUID, RESPONSE_UUID):
-                    if client.services.get_characteristic(uuid) is None:
-                        raise BleakCharacteristicNotFoundError(uuid)
+                command = client.services.get_characteristic(COMMAND_UUID)
+                response = client.services.get_characteristic(RESPONSE_UUID)
+                if command is None or "write" not in command.properties:
+                    raise BleakCharacteristicNotFoundError(COMMAND_UUID)
+                if response is None or not {"read", "notify", "indicate"}.intersection(
+                    response.properties
+                ):
+                    raise BleakCharacteristicNotFoundError(RESPONSE_UUID)
+                response_can_read = "read" in response.properties
 
                 # Each connection owns its queue. Notifications received during
                 # failed service setup must not become the next link's greeting.
                 replies = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
                 pairing_replies = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
                 notify = _notification_callback(replies, pairing_replies)
+                response_subscribed = False
 
                 for uuid in (RESPONSE_UUID, STATUS_UUID, NOTIFICATION_UUID):
                     characteristic = client.services.get_characteristic(uuid)
@@ -277,7 +287,10 @@ async def async_pair(
                     ):
                         continue
                     try:
-                        await client.start_notify(uuid, notify)
+                        async with asyncio.timeout(CONNECTION_TIMEOUT):
+                            await client.start_notify(uuid, notify)
+                        if uuid == RESPONSE_UUID:
+                            response_subscribed = True
                     except BleakCharacteristicNotFoundError:
                         raise
                     except Exception:
@@ -286,8 +299,12 @@ async def async_pair(
                             uuid,
                             exc_info=True,
                         )
-                if client.services.get_characteristic(SESSION_UUID) is not None:
-                    await client.write_gatt_char(SESSION_UUID, b"\x01", response=True)
+                if not response_can_read and not response_subscribed:
+                    raise BleakCharacteristicNotFoundError(RESPONSE_UUID)
+                session = client.services.get_characteristic(SESSION_UUID)
+                if session is not None and "write" in session.properties:
+                    async with asyncio.timeout(CONNECTION_TIMEOUT):
+                        await client.write_gatt_char(SESSION_UUID, b"\x01", response=True)
             except BleakCharacteristicNotFoundError as exc:
                 last_service_error = exc
                 # ESPHome remote caching can ignore use_services_cache=False.
@@ -331,14 +348,19 @@ async def async_pair(
                         queued = b""
                 if queued:
                     return queued
-                try:
-                    value = bytes(await client.read_gatt_char(RESPONSE_UUID))
-                except Exception:
-                    value = b""
+                value = b""
+                if response_can_read:
+                    try:
+                        async with asyncio.timeout_at(deadline):
+                            value = bytes(await client.read_gatt_char(RESPONSE_UUID))
+                    except Exception:
+                        value = b""
                 if value and value != last_polled_response:
                     last_polled_response = value
                     return value
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(
+                    min(0.25, max(0.0, deadline - asyncio.get_running_loop().time()))
+                )
             return None
 
         version = initial_version
@@ -351,10 +373,11 @@ async def async_pair(
                 build_handshake_body(identity.companion_id, secrets.token_bytes(32)),
             )
             sequence += 1
-            await client.write_gatt_char(COMMAND_UUID, greeting, response=True)
+            async with asyncio.timeout(CONNECTION_TIMEOUT):
+                await client.write_gatt_char(COMMAND_UUID, greeting, response=True)
             if progress_callback is not None:
                 progress_callback(SupportEvent.HANDSHAKE)
-            reply = await poll_response(10.0)
+            reply = await poll_response(HANDSHAKE_RESPONSE_TIMEOUT)
             if reply is None:
                 continue
             try:
@@ -381,7 +404,8 @@ async def async_pair(
             display_name,
         )
         pairing = build_command_frame(sequence, version, 0x0A, pairing_body)
-        await client.write_gatt_char(COMMAND_UUID, pairing, response=True)
+        async with asyncio.timeout(CONNECTION_TIMEOUT):
+            await client.write_gatt_char(COMMAND_UUID, pairing, response=True)
 
         if progress_callback is not None:
             progress_callback(SupportEvent.REQUESTED)
@@ -419,7 +443,8 @@ async def async_pair(
             0x70,
             build_handshake_body(identity.companion_id, secrets.token_bytes(32)),
         )
-        await client.write_gatt_char(COMMAND_UUID, post_pair, response=True)
+        async with asyncio.timeout(CONNECTION_TIMEOUT):
+            await client.write_gatt_char(COMMAND_UUID, post_pair, response=True)
         await poll_response(5.0)
         return PairingResult(
             message_version=version,
@@ -429,6 +454,10 @@ async def async_pair(
         raise WeberBluetoothError(
             "The hub's Bluetooth services changed during pairing. "
             "Wake the hub and try pairing again."
+        ) from exc
+    except TimeoutError as exc:
+        raise WeberBluetoothError(
+            "A Bluetooth operation timed out during pairing. Wake the hub and try again."
         ) from exc
     finally:
         # Disconnecting a Bleak client also removes its notification callbacks.

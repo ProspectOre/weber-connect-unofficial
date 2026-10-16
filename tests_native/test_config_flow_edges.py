@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from fnmatch import fnmatchcase
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
@@ -45,6 +48,15 @@ def test_cloud_association_retry_budget_is_five_minutes() -> None:
     assert _CLOUD_REQUEST_TIMEOUT < _CLOUD_ASSOCIATION_POLL_INTERVAL
 
 
+def test_smokefire_manifest_wakes_auto_discovery_for_common_name_casing() -> None:
+    manifest = json.loads(
+        (Path(__file__).parents[1] / "custom_components/weber_connect/manifest.json").read_text()
+    )
+    names = [row["local_name"] for row in manifest["bluetooth"] if "local_name" in row]
+    for advertisement in ("SmokeFire 0638", "SMOKEFIRE-1A2B", "smokefire_0638"):
+        assert any(fnmatchcase(advertisement, pattern) for pattern in names)
+
+
 def test_cloud_countdown_formats_the_shared_deadline(hass: object) -> None:
     instance = flow(hass)
     assert instance._cloud_time_remaining() == "5:00"
@@ -69,6 +81,11 @@ def test_weber_detection_and_discovery_labels_cover_adapter_and_proxy_paths(hass
     instance = flow(hass)
     assert _is_weber(SimpleNamespace(manufacturer_data={0x0DF2: b"x"}, name="Unknown"))
     assert _is_weber(SimpleNamespace(manufacturer_data={}, name="Weber Connect Hub"))
+    assert _is_weber(SimpleNamespace(manufacturer_data=None, name="SmokeFire 0638"))
+    assert _is_weber(SimpleNamespace(manufacturer_data={}, name="SMOKEFIRE-1A2B"))
+    assert not _is_weber(SimpleNamespace(manufacturer_data={}, name="SmokeFirefly"))
+    assert not _is_weber(SimpleNamespace(manufacturer_data={}, name="SmokeFireplace"))
+    assert not _is_weber(SimpleNamespace(manufacturer_data={}, name="Smoke detector"))
     assert not _is_weber(SimpleNamespace(manufacturer_data={}, name="June Oven"))
     assert not _is_weber(SimpleNamespace(manufacturer_data={}, name="Connect headphones"))
     assert not _is_weber(SimpleNamespace(manufacturer_data={}, name="Other"))
@@ -125,6 +142,53 @@ async def test_bluetooth_discovery_and_search_again_paths(hass: object) -> None:
     ) as user:
         assert await instance.async_step_search_again() == {"type": "done"}
         user.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_smokefire_auto_and_manual_discovery_share_identity_filter(hass: object) -> None:
+    smoke = SimpleNamespace(
+        address=ADDRESS, name="SmokeFire 0638", source="", manufacturer_data=None, connectable=True
+    )
+    near_miss = SimpleNamespace(
+        address="11:22:33:44:55:66",
+        name="SmokeFireplace",
+        source="",
+        manufacturer_data={},
+        connectable=True,
+    )
+    unavailable = SimpleNamespace(
+        address="22:33:44:55:66:77",
+        name="SmokeFire 9999",
+        source="",
+        manufacturer_data={},
+        connectable=False,
+    )
+    for discovery in (near_miss, unavailable):
+        instance = flow(hass)
+        instance.async_set_unique_id = AsyncMock()
+        result = await instance.async_step_bluetooth(discovery)  # type: ignore[arg-type]
+        assert result["type"] is FlowResultType.ABORT
+        instance.async_set_unique_id.assert_not_awaited()
+
+    instance = flow(hass)
+    instance.async_set_unique_id = AsyncMock()
+    instance._abort_if_unique_id_configured = MagicMock()
+    result = await instance.async_step_bluetooth(smoke)  # type: ignore[arg-type]
+    assert result["step_id"] == "confirm"
+    assert instance._address == ADDRESS
+
+    instance = flow(hass)
+    with patch(
+        "custom_components.weber_connect.config_flow.bluetooth.async_discovered_service_info",
+        return_value=[near_miss, unavailable, smoke, smoke],
+    ) as discover:
+        result = await instance.async_step_user()
+    discover.assert_called_once_with(hass, connectable=True)
+    assert result["step_id"] == "user"
+    assert result["data_schema"].schema
+    assert next(iter(result["data_schema"].schema.values())).container == {
+        ADDRESS: "SmokeFire 0638"
+    }
 
 
 @pytest.mark.asyncio

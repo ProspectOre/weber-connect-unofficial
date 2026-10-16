@@ -143,6 +143,7 @@ def test_version_label_only_change_preserves_runtime_fingerprint(
 
 def test_future_release_still_checks_runtime_acceptance(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(release, "VERSION", "3.4.0")
+    monkeypatch.setattr(release, "RUNTIME_EVIDENCE_VERSION", "3.2.2rc2")
 
     def reject(*args: object) -> None:
         raise RuntimeError("acceptance checked")

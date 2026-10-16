@@ -51,7 +51,7 @@ _CLOUD_ASSOCIATION_POLL_INTERVAL = 10.0
 _CLOUD_PROGRESS_REFRESH_INTERVAL = 1.0
 _CLOUD_REQUEST_TIMEOUT = 5.0
 _WEBER_NAME_RE = re.compile(
-    r"^(?:weber(?: connect| smart| grill)?|connect hub)(?:\b|[-_ ])",
+    r"^(?:weber(?: connect| smart| grill)?|connect hub|smokefire)(?:\b|[-_ ])",
     re.IGNORECASE,
 )
 
@@ -150,6 +150,8 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle discovery from a local adapter or active ESPHome proxy."""
 
+        if not _is_weber(discovery_info) or not getattr(discovery_info, "connectable", True):
+            return self.async_abort(reason="not_supported")
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
         self._address = discovery_info.address
@@ -164,7 +166,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         discovered_info = {
             info.address: info
             for info in bluetooth.async_discovered_service_info(self.hass, connectable=True)
-            if _is_weber(info)
+            if _is_weber(info) and getattr(info, "connectable", True)
         }
         if user_input is not None:
             self._address = str(user_input[CONF_ADDRESS])

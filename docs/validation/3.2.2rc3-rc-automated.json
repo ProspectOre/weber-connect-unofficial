@@ -1,0 +1,27 @@
+{
+  "candidate": "3.2.2rc3",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-16",
+  "runtime_sha256": "de1d525b7cc59683c7d1ab8bb4af227b19f395b2d61277f754b81c26c99825ee",
+  "home_assistant_test_framework": "2026.7.2",
+  "python": "3.14.8",
+  "tests": {
+    "passed": 400,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100,
+    "required_coverage_percent": 100,
+    "status": "passed"
+  },
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "compileall": "passed"
+  },
+  "hosted_gates": {
+    "measured_test_run": "https://github.com/ProspectOre/weber-connect-unofficial/actions/runs/38853464611",
+    "measured_commit": "983e788c71212eb35d121af688ffdc36f0b46012",
+    "bandit": "passed",
+    "final_candidate_pr": "pending exact-head CI and review"
+  }
+}
