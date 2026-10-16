@@ -73,6 +73,9 @@ def test_confirmed_pairing_and_authenticated_reconnect() -> None:
     assert exchange.state is ExchangeState.ACTIVE
     with pytest.raises(SiLabsSecurityError, match="replayed"):
         exchange.authenticated_body(success)
+    modified_header = build_outgoing_frame(10, authenticated, encrypted=True)
+    with pytest.raises(SiLabsSecurityError, match="replayed"):
+        exchange.authenticated_body(modified_header)
     exchange.cancel()
     assert exchange.state is ExchangeState.ACTIVE
 

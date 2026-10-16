@@ -138,12 +138,23 @@ class SiLabsExchange:
         name = self.display_name.encode("utf-8")[:MAX_DISPLAY_NAME_BYTES]
         # Truncate to a complete UTF-8 code point, as an appliance name is text.
         name = name.decode("utf-8", errors="ignore").encode("utf-8")
-        body = bytes((MESSAGE_VERSION, PAIRING_REQUEST)) + self.companion_id + self.keys.public_key
+        body = (
+            bytes((self.message_version, PAIRING_REQUEST))
+            + self.companion_id
+            + self.keys.public_key
+        )
         body += bytes((len(name),)) + name
         result = build_outgoing_frame(sequence, body)
         self._request_sequence = sequence
         self.state = ExchangeState.AWAITING_CONFIRMATION
         return result
+
+    def retry_lower_version(self, sequence: int) -> bytes:
+        if self.state is not ExchangeState.AWAITING_CONFIRMATION or self.message_version <= 5:
+            raise SiLabsSecurityError("SiLabs message version cannot be lowered for this request.")
+        self.message_version -= 1
+        self.state = ExchangeState.NEW
+        return self.pairing_request(sequence)
 
     def pairing_response(self, raw_frame: bytes) -> None:
         if self.state is not ExchangeState.AWAITING_CONFIRMATION:
@@ -179,10 +190,12 @@ class SiLabsExchange:
             sequence, bytes((self.message_version, HANDSHAKE_GREETING)) + self.companion_id
         )
 
-    def accept_handshake(self, raw_frame: bytes) -> int:
+    def accept_handshake(self, raw_frame: bytes, *, ignore_unrelated: bool = False) -> int | None:
         if self.state is not ExchangeState.HANDSHAKING:
             raise SiLabsSecurityError("No SiLabs secure handshake is in progress.")
         body = self.authenticated_body(raw_frame)
+        if len(body) >= 2 and body[1] != HANDSHAKE_SUCCESS and ignore_unrelated:
+            return None
         if len(body) < 2 or body[1] != HANDSHAKE_SUCCESS or not 5 <= body[0] <= MESSAGE_VERSION:
             raise SiLabsSecurityError("SiLabs handshake success has an invalid message type.")
         self.state = ExchangeState.ACTIVE

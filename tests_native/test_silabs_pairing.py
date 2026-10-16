@@ -36,6 +36,7 @@ class Peer:
         self.status = status
         self.capabilities = b"\x01\x01\x04\x18\x01\x02"
         self.silent = False
+        self.version = 11
 
     async def async_write(self, raw: bytes) -> None:
         self.writes.append(raw)
@@ -44,21 +45,28 @@ class Peer:
         frame = parse_incoming_frame(raw)
         if frame.encrypted:
             assert self.cipher is not None
-            assert self.cipher.open(frame.body) == b"\x0b\x0e"
-            body = b"\x0b\x88" + self.capabilities
+            assert self.cipher.open(frame.body) == bytes((self.version, 0x0E))
+            body = bytes((self.version, 0x88)) + self.capabilities
             await self.replies.put(
                 build_outgoing_frame(frame.sequence, self.cipher.seal(body), encrypted=True)
             )
         elif frame.body[1] == 0x0A:
             assert frame.body[2:18] == COMPANION_ID
             self.cipher = SiLabsCipher(self.keys, frame.body[18:82])
-            body = b"\x0b\x85" + APPLIANCE_ID + self.keys.public_key + bytes((self.status,))
+            body = (
+                bytes((self.version, 0x85))
+                + APPLIANCE_ID
+                + self.keys.public_key
+                + bytes((self.status,))
+            )
             await self.replies.put(build_outgoing_frame(frame.sequence, body))
         else:
-            assert frame.body == b"\x0b\x70" + COMPANION_ID
+            assert frame.body == bytes((self.version, 0x70)) + COMPANION_ID
             assert self.cipher is not None
             await self.replies.put(
-                build_outgoing_frame(frame.sequence, self.cipher.seal(b"\x0b\xf2"), encrypted=True)
+                build_outgoing_frame(
+                    frame.sequence, self.cipher.seal(bytes((self.version, 0xF2))), encrypted=True
+                )
             )
 
     async def async_receive(self) -> bytes:
@@ -126,6 +134,59 @@ async def test_pairing_timeout_and_cancellation_clear_unconfirmed_session() -> N
     assert exchange.state is ExchangeState.CANCELLED
 
 
+async def test_pairing_retries_one_lower_version_within_the_same_confirmation_budget() -> None:
+    peer = Peer()
+    original = peer.async_write
+    first = True
+
+    async def write(raw: bytes) -> None:
+        nonlocal first
+        frame = parse_incoming_frame(raw)
+        if first:
+            first = False
+            assert frame.body[0] == 11
+            peer.version = 10
+            await peer.replies.put(build_outgoing_frame(frame.sequence, b"\x0a\x87\x00\x01\x00"))
+        else:
+            await original(raw)
+
+    with patch.object(peer, "async_write", side_effect=write):
+        result = await pairing.async_pair_exchange(
+            peer, SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+        )
+    assert result.message_version == result.credentials.message_version == 10
+    assert parse_incoming_frame(peer.writes[0]).body[:2] == b"\x0a\x0a"
+
+
+@pytest.mark.parametrize("payload", [b"\x00\x01\x01", b"\x00\x02\x00", b"\x00\x01\x00"])
+async def test_invalid_or_repeated_version_errors_do_not_loop(payload: bytes) -> None:
+    peer = Peer()
+    calls = 0
+
+    async def write(raw: bytes) -> None:
+        nonlocal calls
+        calls += 1
+        sequence = parse_incoming_frame(raw).sequence
+        await peer.replies.put(build_outgoing_frame(sequence, b"\x0a\x87" + payload))
+
+    with patch.object(peer, "async_write", side_effect=write):
+        with pytest.raises(SiLabsSecurityError):
+            await pairing.async_pair_exchange(
+                peer, SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+            )
+    assert calls <= 2
+
+
+def test_message_version_retry_requires_an_awaiting_supported_request() -> None:
+    exchange = SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+    with pytest.raises(SiLabsSecurityError):
+        exchange.retry_lower_version(2)
+    exchange.message_version = 5
+    exchange.pairing_request(1)
+    with pytest.raises(SiLabsSecurityError):
+        exchange.retry_lower_version(2)
+
+
 async def test_receive_budget_is_bounded_and_unrelated_messages_cannot_advance_pairing() -> None:
     peer = Peer()
     await peer.replies.put(build_outgoing_frame(1, b"\x0b\x81"))
@@ -175,6 +236,12 @@ async def test_capability_negotiation_ignores_unrelated_plain_and_authenticated_
             await peer.replies.put(build_outgoing_frame(20, b"\x0b\x88"))
             await peer.replies.put(
                 build_outgoing_frame(20, peer.cipher.seal(b"\x0b\x81"), encrypted=True)
+            )
+        elif len(frame.body) >= 2 and frame.body[1] == 0x70:
+            assert peer.cipher is not None
+            await peer.replies.put(build_outgoing_frame(20, b"\x0b\xf1"))
+            await peer.replies.put(
+                build_outgoing_frame(19, peer.cipher.seal(b"\x0b\x81"), encrypted=True)
             )
         await original(raw)
 

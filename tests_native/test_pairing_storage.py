@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import stat
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
+from homeassistant.helpers.storage import Store as HomeAssistantStore
 
 from custom_components.weber_connect import pairing_storage
 from custom_components.weber_connect.capabilities import parse_capabilities
@@ -284,3 +287,24 @@ async def test_secret_credentials_repr_and_diagnostics_do_not_expose_pairing_mat
     serialized = str(diagnostics)
     for secret in (reference, private_scalar, peer_point):
         assert secret not in serialized
+
+
+async def test_real_ha_private_storage_permissions_and_reload(
+    hass: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Generated test keys verify private file permissions, never device credentials."""
+
+    monkeypatch.setattr(pairing_storage, "Store", HomeAssistantStore)
+    hass.config.config_dir = str(tmp_path)
+    record = credentials()
+    reference = record.companion_id.hex()
+    store = pairing_storage.PairingKeyStore(hass, reference)
+    await store.async_save(record)
+    path = tmp_path / ".storage" / f"weber_connect.pairing.{reference}"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    reloaded = await pairing_storage.PairingKeyStore(hass, reference).async_load(
+        record.appliance_id.hex()
+    )
+    assert reloaded.keys.private_scalar == record.keys.private_scalar
+    await store.async_remove()
+    assert not path.exists()

@@ -10,6 +10,7 @@ from typing import Protocol, cast
 from .capabilities import parse_capabilities
 from .models import PairingResult
 from .pairing_storage import SiLabsCredentials
+from .saber_frames import parse_tlv
 from .silabs_frames import parse_incoming_frame
 from .silabs_secure import ExchangeState, SiLabsExchange, SiLabsSecurityError
 from .support import SupportEvent
@@ -51,12 +52,15 @@ async def async_negotiate(
 
     async with asyncio.timeout(HANDSHAKE_TIMEOUT):
         await channel.async_write(exchange.handshake_greeting(sequence))
+
         # Handshake success is accepted only after GCM authentication; unrelated
         # plaintext cannot advance the session or become application telemetry.
-        raw = await _receive(
-            channel, lambda frame: parse_incoming_frame(frame).encrypted, HANDSHAKE_TIMEOUT
-        )
-        exchange.accept_handshake(raw)
+        def handshake(raw: bytes) -> bool:
+            if not parse_incoming_frame(raw).encrypted:
+                return False
+            return exchange.accept_handshake(raw, ignore_unrelated=True) is not None
+
+        await _receive(channel, handshake, HANDSHAKE_TIMEOUT)
     request_sequence = sequence + 1
     async with asyncio.timeout(CAPABILITIES_TIMEOUT):
         await channel.async_write(exchange.encrypted_request(request_sequence, FETCH_CAPABILITIES))
@@ -92,23 +96,40 @@ async def async_pair_exchange(
 
     try:
         async with asyncio.timeout(confirmation_timeout):
-            await channel.async_write(exchange.pairing_request(1))
-            if progress_callback is not None:
-                progress_callback(SupportEvent.REQUESTED)
+            request = exchange.pairing_request(1)
+            sequence = 1
+            attempt = 0
+            while True:
+                await channel.async_write(request)
+                if progress_callback is not None:
+                    progress_callback(SupportEvent.REQUESTED)
 
-            def accept(raw: bytes) -> bool:
-                frame = parse_incoming_frame(raw)
-                if frame.encrypted or len(frame.body) < 2 or frame.body[1] != 0x85:
-                    return False
+                def accept(raw: bytes, expected_sequence: int = sequence) -> bool:
+                    frame = parse_incoming_frame(raw)
+                    return (
+                        not frame.encrypted
+                        and frame.sequence == expected_sequence
+                        and len(frame.body) >= 2
+                        and frame.body[1] in (0x85, 0x87)
+                    )
+
+                raw = await _receive(channel, accept, confirmation_timeout)
+                body = parse_incoming_frame(raw).body
+                if body[1] == 0x87:
+                    fields = parse_tlv(body[2:])
+                    if attempt or -1 in fields or fields.get(0) != [b"\x00"]:
+                        raise SiLabsSecurityError("SiLabs pairing version negotiation failed.")
+                    sequence += 1
+                    attempt += 1
+                    request = exchange.retry_lower_version(sequence)
+                    continue
                 exchange.pairing_response(raw)
-                return True
-
-            await _receive(channel, accept, confirmation_timeout)
+                break
         if exchange.state is not ExchangeState.PAIRED:
             raise SiLabsSecurityError(f"SiLabs pairing was {exchange.state.value}.")
         if progress_callback is not None:
             progress_callback(SupportEvent.CONFIRMED)
-        capabilities = await async_negotiate(channel, exchange, 2)
+        capabilities = await async_negotiate(channel, exchange, sequence + 1)
         appliance_id = cast(bytes, exchange.appliance_id)
         peer_key = cast(bytes, exchange.appliance_public_key)
         credentials = SiLabsCredentials(

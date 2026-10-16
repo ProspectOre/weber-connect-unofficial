@@ -498,3 +498,43 @@ async def test_saber_entry_completion_does_not_write_silabs_key_storage(hass: An
         result = await flow.async_step_complete()
     assert result["type"] is FlowResultType.CREATE_ENTRY
     save.assert_not_awaited()
+
+
+async def test_setup_uses_actual_crypto_gatt_driver_fake_cloud_and_private_store(hass: Any) -> None:
+    """Compose the production setup layers around an offline synthetic GATT peer."""
+
+    from tests_native.test_silabs_pairing import APPLIANCE_ID as peer_id
+    from tests_native.test_silabs_pairing import COMPANION_ID as companion_id
+    from tests_native.test_silabs_pairing import GattClient, Peer
+
+    peer = Peer()
+    client = GattClient(peer)
+    FakeCloudClient.appliance_id = peer_id.hex()
+    with (
+        patch(
+            "custom_components.weber_connect.bluetooth._connect", new=AsyncMock(return_value=client)
+        ),
+        patch(
+            "custom_components.weber_connect.config_flow.async_qualify_gatt",
+            new=AsyncMock(return_value=silabs_evidence()),
+        ),
+        patch(
+            "custom_components.weber_connect.config_flow.generate_identity",
+            return_value=CompanionIdentity(companion_id.hex(), "00" * 64),
+        ),
+        patch(
+            "custom_components.weber_connect.config_flow.bluetooth_summary",
+            return_value={"available": True},
+        ),
+        patch("custom_components.weber_connect.config_flow.WeberCloudClient", FakeCloudClient),
+    ):
+        result = await prepare_flow(hass, "automatic", silabs_discovery())
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        result = await finish_progress(hass, result)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_APPLIANCE_ID] == peer_id.hex()
+    assert result["data"][CONF_CAPABILITIES]["probe_count"] == 4
+    record = await PairingKeyStore(hass, companion_id.hex()).async_load(peer_id.hex())
+    assert record.peer_public_key == peer.keys.public_key
+    assert len(peer.writes) == 3
+    client.disconnect.assert_awaited_once()
