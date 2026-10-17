@@ -5,7 +5,21 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from .const import MAX_PROBE_SLOTS
+
 ACTIVE_SESSION_STATES = {"PRIMED", "READY", "ACTIVE", "PAUSED", "ACTIVE_FIXED", "PREHEAT"}
+ACTIVE_COOK_MODES = {
+    "grill",
+    "smoke_boost",
+    "preheat",
+    "indirect",
+    "custom",
+    "simple",
+    "manual",
+    "sear",
+    "steam",
+    "warm",
+}
 
 
 def _utc_now() -> str:
@@ -85,10 +99,10 @@ def normalize_state(
         if not isinstance(row, dict):
             continue
         number = row.get("probe_number")
-        if type(number) is int and 1 <= number <= 4:
+        if type(number) is int and 1 <= number <= MAX_PROBE_SLOTS:
             probes_by_number.setdefault(number, row)
     state["reported_probe_numbers"] = tuple(sorted(probes_by_number))
-    for number in range(1, 5):
+    for number in range(1, MAX_PROBE_SLOTS + 1):
         probe = probes_by_number.get(number, {})
         state[f"probe_{number}_temperature"] = probe.get("probe_temp_c")
         state[f"probe_{number}_ambient_temperature"] = probe.get("ambient_temp_c")
@@ -177,9 +191,18 @@ def normalize_state(
     ]
     burner_states = [row.get("state") for row in burners_by_number.values()]
     activity_reported = bool(all_session_states or burner_states or state["cook_mode"] is not None)
+    # A pellet grill has no burners and needs no probe session to cook: a SmokeFire
+    # holding 350 F in grill mode with a probe plugged in (reported PROBED, which is
+    # "inserted", not a session) read "not cooking". The appliance saying it is
+    # active in a real cook mode is the answer there. Cleaning is a burn-off, not a
+    # cook, and "unknown" is no mode at all.
+    holding_a_cook_mode = (
+        raw.get("device_state") == "active" and state["cook_mode"] in ACTIVE_COOK_MODES
+    )
     state["cooking"] = (
         any(value in ACTIVE_SESSION_STATES for value in all_session_states)
         or any(value in {"on", "ignition_requested"} for value in burner_states)
+        or holding_a_cook_mode
         if activity_reported
         else None
     )

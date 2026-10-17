@@ -149,6 +149,28 @@ class FakeResponse:
         return self.body if size < 0 else self.body[:size]
 
 
+def test_client_defers_opener_initialization_until_request() -> None:
+    opener = type(
+        "FakeOpener",
+        (),
+        {"open": lambda _self, _request, **_kwargs: FakeResponse(b"{}")},
+    )()
+    with patch.object(cloud.urllib.request, "build_opener", return_value=opener) as build_opener:
+        client = WeberCloudClient(CloudConfig(DEVICE_ID, "password"))
+        build_opener.assert_not_called()
+
+        assert client._open(urllib.request.Request("https://api.walker-cloud.com/test")) == b"{}"
+
+    build_opener.assert_called_once()
+    handler = build_opener.call_args.args[0]
+    assert isinstance(handler, cloud._SameOriginRedirectHandler)
+    request = urllib.request.Request("https://api.walker-cloud.com/start")
+    with pytest.raises(WeberCloudError, match="cross-origin"):
+        handler.redirect_request(
+            request, None, 302, "Found", {}, "https://messaging.walker-cloud.com/next"
+        )
+
+
 def test_open_enforces_trusted_https_origins_and_decodes_gzip() -> None:
     client = WeberCloudClient(CloudConfig(DEVICE_ID, "password"))
     with pytest.raises(WeberCloudError, match="untrusted"):

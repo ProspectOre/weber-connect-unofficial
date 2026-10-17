@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.2.2rc4 — unpublished qualification candidate
+
+- Select Weber Bluetooth transport families from advertisement schema and GATT
+  evidence, with shared automatic/manual discovery and redacted diagnostics.
+- Keep SiLabs appliances and portable probes out of the Saber pairing path.
+- Add SiLabs P-256/ECDH/AES-GCM setup, private pairing storage, stored-key
+  resume primitive and capability negotiation. Keep direct portable telemetry
+  gated pending peer authentication; its decoder remains offline-only. Runtime
+  stays on the authenticated cloud connection without reclaiming phone Bluetooth.
+  Hardware interoperability remains pending; tests use synthetic peers.
+- Integrate the SmokeFire manual-cooking fix from PR #74, use family-aware device
+  labels, and create only supported/reported probe slots, including slots above four.
+- Move HTTPS certificate initialization off the event loop and scope device
+  metadata updates to their config entry. Add fuel-report and recovery metrics
+  without hiding explicit unknown states. Bound each cloud poll to 30 seconds,
+  retry an established silent socket once on a fresh connection, and reject
+  malformed appliance frames before they can change readings. Distinguish
+  malformed fuel fields from explicit unknown codes in privacy-safe diagnostics.
+- Track all applicable connected product lines and unresolved reports in the
+  [compatibility worklist](docs/product-compatibility.md).
+- Add structured issue forms, version-bound compatibility records, opt-in
+  hardware trials, field-report regressions, minimum/current HA test lanes,
+  latest-HA smoke checks and weekly read-only support triage.
+- Preserve RC3 evidence and bind this changed runtime to pending hardware gates.
+
 ## 3.2.2rc3 — 2026-10-16 (beta prerelease)
 
 - Discover SmokeFire local names reported by 6Firewall6 in

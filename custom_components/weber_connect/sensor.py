@@ -24,6 +24,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import MAX_PROBE_SLOTS
 from .coordinator import WeberCoordinator
 from .entity import WeberEntity, known_probe_numbers
 from .models import WeberRuntimeData
@@ -67,6 +68,19 @@ def _probe_duration_is_meaningful(data: dict[str, Any], number: int) -> bool:
             and prompt_remaining > 0
         )
         or data.get(f"{prefix}_state") in ACTIVE_SESSION_STATES
+    )
+
+
+def _probe_temperature_description(number: int) -> WeberSensorDescription:
+    return WeberSensorDescription(
+        key=f"probe_{number}_temperature",
+        translation_key="probe_temperature",
+        translation_placeholders={"number": str(number)},
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=_value(f"probe_{number}_temperature"),
     )
 
 
@@ -231,19 +245,7 @@ DYNAMIC_HUB_SENSORS = (
 
 SENSORS: tuple[WeberSensorDescription, ...] = (
     *DYNAMIC_HUB_SENSORS,
-    *tuple(
-        WeberSensorDescription(
-            key=f"probe_{number}_temperature",
-            translation_key="probe_temperature",
-            translation_placeholders={"number": str(number)},
-            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-            device_class=SensorDeviceClass.TEMPERATURE,
-            state_class=SensorStateClass.MEASUREMENT,
-            suggested_display_precision=1,
-            value_fn=_value(f"probe_{number}_temperature"),
-        )
-        for number in range(1, 5)
-    ),
+    *tuple(_probe_temperature_description(number) for number in range(1, MAX_PROBE_SLOTS + 1)),
     WeberSensorDescription(
         key="last_successful_update",
         translation_key="last_successful_update",
@@ -276,12 +278,9 @@ READING_STATUS_SENSORS = (
             ),
             translation_placeholders={"number": str(number)},
         )
-        for number in range(1, 5)
+        for number in range(1, MAX_PROBE_SLOTS + 1)
     ),
 )
-
-BASE_PROBE_NUMBERS = (1, 2)
-OPTIONAL_PROBE_NUMBERS = (3, 4)
 
 
 def _duration_description(
@@ -410,16 +409,24 @@ async def async_setup_entry(
 ) -> None:
     runtime: WeberRuntimeData = entry.runtime_data
     coordinator = runtime.coordinator
-    async_add_entities(
-        WeberSensor(coordinator, entry, description)
-        for description in (*SENSORS, *READING_STATUS_SENSORS[:3])
-        if description.key == "last_successful_update"
-        or description.key.endswith("reading_status")
-        or description.key in {f"probe_{number}_temperature" for number in BASE_PROBE_NUMBERS}
-    )
-
     known_numbers = known_probe_numbers(hass, entry)
-    added_dynamic_sensor_keys: set[str] = set()
+    permanent_descriptions = [
+        description for description in SENSORS if description.key == "last_successful_update"
+    ]
+    permanent_descriptions.append(READING_STATUS_SENSORS[0])
+    for number in sorted(known_numbers):
+        permanent_descriptions.extend(
+            (
+                _probe_temperature_description(number),
+                READING_STATUS_SENSORS[number],
+            )
+        )
+    async_add_entities(
+        WeberSensor(coordinator, entry, description) for description in permanent_descriptions
+    )
+    added_dynamic_sensor_keys: set[str] = {
+        description.key for description in permanent_descriptions
+    }
 
     def _async_add_dynamic_sensors() -> None:
         descriptions: list[WeberSensorDescription] = []
@@ -433,18 +440,20 @@ async def async_setup_entry(
         reported_probe_numbers = coordinator.data.get("reported_probe_numbers", ())
         if not isinstance(reported_probe_numbers, (list, tuple)):
             reported_probe_numbers = ()
-        for number in OPTIONAL_PROBE_NUMBERS:
+        reported_probe_numbers = {
+            number
+            for number in reported_probe_numbers
+            if type(number) is int and 1 <= number <= MAX_PROBE_SLOTS
+        }
+        for number in sorted(reported_probe_numbers | known_numbers):
             key = f"probe_{number}_temperature"
-            if key in added_dynamic_sensor_keys or (
-                number not in reported_probe_numbers and number not in known_numbers
-            ):
+            if key in added_dynamic_sensor_keys:
                 continue
-            descriptions.append(next(row for row in SENSORS if row.key == key))
-            descriptions.append(READING_STATUS_SENSORS[number])
+            descriptions.extend(
+                (_probe_temperature_description(number), READING_STATUS_SENSORS[number])
+            )
 
         for number in reported_probe_numbers:
-            if type(number) is not int or number not in range(1, 5):
-                continue
             for description in _probe_dynamic_descriptions(number):
                 if description.key == f"probe_{number}_time_remaining" and not (
                     _probe_duration_is_meaningful(coordinator.data, number)

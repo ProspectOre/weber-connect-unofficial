@@ -1,0 +1,61 @@
+{
+  "candidate": "3.2.2rc4",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-17",
+  "runtime_sha256": "631266579b1eb25f6183ffc3a7a35a6bdcfaaf3062d3a45b8a59ee662718ac77",
+  "publication_status": "unpublished",
+  "home_assistant_test_framework": "2026.7.2",
+  "python": "3.14.8",
+  "platform": "macOS arm64",
+  "tests": {
+    "passed": 593,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100,
+    "required_coverage_percent": 100,
+    "status": "passed",
+    "scope": "Complete native suite in independent minimum/current environments with PYTHONASYNCIODEBUG=1 and RuntimeWarning errors; synthetic peers and loopback cloud/TLS fixtures, no physical hardware."
+  },
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "runtime_dependency_audit": "passed_no_known_vulnerabilities",
+    "workspace_documentation": "blocked_by_existing_unrelated_document_size_check",
+    "actionlint": "passed",
+    "support_registry_and_render": "passed",
+    "live_read_only_triage": "passed_includes_issue_and_merged_pr_comments",
+    "ha_upstream_resolution": "passed_exact_plugin_pair_and_latest_smoke_distinct"
+  },
+  "hosted_gates": {
+    "ci": "pending_not_pushed",
+    "hassfest": "pending_not_pushed",
+    "hacs": "pending_not_pushed",
+    "regular_review": "pending_not_pushed"
+  },
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "scope": "full_native_suite",
+      "passed": 593,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "scope": "full_native_suite",
+      "passed": 593,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.2",
+      "scope": "integration_imports_and_pure_protocol_smoke_only",
+      "integration_modules_imported": 24,
+      "passed": 44,
+      "full_suite_verified": false
+    }
+  ]
+}

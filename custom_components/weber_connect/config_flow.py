@@ -6,8 +6,11 @@ import asyncio
 import logging
 import math
 import re
-from typing import Any
+from collections.abc import Coroutine
+from typing import Any, cast
 
+# HA aliases voluptuous to Probatio on newer cores. Cast only at the flow
+# API boundary: mypy cannot see that alias; runtime schema validation is unchanged.
 import voluptuous as vol
 from home_assistant_bluetooth import BluetoothServiceInfoBleak
 from homeassistant import config_entries
@@ -16,20 +19,36 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import section
 
-from .bluetooth import WeberBluetoothError, async_pair, generate_identity
+from .bluetooth import (
+    WeberBluetoothError,
+    async_pair,
+    async_pair_silabs,
+    async_qualify_gatt,
+    generate_identity,
+)
 from .const import (
     CONF_APPLIANCE_ID,
+    CONF_CAPABILITIES,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
+    CONF_MANUFACTURER_ID,
+    CONF_MANUFACTURER_SCHEMA,
     CONF_MESSAGE_VERSION,
+    CONF_MODEL_ID,
+    CONF_PAIRING_KEY_REF,
     CONF_PROBE_NAME_PREFIX,
     CONF_PROBES,
+    CONF_TRANSPORT_FAMILY,
     DOMAIN,
     WEBER_COMPANY_IDS,
 )
 from .entity import known_probe_numbers
 from .models import CompanionIdentity, PairingResult
 from .options import WeberOptions
+from .pairing_storage import PairingKeyStore
+from .protocol_adapters import ProtocolQualificationRequired, adapter_for
+from .silabs_pairing import SiLabsPairingResult
+from .silabs_secure import SiLabsSigningKeys
 from .support import (
     SupportEvent,
     SupportJournal,
@@ -37,6 +56,7 @@ from .support import (
     report_placeholders,
     support_report,
 )
+from .transport_family import Qualification, TransportEvidence, TransportFamily, classify_discovery
 from .weber_cloud import (
     CloudConfig,
     WeberCloudClient,
@@ -84,7 +104,10 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._address: str | None = None
         self._name = "Weber Connect Hub"
         self._connection_path = "Home Assistant Bluetooth"
+        self._transport_evidence: TransportEvidence | None = None
+        self._qualification_reason = "The Bluetooth controller could not be qualified."
         self._identity: CompanionIdentity | None = None
+        self._silabs_signing_keys: SiLabsSigningKeys | None = None
         self._cloud_config: CloudConfig | None = None
         self._pairing_result: PairingResult | None = None
         self._pairing_failure_reason = "The pairing connection ended before setup finished."
@@ -130,6 +153,30 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_in_progress")
         self._address = str(entry.data[CONF_ADDRESS])
         self._name = entry.title
+        try:
+            family = TransportFamily(entry.data.get(CONF_TRANSPORT_FAMILY, TransportFamily.SABER))
+        except ValueError:
+            family = TransportFamily.UNKNOWN
+        self._transport_evidence = TransportEvidence(
+            family=family,
+            qualification=Qualification.PAIRING_READY
+            if family is TransportFamily.SABER
+            else Qualification.UNKNOWN_CONTROLLER,
+            company_id=entry.data.get(CONF_MANUFACTURER_ID),
+            schema=entry.data.get(CONF_MANUFACTURER_SCHEMA),
+            model_id=entry.data.get(CONF_MODEL_ID),
+        )
+        try:
+            visible = bluetooth.async_discovered_service_info(self.hass, connectable=True)
+        except RuntimeError:
+            # Reauthentication can be opened before Home Assistant's Bluetooth
+            # manager starts. The persisted family remains the conservative
+            # fallback until a current advertisement is available.
+            visible = []
+        for discovered in visible:
+            if getattr(discovered, "address", None) == self._address and _is_weber(discovered):
+                self._transport_evidence = classify_discovery(discovered)
+                break
         await self.async_set_unique_id(entry.unique_id)
         self.context["title_placeholders"] = {"name": self._name}
         return await self.async_step_reauth_confirm()
@@ -141,7 +188,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_confirm()
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({}),
+            data_schema=cast(Any, vol.Schema({})),
             description_placeholders={"name": self._name},
         )
 
@@ -156,6 +203,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         self._address = discovery_info.address
         self._name = discovery_info.name or self._name
+        self._transport_evidence = classify_discovery(discovery_info)
         self._connection_path = self._discovery_path(discovery_info)
         self.context["title_placeholders"] = {"name": self._name}
         return await self.async_step_confirm()
@@ -174,6 +222,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if selected is not None:
                 self._name = selected.name or self._name
                 self._connection_path = self._discovery_path(selected)
+                self._transport_evidence = classify_discovery(selected)
             self.context["title_placeholders"] = {"name": self._name}
             await self.async_set_unique_id(self._address)
             self._abort_if_unique_id_configured()
@@ -185,7 +234,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(discovered)}),
+            data_schema=cast(Any, vol.Schema({vol.Required(CONF_ADDRESS): vol.In(discovered)})),
         )
 
     def _discovery_label(self, info: Any) -> str:
@@ -235,6 +284,23 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._address is None:
             return await self.async_step_no_devices()
         if user_input is not None:
+            evidence = self._transport_evidence
+            if evidence is None:
+                evidence = TransportEvidence(
+                    TransportFamily.UNKNOWN, Qualification.UNKNOWN_CONTROLLER
+                )
+            if evidence.qualification is Qualification.NEEDS_GATT:
+                try:
+                    evidence = await async_qualify_gatt(self.hass, self._address, evidence)
+                except WeberBluetoothError as err:
+                    self._qualification_reason = str(err)
+                    return await self.async_step_protocol_qualification()
+                self._transport_evidence = evidence
+            try:
+                adapter_for(evidence).require_pairing_support(evidence)
+            except ProtocolQualificationRequired as err:
+                self._qualification_reason = str(err)
+                return await self.async_step_protocol_qualification()
             return await self.async_step_preparing()
         return self.async_show_form(
             step_id="confirm",
@@ -244,6 +310,19 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
+    async def async_step_protocol_qualification(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Stop before cloud registration or BLE writes for unverified families."""
+
+        return self._show_error_menu(
+            step_id="protocol_qualification",
+            menu_options=["start_over"]
+            if self.source in (config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE)
+            else ["choose_hub"],
+            description_placeholders={"reason": self._qualification_reason},
+        )
+
     def _start_cloud_preparation(self) -> None:
         """Register the private companion before presenting it to the hub."""
 
@@ -251,6 +330,14 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return
         if self._identity is None:
             self._identity = generate_identity()
+            if (
+                self._transport_evidence is not None
+                and self._transport_evidence.family is TransportFamily.SILABS_APPLIANCE
+            ):
+                self._silabs_signing_keys = SiLabsSigningKeys.generate()
+                self._identity = CompanionIdentity(
+                    self._identity.companion_id, self._silabs_signing_keys.public_key.hex()
+                )
         if self._cloud_config is None:
             self._cloud_config = CloudConfig.generate(self._identity.companion_id)
         self._support_journal.record(SupportEvent.PREPARING)
@@ -311,19 +398,37 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raise WeberBluetoothError("The Weber hub is no longer visible.")
         if self._identity is None or self._cloud_config is None:
             raise WeberBluetoothError("The private Weber companion is not ready.")
+        evidence = self._transport_evidence
+        if evidence is None:
+            raise WeberBluetoothError("Bluetooth controller evidence is missing.")
+        try:
+            adapter_for(evidence).require_pairing_support(evidence)
+        except ProtocolQualificationRequired as err:
+            raise WeberBluetoothError(str(err)) from err
         self._pairing_bluetooth = {
             **bluetooth_summary(self.hass, self._address),
             "captured_at": "pairing_attempt_start",
         }
         self._support_journal.record(SupportEvent.CONNECTING)
-        self._pairing_task = self.hass.async_create_task(
-            async_pair(
+        pairing: Coroutine[Any, Any, PairingResult]
+        if evidence.family is TransportFamily.SILABS_APPLIANCE:
+            if self._silabs_signing_keys is None:
+                raise WeberBluetoothError("The SiLabs signing identity is missing.")
+            pairing = async_pair_silabs(
+                self.hass,
+                self._address,
+                self._identity,
+                self._silabs_signing_keys,
+                progress_callback=self._support_journal.record,
+            )
+        else:
+            pairing = async_pair(
                 self.hass,
                 self._address,
                 self._identity,
                 progress_callback=self._support_journal.record,
             )
-        )
+        self._pairing_task = self.hass.async_create_task(pairing)
 
     async def async_step_pairing(
         self, user_input: dict[str, Any] | None = None
@@ -438,13 +543,23 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         finally:
             await self.hass.async_add_executor_job(cloud_client.close)
 
-        return {
+        entry_data = {
             CONF_ADDRESS: self._address,
             CONF_COMPANION_ID: self._identity.companion_id,
             CONF_MESSAGE_VERSION: result.message_version,
             CONF_APPLIANCE_ID: result.appliance_id,
             CONF_CLOUD_PASSWORD: self._cloud_config.device_password,
         }
+        evidence = self._transport_evidence
+        if evidence is not None:
+            entry_data[CONF_TRANSPORT_FAMILY] = evidence.family.value
+            if evidence.company_id is not None:
+                entry_data[CONF_MANUFACTURER_ID] = evidence.company_id
+            if evidence.schema is not None:
+                entry_data[CONF_MANUFACTURER_SCHEMA] = evidence.schema
+            if evidence.model_id is not None:
+                entry_data[CONF_MODEL_ID] = evidence.model_id
+        return entry_data
 
     async def _async_wait_for_cloud_association(
         self,
@@ -611,6 +726,18 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._support_snapshot["message_version"] = (
             self._pairing_result.message_version if self._pairing_result is not None else None
         )
+        evidence = self._transport_evidence
+        self._support_snapshot["protocol"] = (
+            {
+                "family": evidence.family.value,
+                "qualification": evidence.qualification.value,
+                "manufacturer_id": evidence.company_id,
+                "manufacturer_schema": evidence.schema,
+                "model_id": evidence.model_id,
+            }
+            if evidence is not None
+            else None
+        )
         self._support_menu_options = [*menu_options, "support"]
         self._support_error_placeholders = description_placeholders
         return self.async_show_menu(
@@ -670,7 +797,10 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._address = None
         self._name = "Weber Connect Hub"
         self._connection_path = "Home Assistant Bluetooth"
+        self._transport_evidence = None
+        self._qualification_reason = "The Bluetooth controller could not be qualified."
         self._identity = None
+        self._silabs_signing_keys = None
         self._cloud_config = None
         self._pairing_result = None
         self._support_journal = SupportJournal()
@@ -699,6 +829,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Cancel private work when Home Assistant removes an unfinished flow."""
 
         self._cancel_pending_tasks()
+        self._silabs_signing_keys = None
 
     async def async_step_complete(
         self, user_input: dict[str, Any] | None = None
@@ -709,18 +840,44 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_setup_failed()
         if self.source in (config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE):
             entry = self._get_repair_entry()
-            if (
-                self._entry_data[CONF_ADDRESS] != entry.data[CONF_ADDRESS]
-                or self._entry_data[CONF_APPLIANCE_ID] != entry.data[CONF_APPLIANCE_ID]
-            ):
+            if self._entry_data[CONF_ADDRESS] != entry.data[CONF_ADDRESS] or self._entry_data.get(
+                CONF_APPLIANCE_ID
+            ) != entry.data.get(CONF_APPLIANCE_ID):
                 return self.async_abort(
                     reason="wrong_hub",
                     description_placeholders=report_placeholders(
                         support_report(stage="wrong_hub", journal=self._support_journal)
                     ),
                 )
-            return self.async_update_reload_and_abort(entry, data_updates=self._entry_data)
+            if not await self._async_save_pairing_keys():
+                return await self.async_step_setup_failed()
+            previous_ref = entry.data.get(CONF_PAIRING_KEY_REF)
+            result = self.async_update_reload_and_abort(entry, data_updates=self._entry_data)
+            if previous_ref and previous_ref != self._entry_data.get(CONF_PAIRING_KEY_REF):
+                try:
+                    await PairingKeyStore(self.hass, previous_ref).async_remove()
+                except Exception:
+                    _LOGGER.warning("The retired SiLabs pairing record could not be removed.")
+            return result
+        if not await self._async_save_pairing_keys():
+            return await self.async_step_setup_failed()
         return self.async_create_entry(title=self._name, data=self._entry_data)
+
+    async def _async_save_pairing_keys(self) -> bool:
+        result = self._pairing_result
+        if not isinstance(result, SiLabsPairingResult):
+            return True
+        if self._entry_data is None:
+            return False
+        reference = result.credentials.companion_id.hex()
+        try:
+            await PairingKeyStore(self.hass, reference).async_save(result.credentials)
+        except Exception:
+            _LOGGER.error("Confirmed SiLabs pairing keys could not be saved privately.")
+            return False
+        self._entry_data[CONF_PAIRING_KEY_REF] = reference
+        self._entry_data[CONF_CAPABILITIES] = result.capabilities
+        return True
 
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> OptionsFlow:
@@ -744,20 +901,28 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
             description_placeholders=report_placeholders(
                 support_report(stage="device_settings", entry=self.config_entry)
             ),
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_PROBES): section(
-                        vol.Schema(
-                            {
-                                vol.Optional(
-                                    f"{CONF_PROBE_NAME_PREFIX}{number}",
-                                    default=probes[f"{CONF_PROBE_NAME_PREFIX}{number}"],
-                                ): vol.All(str, vol.Length(max=40))
-                                for number in sorted(numbers)
-                            }
+            data_schema=cast(
+                Any,
+                vol.Schema(
+                    {
+                        vol.Required(CONF_PROBES): section(
+                            cast(
+                                Any,
+                                vol.Schema(
+                                    {
+                                        vol.Optional(
+                                            f"{CONF_PROBE_NAME_PREFIX}{number}",
+                                            default=probes.get(
+                                                f"{CONF_PROBE_NAME_PREFIX}{number}", ""
+                                            ),
+                                        ): vol.All(str, vol.Length(max=40))
+                                        for number in sorted(numbers)
+                                    }
+                                ),
+                            ),
+                            {"collapsed": False},
                         ),
-                        {"collapsed": False},
-                    ),
-                }
+                    }
+                ),
             ),
         )

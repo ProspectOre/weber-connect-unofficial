@@ -1,0 +1,100 @@
+name: Bug report
+description: Report a reproducible problem with Weber Connect or a connected device.
+title: "[Bug]: "
+body:
+  - type: dropdown
+    id: product_line
+    attributes:
+      label: Product line
+      description: Choose the family you tested. This records your report and does not imply confirmed support.
+      options:
+        - Unknown / Other
+        - Connected gas grill
+        - Connected charcoal grill
+        - Connected pellet grill
+        - Connected electric grill
+        - Weber Connect Smart Hub
+        - Smart Probe
+        - Smart Wireless Probe
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Exact model and generation
+      description: If known, include the exact model and generation; otherwise enter Unknown.
+      placeholder: "Example: SmokeFire EX6 (generation if known)"
+  - type: input
+    id: firmware
+    attributes:
+      label: Device firmware
+      description: Optional. Enter the reported version or Unknown.
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      description: Enter the exact installed release, or Unknown.
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: Enter the exact Home Assistant version, or Unknown.
+    validations:
+      required: true
+  - type: dropdown
+    id: installation_type
+    attributes:
+      label: Home Assistant installation type
+      options:
+        - Unknown / Other
+        - Home Assistant OS
+        - Home Assistant Supervised
+        - Home Assistant Container
+        - Home Assistant Core
+  - type: input
+    id: connection
+    attributes:
+      label: Bluetooth adapter or proxy
+      description: Optional. Include adapter/proxy type and ESPHome Bluetooth proxy version if applicable. Do not include device addresses or identifiers.
+      placeholder: "Example: ESPHome Bluetooth proxy, version ..."
+  - type: input
+    id: app
+    attributes:
+      label: Weber app platform and version
+      description: Optional; include the platform and app version if app coexistence is relevant.
+      placeholder: "Example: Android 16, Weber app ..."
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where does the problem occur?
+      options:
+        - Other / Unknown
+        - Discovery
+        - Pairing
+        - Cloud association
+        - Live readings
+        - Recovery after disconnect
+        - Entity behavior
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Briefly describe the problem and what you expected instead.
+      placeholder: Include the observed behavior and expected behavior.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include only the steps needed to reproduce the issue.
+      value: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: support_report
+    attributes:
+      label: Generated support report (optional)
+      description: Paste only the integration's generated privacy-safe support report after reviewing it. Do not include raw logs, packets, device IDs/addresses, account identifiers, passwords, or tokens.
+      placeholder: Paste the reviewed support report here, or leave blank.

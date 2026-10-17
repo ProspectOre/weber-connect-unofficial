@@ -7,6 +7,9 @@ from typing import Final
 DOMAIN: Final = "weber_connect"
 NAME: Final = "Weber Connect Unofficial"
 MANUFACTURER: Final = "Weber"
+# Defensive decoding ceiling, not a promise that an appliance has this many ports.
+# Entities are created only for reported or previously registered physical slots.
+MAX_PROBE_SLOTS: Final = 16
 CLOUD_OFFLINE_RETAINED_KEYS: Final = (
     "battery_level",
     "is_charging",
@@ -20,6 +23,12 @@ CONF_COMPANION_ID: Final = "companion_id"
 CONF_MESSAGE_VERSION: Final = "message_version"
 CONF_CLOUD_PASSWORD: Final = "cloud_password"
 CONF_APPLIANCE_ID: Final = "appliance_id"
+CONF_TRANSPORT_FAMILY: Final = "transport_family"
+CONF_MANUFACTURER_ID: Final = "manufacturer_id"
+CONF_MANUFACTURER_SCHEMA: Final = "manufacturer_schema"
+CONF_MODEL_ID: Final = "model_id"
+CONF_PAIRING_KEY_REF: Final = "pairing_key_ref"
+CONF_CAPABILITIES: Final = "device_capabilities"
 
 CONF_CONNECTION: Final = "connection"
 CONF_CONNECTION_MODE: Final = "connection_mode"

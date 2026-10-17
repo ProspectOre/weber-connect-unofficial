@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -28,7 +28,7 @@ from custom_components.weber_connect.const import (
     DOMAIN,
     NAME,
 )
-from custom_components.weber_connect.entity import build_entity_unique_id
+from custom_components.weber_connect.entity import WeberEntity, build_entity_unique_id
 from custom_components.weber_connect.options import ConnectionMode, WeberOptions
 from custom_components.weber_connect.sensor import SENSORS, WeberSensor
 from custom_components.weber_connect.sensor import (
@@ -43,7 +43,7 @@ def test_manifest_and_hacs_contract() -> None:
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == DOMAIN
-    assert manifest["version"] == "3.2.2rc3"
+    assert manifest["version"] == "3.2.2rc4"
     assert manifest["config_flow"] is True
     assert manifest["dependencies"] == ["bluetooth_adapters"]
     assert manifest["iot_class"] == "cloud_polling"
@@ -79,6 +79,34 @@ def test_entity_identity_depends_only_on_hub_and_physical_slot() -> None:
     assert unique_id == "AA:BB:CC:DD:EE:FF_probe_2_temperature"
 
 
+@pytest.mark.parametrize(
+    ("model_id", "title", "expected"),
+    [
+        (2, "Device ABCD", "SmokeFire"),
+        (1, "Connect Hub ABCD", "Connect Smart Grilling Hub"),
+        (1, "SmokeFire ABCD", "SmokeFire"),
+        (7, "SmokeFire 0638", "Spirit Smart Grill"),
+        (8, "Device ABCD", "Genesis Smart Grill"),
+        (None, "SmokeFire 0638", "SmokeFire"),
+        (None, "SiLabs 0638", "Weber Connect controller"),
+    ],
+)
+def test_device_model_uses_observed_product_evidence(
+    model_id: int | None, title: str, expected: str
+) -> None:
+    coordinator = SimpleNamespace(
+        data={}, last_update_success=True, async_add_listener=MagicMock(return_value=MagicMock())
+    )
+    entry = SimpleNamespace(
+        unique_id="hub",
+        entry_id="entry",
+        title=title,
+        data={"address": "AA:BB:CC:DD:EE:FF", "model_id": model_id},
+    )
+    entity = WeberEntity(coordinator, entry, "grill_temperature")  # type: ignore[arg-type]
+    assert entity._attr_device_info["model"] == expected
+
+
 def test_private_identity_has_official_companion_shape() -> None:
     identity = generate_identity()
     assert len(identity.companion_id) == 32
@@ -101,7 +129,7 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
             "probes": [
                 "invalid",
                 {"probe_number": True, "probe_temp_c": 99.0},
-                {"probe_number": 5, "probe_temp_c": 99.0},
+                {"probe_number": 17, "probe_temp_c": 99.0},
                 {
                     "probe_number": 4,
                     "probe_temp_c": None,
@@ -139,6 +167,22 @@ def test_normalized_state_contains_grill_temperature_and_probe_slots() -> None:
     assert "timer_1_remaining" not in state
 
 
+def test_normalized_state_bounds_reported_probe_slots_to_sixteen() -> None:
+    state = normalize_state(
+        {
+            "probes": [
+                {"probe_number": n, "probe_temp_c": float(n)} for n in (5, 6, 16, 17, 0, True)
+            ]
+        },
+        source="bluetooth",
+        connected=True,
+    )
+    assert state["reported_probe_numbers"] == (5, 6, 16)
+    assert state["probe_6_temperature"] == 6.0
+    assert state["probe_16_temperature"] == 16.0
+    assert "probe_17_temperature" not in state
+
+
 def test_normalized_state_prefers_actual_cavity_temp_then_display_fallback() -> None:
     fallback_state = normalize_state(
         {
@@ -159,6 +203,34 @@ def test_normalized_state_prefers_actual_cavity_temp_then_display_fallback() -> 
 
     assert fallback_state["grill_temperature"] == 93.5
     assert actual_state["grill_temperature"] == 94.0
+
+
+@pytest.mark.parametrize(
+    ("device_state", "cook_mode", "expected"),
+    [
+        ("active", "grill", True),
+        ("active", "smoke_boost", True),
+        ("active", "clean", False),
+        ("active", "unknown", False),
+        ("idle", "grill", False),
+        ("shutting_down", "grill", False),
+    ],
+)
+def test_a_pellet_grill_holding_a_cook_mode_is_cooking(
+    device_state: str, cook_mode: str, expected: bool
+) -> None:
+    """No burners and a merely inserted probe must not read as not cooking."""
+
+    state = normalize_state(
+        {
+            "device_state": device_state,
+            "cook_mode": cook_mode,
+            "probes": [{"probe_number": 1, "probe_temp_c": 21.0, "state": "PROBED"}],
+        },
+        source="bluetooth",
+        connected=True,
+    )
+    assert state["cooking"] is expected
 
 
 def test_normalized_state_exposes_capability_driven_telemetry() -> None:
@@ -245,9 +317,9 @@ def test_normalized_state_exposes_capability_driven_telemetry() -> None:
     assert state["cooking"] is True
 
 
-def test_sensor_surface_supports_grill_up_to_four_probes_and_last_update() -> None:
+def test_sensor_surface_supports_bounded_probe_slots_and_last_update() -> None:
     descriptions = {description.key: description for description in SENSORS}
-    probe_keys = {f"probe_{number}_temperature" for number in range(1, 5)}
+    probe_keys = {f"probe_{number}_temperature" for number in range(1, 17)}
     assert set(descriptions) == probe_keys | {
         "battery_level",
         "target_grill_temperature",
@@ -262,7 +334,7 @@ def test_sensor_surface_supports_grill_up_to_four_probes_and_last_update() -> No
         "grill_temperature",
         "last_successful_update",
     }
-    assert len(probe_keys) == 4
+    assert len(probe_keys) == 16
     assert all(description.value_fn({}) is None for description in descriptions.values())
 
 
@@ -325,6 +397,62 @@ async def test_sensor_platform_adds_grill_probe_and_last_update_entities(hass: o
         "probe_3_temperature",
         "probe_3_reading_status",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("capability_count", "expected"), [(0, set()), (1, {1}), (2, {1, 2})])
+async def test_initial_probe_entities_follow_reported_capability_count(
+    hass: object, capability_count: int, expected: set[int]
+) -> None:
+    coordinator = SimpleNamespace(
+        data={},
+        options=WeberOptions(),
+        last_update_success=True,
+        async_add_listener=MagicMock(return_value=MagicMock()),
+    )
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        unique_id="hub",
+        entry_id="entry",
+        title="Hub",
+        data={
+            "address": "AA:BB:CC:DD:EE:FF",
+            "device_capabilities": {"probe_count": capability_count},
+        },
+        async_on_unload=MagicMock(),
+    )
+    batches: list[list[WeberSensor]] = []
+    with (
+        patch("custom_components.weber_connect.entity.er.async_get", return_value=object()),
+        patch(
+            "custom_components.weber_connect.entity.er.async_entries_for_config_entry",
+            return_value=[],
+        ),
+    ):
+        await async_setup_sensor_entry(hass, entry, lambda entities: batches.append(list(entities)))
+    initial_numbers = {
+        int(entity.entity_description.key.split("_")[1])
+        for entity in batches[0]
+        if entity.entity_description.key.startswith("probe_")
+        and entity.entity_description.key.endswith("_temperature")
+    }
+    assert initial_numbers == expected
+
+    late_numbers = (1, 2, 6) if capability_count == 0 else (6,)
+    coordinator.data.update(
+        {
+            "reported_probe_numbers": (*late_numbers, True, 0, 17),
+            **{f"probe_{number}_temperature": number * 10.0 for number in late_numbers},
+        }
+    )
+    coordinator.async_add_listener.call_args.args[0]()
+    assert {entity.entity_description.key for entity in batches[1]} == {
+        key
+        for number in late_numbers
+        for key in (f"probe_{number}_temperature", f"probe_{number}_reading_status")
+    }
+    coordinator.async_add_listener.call_args.args[0]()
+    assert len(batches) == 2
 
 
 @pytest.mark.asyncio
@@ -703,20 +831,25 @@ def test_options_have_one_transport_choice_and_stable_probe_names() -> None:
             CONF_CONNECTION: {
                 CONF_CONNECTION_MODE: "home_assistant_only",
             },
-            CONF_PROBES: {f"{CONF_PROBE_NAME_PREFIX}2": " Brisket "},
+            CONF_PROBES: {
+                f"{CONF_PROBE_NAME_PREFIX}2": " Brisket ",
+                f"{CONF_PROBE_NAME_PREFIX}6": " Ribs ",
+            },
             "advanced": {"poll_seconds": "120", "local_fallback": True},
         }
     )
     assert configured.connection_mode is ConnectionMode.PHONE_AND_HOME_ASSISTANT
     assert configured.cloud_enabled is True
     assert configured.probe_name(2) == "Brisket"
+    assert configured.probe_name(6) == "Ribs"
     assert "advanced" not in configured.as_dict()
     assert configured.as_dict()[CONF_PROBES][f"{CONF_PROBE_NAME_PREFIX}2"] == "Brisket"
+    assert configured.as_dict()[CONF_PROBES][f"{CONF_PROBE_NAME_PREFIX}6"] == "Ribs"
 
     invalid = WeberOptions.from_mapping({CONF_CONNECTION: {CONF_CONNECTION_MODE: "invalid"}})
     assert invalid.connection_mode is ConnectionMode.PHONE_AND_HOME_ASSISTANT
-    with pytest.raises(ValueError, match="between 1 and 4"):
-        invalid.probe_name(5)
+    with pytest.raises(ValueError, match="between 1 and 16"):
+        invalid.probe_name(17)
 
 
 @pytest.mark.parametrize(
