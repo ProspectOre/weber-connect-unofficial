@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -20,7 +21,9 @@ from .const import (
     CONF_APPLIANCE_ID,
     CONF_CLOUD_PASSWORD,
     CONF_COMPANION_ID,
+    CONF_TRANSPORT_FAMILY,
     DOMAIN,
+    MAX_PROBE_SLOTS,
 )
 from .options import WeberOptions
 from .state import normalize_state
@@ -50,6 +53,10 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
         self.options = WeberOptions.from_mapping(entry.options)
+        if entry.data.get(CONF_TRANSPORT_FAMILY) == "portable":
+            raise ConfigEntryError(
+                "Direct portable probe telemetry requires verified authentication."
+            )
         self.source = "cloud"
         self._transport_task: asyncio.Task[None] | None = None
         self.support_journal = SupportJournal()
@@ -59,6 +66,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.successful_updates = 0
         self.failed_updates = 0
 
+        self._transport: _TransportSession
         appliance_id = str(entry.data[CONF_APPLIANCE_ID])
         config = CloudConfig.from_mapping(
             {
@@ -69,7 +77,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.cloud_client = WeberCloudClient(config)
         self.cloud_session = WeberCloudSession(hass, self.cloud_client, appliance_id)
-        self._transport: _TransportSession = self.cloud_session
+        self._transport = self.cloud_session
 
         super().__init__(
             hass,
@@ -132,7 +140,16 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         identity = self.entry.unique_id or self.entry.entry_id
         device_registry = dr.async_get(self.hass)
-        device = device_registry.async_get_device(identifiers={(DOMAIN, identity)})
+        device = next(
+            (
+                registered
+                for registered in dr.async_entries_for_config_entry(
+                    device_registry, self.entry.entry_id
+                )
+                if (DOMAIN, identity) in registered.identifiers
+            ),
+            None,
+        )
         software_version = normalized.get("software_version")
         hardware_version = normalized.get("hardware_version")
         if device is not None and software_version is not None and hardware_version is not None:
@@ -158,7 +175,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             pending = dict(self.data or self.initial_state())
             reading_status = "reconnecting" if self.last_successful_update else "waiting"
             pending["reading_status"] = reading_status
-            for number in range(1, 5):
+            for number in range(1, MAX_PROBE_SLOTS + 1):
                 pending[f"probe_{number}_reading_status"] = reading_status
             self.async_set_updated_data(pending)
         if self.consecutive_failures >= OFFLINE_FAILURE_THRESHOLD:
@@ -197,11 +214,10 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Cancel all entry work and release the selected transport."""
 
         if self._transport_task is not None:
-            task = self._transport_task
-            self._transport_task = None
-            task.cancel()
+            self._transport_task.cancel()
             with suppress(asyncio.CancelledError):
-                await task
+                await self._transport_task
+        self._transport_task = None
         await self._transport.async_close()
         await self.async_shutdown()
         await self.hass.async_add_executor_job(self.cloud_client.close)

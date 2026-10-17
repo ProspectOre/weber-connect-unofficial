@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Native integration
+  matrix:
+    name: Resolve Home Assistant matrix
     if: >-
       github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
@@ -25,7 +25,36 @@ jobs:
       && (github.event.pull_request.head.repo.full_name != github.repository
       || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    outputs:
+      full_matrix: ${{ steps.resolve.outputs.full_matrix }}
+      latest_matrix: ${{ steps.resolve.outputs.latest_matrix }}
+      coverage_note: ${{ steps.resolve.outputs.coverage_note }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14'
+      - id: resolve
+        run: python3 scripts/ha_compatibility.py matrix --github-output "$GITHUB_OUTPUT"
+
+  validate:
+    name: ${{ matrix.label }}
+    needs: [matrix]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.full_matrix) }}
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && (github.event.pull_request.user.login == 'dependabot[bot]'
+      || (github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -43,47 +72,81 @@ jobs:
         with:
           python-version: '3.14'
           cache: pip
-      - name: Install validation runtime
+      - name: Install lane validation runtime
+        env:
+          LANE: ${{ matrix.lane }}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --requirement requirements-runtime.txt
-          python -m pip install \
-            aioesphomeapi==45.3.1 \
-            aiousbwatcher==1.1.2 \
-            bandit==1.9.4 \
-            homeassistant==2026.7.2 \
-            mypy==1.19.1 \
-            pip-audit==2.10.0 \
-            pytest==9.0.3 \
-            pytest-cov==7.1.0 \
-            pytest-homeassistant-custom-component==0.13.346 \
-            ruff==0.15.22 \
-            serialx==1.8.2
+          python scripts/ha_compatibility.py requirements --lane "$LANE" > "$RUNNER_TEMP/ha-requirements.txt"
+          python -m pip install --requirement requirements-runtime.txt --requirement "$RUNNER_TEMP/ha-requirements.txt" \
+            bandit==1.9.4 mypy==1.19.1 pip-audit==2.10.0 ruff==0.15.22
       - name: Lint and type-check
         run: |
           ruff check custom_components tests_native scripts
           ruff format --check custom_components tests_native scripts
           mypy --python-version 3.14 --strict --ignore-missing-imports custom_components/weber_connect
           bandit -q -r custom_components/weber_connect scripts
-      - name: Run native integration tests
+      - name: Run complete native integration suite with coverage
         env:
           PYTHONASYNCIODEBUG: '1'
           PYTHONWARNINGS: error::RuntimeWarning
         run: pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-report=term-missing --cov-fail-under=100
       - name: Validate release contract
         run: python scripts/validate_release.py
+      - name: Validate support registry and product matrix
+        run: |
+          python scripts/support.py validate
+          python scripts/support.py render --check
       - name: Audit runtime dependency
         run: pip-audit --requirement requirements-runtime.txt --no-deps --disable-pip
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - if: matrix.lane == 'minimum'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: 1.25.x
           cache: 'false'
-      - name: Lint workflows
+      - if: matrix.lane == 'minimum'
+        name: Lint workflows
         env:
           GOBIN: ${{ runner.temp }}/bin
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106
           "$GOBIN/actionlint"
+
+  latest-smoke:
+    name: ${{ matrix.label }}
+    needs: [matrix]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.latest_matrix) }}
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && (github.event.pull_request.user.login == 'dependabot[bot]'
+      || (github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14'
+          cache: pip
+      - name: Install latest HA smoke runtime
+        run: |
+          python -m pip install --upgrade pip
+          python scripts/ha_compatibility.py requirements --lane latest > "$RUNNER_TEMP/ha-requirements.txt"
+          python -m pip install --requirement requirements-runtime.txt --requirement "$RUNNER_TEMP/ha-requirements.txt"
+      - name: Report coverage scope
+        env:
+          NOTE: ${{ needs.matrix.outputs.coverage_note }}
+        run: echo "$NOTE" >> "$GITHUB_STEP_SUMMARY"
+      - name: Run import and pure-protocol smoke
+        run: python scripts/ha_compatibility.py smoke
 
   hassfest:
     name: Hassfest
@@ -134,19 +197,25 @@ jobs:
       && github.event.sender.type != 'Bot'
       && (github.event.pull_request.head.repo.full_name != github.repository
       || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))))
-    needs: [validate, hassfest, hacs]
+    needs: [matrix, validate, latest-smoke, hassfest, hacs]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every release gate
         env:
+          MATRIX: ${{ needs.matrix.result }}
           VALIDATE: ${{ needs.validate.result }}
+          LATEST_SMOKE: ${{ needs.latest-smoke.result }}
           HASSFEST: ${{ needs.hassfest.result }}
           HACS: ${{ needs.hacs.result }}
         run: |
-          echo "native integration: $VALIDATE"
+          echo "matrix resolution: $MATRIX"
+          echo "native integration matrix: $VALIDATE"
+          echo "latest Home Assistant smoke: $LATEST_SMOKE"
           echo "hassfest: $HASSFEST"
           echo "hacs: $HACS"
+          test "$MATRIX" = success
           test "$VALIDATE" = success
+          test "$LATEST_SMOKE" = success
           test "$HASSFEST" = success
           test "$HACS" = success

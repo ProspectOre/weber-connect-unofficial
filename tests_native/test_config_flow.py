@@ -107,7 +107,7 @@ async def test_user_flow_creates_private_companion_entry(hass: object) -> None:
     discovery = SimpleNamespace(
         address=ADDRESS,
         name="Weber Connect Hub",
-        manufacturer_data={0x0DF2: b"weber"},
+        manufacturer_data={0x07C5: b"\x02\x01\x00"},
     )
     identity = CompanionIdentity(
         companion_id="11" * 16,
@@ -255,7 +255,7 @@ async def test_pairing_timeout_has_clear_retry_without_new_identity(hass: object
     discovery = SimpleNamespace(
         address=ADDRESS,
         name="Weber Connect Hub",
-        manufacturer_data={0x0DF2: b"weber"},
+        manufacturer_data={0x07C5: b"\x01"},
     )
     identity = CompanionIdentity(
         companion_id="11" * 16,

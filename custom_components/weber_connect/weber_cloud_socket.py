@@ -16,7 +16,11 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from .const import CLOUD_OFFLINE_RETAINED_KEYS
-from .saber_frames import parse_appliance_status_payload, parse_cook_session_status_payload
+from .saber_frames import (
+    parse_appliance_status_payload,
+    parse_cook_session_status_payload,
+    parse_tlv,
+)
 from .weber_cloud import WeberCloudAuthError
 
 LOGGER = logging.getLogger(__name__)
@@ -115,14 +119,17 @@ class WeberCloudSession:
         appliance_id: str,
         *,
         timeout: float = STATUS_TIMEOUT,
+        request_timeout: float = 30.0,
         subscribe_delay: float = 0.05,
     ) -> None:
         self.hass = hass
         self.cloud_client = cloud_client
         self.appliance_id = appliance_id
         self.timeout = timeout
+        self.request_timeout = request_timeout
         self.subscribe_delay = subscribe_delay
         self._connection: ClientConnection | None = None
+        self._wake_future: asyncio.Future[Any] | None = None
         self._sequence = 1
         self._subscribed = False
         self._closed = False
@@ -133,6 +140,18 @@ class WeberCloudSession:
         self.socket_connections = 0
         self.fast_recoveries = 0
         self._appliance_status: dict[str, Any] = {}
+        self.fuel_level_reports = 0
+        self.fuel_level_unknown_reports = 0
+        self.fuel_level_changes = 0
+        self._last_reported_fuel_level: str | None = None
+        self._recovery_started_at: float | None = None
+        self.last_recovery_seconds: float | None = None
+        self.max_recovery_seconds: float | None = None
+        self.fuel_level_code_counts = {
+            **{str(code): 0 for code in range(6)},
+            "reserved": 0,
+        }
+        self.fuel_level_invalid_field_count = 0
 
     def _next_sequence(self) -> int:
         value = self._sequence
@@ -150,10 +169,7 @@ class WeberCloudSession:
                 "Weber rejected Home Assistant's private companion credential."
             ) from exc
         try:
-            await self.hass.async_add_executor_job(
-                self.cloud_client.wake_messaging,
-                self.appliance_id,
-            )
+            await self._async_wake_messaging()
         except WeberCloudAuthError as exc:
             raise WeberCloudCredentialError(
                 "Weber rejected Home Assistant's private companion credential."
@@ -185,6 +201,28 @@ class WeberCloudSession:
         self._subscribed = False
         self.socket_connections += 1
         return self._connection
+
+    async def _async_wake_messaging(self) -> None:
+        """Share a still-running executor wake request after async cancellation."""
+
+        wake_future = self._wake_future
+        if wake_future is None:
+            wake_future = asyncio.ensure_future(
+                self.hass.async_add_executor_job(
+                    self.cloud_client.wake_messaging,
+                    self.appliance_id,
+                )
+            )
+            self._wake_future = wake_future
+
+            def clear_wake(done: asyncio.Future[Any]) -> None:
+                if self._wake_future is done:
+                    self._wake_future = None
+                if not done.cancelled():
+                    done.exception()
+
+            wake_future.add_done_callback(clear_wake)
+        await asyncio.shield(wake_future)
 
     async def _async_close_connection(self) -> None:
         connection, self._connection = self._connection, None
@@ -260,7 +298,33 @@ class WeberCloudSession:
                 if message.type_value == 0x87:
                     raise WeberCloudSocketError("The hub rejected the cloud request.")
                 if message.type_value == 0x83:
+                    fields = parse_tlv(message.payload)
+                    if -1 in fields:
+                        raise WeberCloudSocketError(
+                            "Cloud appliance-status TLV container is malformed."
+                        )
                     appliance_status = parse_appliance_status_payload(message.payload)
+                    fuel_fields = fields.get(20, [])
+                    if fuel_fields:
+                        self.fuel_level_reports += 1
+                        if len(fuel_fields) != 1 or len(fuel_fields[0]) != 1:
+                            self.fuel_level_invalid_field_count += 1
+                            appliance_status["fuel_level"] = None
+                        else:
+                            fuel_code = fuel_fields[0][0]
+                            bucket = str(fuel_code) if fuel_code <= 5 else "reserved"
+                            self.fuel_level_code_counts[bucket] += 1
+                            # A present, one-byte code always maps to a state:
+                            # known values map directly and all others to unknown.
+                            fuel_level = appliance_status["fuel_level"]
+                            if fuel_level == "unknown":
+                                self.fuel_level_unknown_reports += 1
+                            if (
+                                self._last_reported_fuel_level is not None
+                                and fuel_level != self._last_reported_fuel_level
+                            ):
+                                self.fuel_level_changes += 1
+                            self._last_reported_fuel_level = fuel_level
                     # Weber can send partial appliance-status frames between full
                     # snapshots. Missing TLVs parse as None, but they mean "not
                     # included in this frame", not that every omitted entity has
@@ -276,6 +340,13 @@ class WeberCloudSession:
                     continue
                 if message.type_value == 0x80:
                     cook_status = parse_cook_session_status_payload(message.payload)
+                    if self._recovery_started_at is not None:
+                        recovery_seconds = max(0.0, time.monotonic() - self._recovery_started_at)
+                        self.last_recovery_seconds = recovery_seconds
+                        self.max_recovery_seconds = max(
+                            self.max_recovery_seconds or 0.0, recovery_seconds
+                        )
+                        self._recovery_started_at = None
                     return {
                         **cook_status,
                         **{
@@ -288,23 +359,23 @@ class WeberCloudSession:
     async def async_request_status(self) -> dict[str, Any]:
         """Request one current status without rebuilding the socket."""
 
-        had_connection = self._connection is not None
-        try:
-            return await self._async_request_status_once()
-        except (ConnectionClosed, OSError) as exc:
-            # A relay can close an established socket between polls. Recover
-            # once before publishing a failure for a momentary disconnect.
-            # Timeouts already get one subscription renewal below; do not
-            # extend that deadline or hide credential/protocol failures.
-            if not had_connection or isinstance(exc, TimeoutError):
-                raise
-            await self._async_close_connection()
-            status = await self._async_request_status_once()
-            self.fast_recoveries += 1
-            return status
+        previous_connection = self._connection
+        async with asyncio.timeout(self.request_timeout):
+            try:
+                return await self._async_request_status_once()
+            except ConnectionClosed, OSError, TimeoutError:
+                # Only an already-established socket gets one immediate fresh
+                # connection attempt. The same-socket resubscribe path is
+                # intentionally absent so it cannot stack another read window.
+                if previous_connection is None or self._connection is not previous_connection:
+                    raise
+                await self._async_close_connection()
+                status = await self._async_request_status_once()
+                self.fast_recoveries += 1
+                return status
 
     async def _async_request_status_once(self) -> dict[str, Any]:
-        """Poll once, renewing an idle subscription at most once."""
+        """Send a status request and wait for a fresh cook-status frame."""
 
         if self._connection is not None and await self.hass.async_add_executor_job(
             self.cloud_client.token_needs_refresh
@@ -318,14 +389,7 @@ class WeberCloudSession:
         else:
             await self._async_send(0x07)
             await self._async_send(0x05)
-        try:
-            return await self._async_receive_status()
-        except TimeoutError:
-            # A long-idle relay can forget the subscription while retaining the
-            # TCP socket. Renew it once before treating the connection as lost.
-            self._subscribed = False
-            await self._async_subscribe()
-            return await self._async_receive_status()
+        return await self._async_receive_status()
 
     async def async_run(
         self,
@@ -347,6 +411,8 @@ class WeberCloudSession:
                     raise
                 except Exception as exc:
                     await self._async_close_connection()
+                    if self._recovery_started_at is None:
+                        self._recovery_started_at = time.monotonic()
                     self.error_kind = (
                         "credentials"
                         if isinstance(exc, WeberCloudCredentialError)

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
+# HA aliases voluptuous to Probatio on newer cores. Cast only at the flow
+# API boundary: mypy cannot see that alias; runtime schema validation is unchanged.
 import voluptuous as vol
 from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.core import HomeAssistant
@@ -27,7 +31,7 @@ class CredentialRepairFlow(RepairsFlow):
             return self.async_create_entry(data={})
         return self.async_show_form(
             step_id="confirm",
-            data_schema=vol.Schema({}),
+            data_schema=cast(Any, vol.Schema({})),
             description_placeholders=report_placeholders(
                 support_report(
                     stage="credentials_rejected",

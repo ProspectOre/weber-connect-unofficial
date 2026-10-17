@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "full_lanes": [
+    {
+      "id": "minimum",
+      "label": "Native integration",
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "pytest": "9.0.3",
+      "pytest_asyncio": "1.4.0",
+      "pytest_timeout": "2.4.0",
+      "pytest_cov": "7.1.0",
+      "transport_requirements": {
+        "bleak": "3.0.2",
+        "bleak-retry-connector": "4.6.1",
+        "bluetooth-adapters": "2.4.0",
+        "bluetooth-auto-recovery": "1.6.4",
+        "bluetooth-data-tools": "1.29.18",
+        "dbus-fast": "5.0.22",
+        "habluetooth": "6.26.5",
+        "aiousbwatcher": "1.1.2",
+        "serialx": "1.8.2",
+        "aioesphomeapi": "45.3.1"
+      }
+    },
+    {
+      "id": "current",
+      "label": "Home Assistant current",
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "pytest": "9.0.3",
+      "pytest_asyncio": "1.4.0",
+      "pytest_timeout": "2.4.0",
+      "pytest_cov": "7.1.0",
+      "transport_requirements": {
+        "bleak": "3.0.2",
+        "bleak-retry-connector": "4.7.1",
+        "bluetooth-adapters": "2.4.0",
+        "bluetooth-auto-recovery": "1.6.4",
+        "bluetooth-data-tools": "1.29.24",
+        "dbus-fast": "5.0.22",
+        "habluetooth": "7.1.2",
+        "aiousbwatcher": "1.1.2",
+        "serialx": "1.11.0",
+        "aioesphomeapi": "46.6.0"
+      }
+    }
+  ],
+  "latest_smoke": {
+    "id": "latest",
+    "label": "Home Assistant latest smoke",
+    "homeassistant": "2026.10.2",
+    "pytest": "9.0.3",
+    "pytest_asyncio": "1.4.0",
+    "pytest_cov": "7.1.0",
+    "extra_requirements": {
+      "aiohasupervisor": "0.6.0"
+    },
+    "transport_requirements": {
+      "bleak": "3.0.2",
+      "bleak-retry-connector": "4.7.1",
+      "bluetooth-adapters": "2.4.0",
+      "bluetooth-auto-recovery": "1.6.4",
+      "bluetooth-data-tools": "1.29.24",
+      "dbus-fast": "5.0.22",
+      "habluetooth": "7.1.2",
+      "aiousbwatcher": "1.1.2",
+      "serialx": "1.11.0",
+      "aioesphomeapi": "46.6.0"
+    }
+  }
+}
