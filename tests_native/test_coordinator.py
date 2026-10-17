@@ -209,13 +209,18 @@ def test_cloud_outage_never_creates_a_repair(hass: object) -> None:
 def test_status_updates_device_firmware_metadata(hass: object) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
     registry = MagicMock()
-    registry.devices.get_devices_for_config_entry_id.return_value = [
+    devices = [
         SimpleNamespace(
             id="device-id", identifiers={("weber_connect", coordinator.entry.unique_id)}
         )
     ]
 
-    with patch.object(coordinator_module.dr, "async_get", return_value=registry):
+    with (
+        patch.object(coordinator_module.dr, "async_get", return_value=registry),
+        patch.object(
+            coordinator_module.dr, "async_entries_for_config_entry", return_value=devices
+        ) as entries,
+    ):
         coordinator._async_status(
             {
                 "software_version": "2.0.3_7398",
@@ -224,9 +229,7 @@ def test_status_updates_device_firmware_metadata(hass: object) -> None:
             }
         )
 
-    registry.devices.get_devices_for_config_entry_id.assert_called_once_with(
-        coordinator.entry.entry_id
-    )
+    entries.assert_called_once_with(registry, coordinator.entry.entry_id)
     registry.async_get_device.assert_not_called()
     registry.async_update_device.assert_called_once_with(
         "device-id",
@@ -249,15 +252,21 @@ def test_status_updates_only_reported_device_version(
 ) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
     registry = MagicMock()
-    registry.devices.get_devices_for_config_entry_id.return_value = [
+    devices = [
         SimpleNamespace(
             id="device-id", identifiers={("weber_connect", coordinator.entry.unique_id)}
         )
     ]
 
-    with patch.object(coordinator_module.dr, "async_get", return_value=registry):
+    with (
+        patch.object(coordinator_module.dr, "async_get", return_value=registry),
+        patch.object(
+            coordinator_module.dr, "async_entries_for_config_entry", return_value=devices
+        ) as entries,
+    ):
         coordinator._async_status({**status, "probes": []})
 
+    entries.assert_called_once_with(registry, coordinator.entry.entry_id)
     registry.async_update_device.assert_called_once_with("device-id", **expected_update)
 
 
@@ -403,6 +412,8 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
         "fuel_level_reports": 12,
         "fuel_level_unknown_reports": 3,
         "fuel_level_changes": 5,
+        "fuel_level_code_counts": dict.fromkeys(("0", "1", "2", "3", "4", "5", "reserved"), 0),
+        "fuel_level_invalid_field_count": 0,
         "last_recovery_seconds": 12.5,
         "max_recovery_seconds": 25.0,
     }
@@ -508,15 +519,18 @@ async def test_diagnostics_before_cloud_session_exists_are_safe(hass: object) ->
 def test_metadata_lookup_is_scoped_and_skips_unrelated_identity(hass: object) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
     registry = MagicMock()
-    registry.devices.get_devices_for_config_entry_id.return_value = [
+    devices = [
         SimpleNamespace(id="other", identifiers={("weber_connect", "other-identity")}),
         SimpleNamespace(id="owned", identifiers={("weber_connect", coordinator.entry.unique_id)}),
     ]
-    with patch.object(coordinator_module.dr, "async_get", return_value=registry):
+    with (
+        patch.object(coordinator_module.dr, "async_get", return_value=registry),
+        patch.object(
+            coordinator_module.dr, "async_entries_for_config_entry", return_value=devices
+        ) as entries,
+    ):
         coordinator._async_status({"software_version": "2.0.3_7398"})
-    registry.devices.get_devices_for_config_entry_id.assert_called_once_with(
-        coordinator.entry.entry_id
-    )
+    entries.assert_called_once_with(registry, coordinator.entry.entry_id)
     registry.async_get_device.assert_not_called()
     registry.async_update_device.assert_called_once_with("owned", sw_version="2.0.3_7398")
 

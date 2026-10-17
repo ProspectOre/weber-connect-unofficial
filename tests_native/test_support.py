@@ -20,6 +20,7 @@ from custom_components.weber_connect.support import (
     SupportEvent,
     SupportJournal,
     bluetooth_summary,
+    cloud_telemetry_metrics,
     error_category,
     report_placeholders,
     support_report,
@@ -308,3 +309,23 @@ async def test_pairing_report_keeps_visibility_before_cleanup(hass: object) -> N
     assert report["bluetooth"] == {**visible, "captured_at": "pairing_attempt_start"}
     flow._reset_setup()
     assert flow._pairing_bluetooth is None
+
+
+def test_cloud_fuel_metrics_export_fixed_code_buckets_only() -> None:
+    session = SimpleNamespace(
+        fuel_level_code_counts={"0": 3, "5": 2, "reserved": 1, SECRET: 9},
+        fuel_level_invalid_field_count=4,
+    )
+    metrics = cloud_telemetry_metrics(session)
+    assert metrics["fuel_level_code_counts"] == {
+        "0": 3,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 2,
+        "reserved": 1,
+    }
+    assert metrics["fuel_level_invalid_field_count"] == 4
+    assert SECRET not in str(metrics)
+    assert cloud_telemetry_metrics(None)["fuel_level_code_counts"]["0"] == 0

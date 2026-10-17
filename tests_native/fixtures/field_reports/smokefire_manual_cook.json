@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "source_url": "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248",
+  "evidence_kind": "reconstructed_from_report",
+  "device": {
+    "product_family": "SmokeFire",
+    "model": "EX4 Gen 2",
+    "integration_release": "3.2.2rc3",
+    "firmware": "2.0.3_7398",
+    "home_assistant_version": "2026.10.1"
+  },
+  "reported_manual_cook": {
+    "model_title": "SmokeFire EX4 Gen 2",
+    "raw_status": {
+      "device_state": "active",
+      "cook_mode": "grill",
+      "probes": [],
+      "timed_sessions": [],
+      "timers": [],
+      "burners": []
+    },
+    "expected_cooking": true
+  },
+  "synthetic_controls": [
+    {
+      "name": "idle device in grill mode",
+      "raw_status": {
+        "device_state": "idle",
+        "cook_mode": "grill",
+        "probes": [],
+        "timed_sessions": [],
+        "timers": [],
+        "burners": []
+      },
+      "expected_cooking": false
+    },
+    {
+      "name": "shutting down device in grill mode",
+      "raw_status": {
+        "device_state": "shutting_down",
+        "cook_mode": "grill",
+        "probes": [],
+        "timed_sessions": [],
+        "timers": [],
+        "burners": []
+      },
+      "expected_cooking": false
+    },
+    {
+      "name": "active device with unknown mode",
+      "raw_status": {
+        "device_state": "active",
+        "cook_mode": "unknown",
+        "probes": [],
+        "timed_sessions": [],
+        "timers": [],
+        "burners": []
+      },
+      "expected_cooking": false
+    },
+    {
+      "name": "active device in cleaning mode",
+      "raw_status": {
+        "device_state": "active",
+        "cook_mode": "clean",
+        "probes": [],
+        "timed_sessions": [],
+        "timers": [],
+        "burners": []
+      },
+      "expected_cooking": false
+    }
+  ]
+}

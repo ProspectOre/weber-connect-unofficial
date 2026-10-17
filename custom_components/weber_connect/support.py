@@ -155,6 +155,11 @@ def cloud_telemetry_metrics(session: Any) -> dict[str, Any]:
         "fuel_level_reports": getattr(session, "fuel_level_reports", 0),
         "fuel_level_unknown_reports": getattr(session, "fuel_level_unknown_reports", 0),
         "fuel_level_changes": getattr(session, "fuel_level_changes", 0),
+        "fuel_level_code_counts": {
+            code: getattr(session, "fuel_level_code_counts", {}).get(code, 0)
+            for code in ("0", "1", "2", "3", "4", "5", "reserved")
+        },
+        "fuel_level_invalid_field_count": getattr(session, "fuel_level_invalid_field_count", 0),
         "last_recovery_seconds": getattr(session, "last_recovery_seconds", None),
         "max_recovery_seconds": getattr(session, "max_recovery_seconds", None),
     }

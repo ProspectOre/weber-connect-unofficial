@@ -1,0 +1,151 @@
+name: Home Assistant compatibility watch
+
+on:
+  schedule:
+    - cron: '23 11 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: home-assistant-compatibility-watch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve stable HA and exact plugin versions
+    runs-on: ubuntu-latest
+    outputs:
+      full_matrix: ${{ steps.resolve.outputs.full_matrix }}
+      latest_matrix: ${{ steps.resolve.outputs.latest_matrix }}
+      coverage_note: ${{ steps.resolve.outputs.coverage_note }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14'
+      - id: resolve
+        run: |
+          python scripts/ha_compatibility.py matrix --refresh \
+            --github-output "$GITHUB_OUTPUT" \
+            --resolved-config "$RUNNER_TEMP/ha-test-matrix.json" \
+            --coverage-file "$RUNNER_TEMP/ha-coverage-scope.txt"
+          cp "$RUNNER_TEMP/ha-test-matrix.json" ha-test-matrix-resolved.json
+          cp "$RUNNER_TEMP/ha-coverage-scope.txt" ha-coverage-scope.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ha-compatibility-resolution
+          path: |
+            ha-test-matrix-resolved.json
+            ha-coverage-scope.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  full-suite:
+    name: ${{ matrix.label }}
+    needs: [resolve]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.full_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: ha-compatibility-resolution
+          path: ${{ runner.temp }}/ha-compatibility
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14'
+          cache: pip
+      - name: Show resolved coverage scope
+        run: cat "$RUNNER_TEMP/ha-compatibility/ha-coverage-scope.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install exact HA and plugin lane
+        env:
+          LANE: ${{ matrix.lane }}
+        run: |
+          python -m pip install --upgrade pip
+          python scripts/ha_compatibility.py --config "$RUNNER_TEMP/ha-compatibility/ha-test-matrix-resolved.json" requirements --lane "$LANE" > "$RUNNER_TEMP/ha-requirements.txt"
+          python -m pip install --requirement requirements-runtime.txt --requirement "$RUNNER_TEMP/ha-requirements.txt"
+      - name: Run complete native suite with coverage
+        env:
+          PYTHONASYNCIODEBUG: '1'
+          PYTHONWARNINGS: error::RuntimeWarning
+        run: pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-report=term-missing --cov-fail-under=100
+      - name: Record selected lane in job summary
+        if: always()
+        env:
+          LANE: ${{ matrix.lane }}
+        run: |
+          python scripts/ha_compatibility.py --config "$RUNNER_TEMP/ha-compatibility/ha-test-matrix-resolved.json" requirements --lane "$LANE" >> "$GITHUB_STEP_SUMMARY"
+
+  latest-smoke:
+    name: ${{ matrix.label }}
+    needs: [resolve]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.latest_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: ha-compatibility-resolution
+          path: ${{ runner.temp }}/ha-compatibility
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14'
+          cache: pip
+      - name: Report scope and resolved versions
+        run: cat "$RUNNER_TEMP/ha-compatibility/ha-coverage-scope.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install latest stable HA runtime
+        run: |
+          python -m pip install --upgrade pip
+          python scripts/ha_compatibility.py --config "$RUNNER_TEMP/ha-compatibility/ha-test-matrix-resolved.json" requirements --lane latest > "$RUNNER_TEMP/ha-requirements.txt"
+          python -m pip install --requirement requirements-runtime.txt --requirement "$RUNNER_TEMP/ha-requirements.txt"
+      - name: Run latest stable import and pure-protocol smoke
+        run: python scripts/ha_compatibility.py --config "$RUNNER_TEMP/ha-compatibility/ha-test-matrix-resolved.json" smoke
+      - name: Record latest lane pins
+        if: always()
+        run: python scripts/ha_compatibility.py --config "$RUNNER_TEMP/ha-compatibility/ha-test-matrix-resolved.json" requirements --lane latest >> "$GITHUB_STEP_SUMMARY"
+
+  support-triage:
+    name: Read-only support triage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14'
+      - name: Validate and render support records
+        run: |
+          python scripts/support.py validate
+          python scripts/support.py render --check
+      - name: Collect read-only issue and pull request triage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/support.py triage --github '${{ github.repository }}' --output support-triage.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: support-triage-report
+          path: support-triage.md
+          if-no-files-found: warn
+          retention-days: 30

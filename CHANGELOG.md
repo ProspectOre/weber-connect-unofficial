@@ -14,9 +14,15 @@
   labels, and create only supported/reported probe slots, including slots above four.
 - Move HTTPS certificate initialization off the event loop and scope device
   metadata updates to their config entry. Add fuel-report and recovery metrics
-  without hiding explicit unknown states or changing retry deadlines.
+  without hiding explicit unknown states. Bound each cloud poll to 30 seconds,
+  retry an established silent socket once on a fresh connection, and reject
+  malformed appliance frames before they can change readings. Distinguish
+  malformed fuel fields from explicit unknown codes in privacy-safe diagnostics.
 - Track all applicable connected product lines and unresolved reports in the
   [compatibility worklist](docs/product-compatibility.md).
+- Add structured issue forms, version-bound compatibility records, opt-in
+  hardware trials, field-report regressions, minimum/current HA test lanes,
+  latest-HA smoke checks and weekly read-only support triage.
 - Preserve RC3 evidence and bind this changed runtime to pending hardware gates.
 
 ## 3.2.2rc3 — 2026-10-16 (beta prerelease)

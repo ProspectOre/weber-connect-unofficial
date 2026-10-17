@@ -1,19 +1,19 @@
 {
   "candidate": "3.2.2rc4",
   "release_channel": "prerelease",
-  "evidence_date": "2026-10-16",
-  "runtime_sha256": "755b0c70b5f6e2ffd12a20d7350506582fbdefd2023403cebdb0c1f6bd90a4ce",
+  "evidence_date": "2026-10-17",
+  "runtime_sha256": "5fcfa8d9fa0acab83e49701e8ca646ea5e1e78fe3bb284852024f7a148c1291b",
   "publication_status": "unpublished",
   "home_assistant_test_framework": "2026.7.2",
   "python": "3.14.8",
   "platform": "macOS arm64",
   "tests": {
-    "passed": 556,
+    "passed": 593,
     "failed": 0,
     "combined_statement_branch_coverage_percent": 100,
     "required_coverage_percent": 100,
     "status": "passed",
-    "scope": "Complete native suite with PYTHONASYNCIODEBUG=1 and RuntimeWarning errors; generated peers and loopback cloud/TLS fixtures, no physical hardware."
+    "scope": "Complete native suite in independent minimum/current environments with PYTHONASYNCIODEBUG=1 and RuntimeWarning errors; synthetic peers and loopback cloud/TLS fixtures, no physical hardware."
   },
   "local_gates": {
     "ruff": "passed",
@@ -21,12 +21,41 @@
     "strict_mypy": "passed",
     "bandit": "passed",
     "runtime_dependency_audit": "passed_no_known_vulnerabilities",
-    "workspace_documentation": "blocked_by_existing_unrelated_document_size_check"
+    "workspace_documentation": "blocked_by_existing_unrelated_document_size_check",
+    "actionlint": "passed",
+    "support_registry_and_render": "passed",
+    "live_read_only_triage": "passed_includes_issue_and_merged_pr_comments",
+    "ha_upstream_resolution": "passed_exact_plugin_pair_and_latest_smoke_distinct"
   },
   "hosted_gates": {
     "ci": "pending_not_pushed",
     "hassfest": "pending_not_pushed",
     "hacs": "pending_not_pushed",
     "regular_review": "pending_not_pushed"
-  }
+  },
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "scope": "full_native_suite",
+      "passed": 593,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "scope": "full_native_suite",
+      "passed": 593,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.2",
+      "scope": "integration_imports_and_pure_protocol_smoke_only",
+      "integration_modules_imported": 24,
+      "passed": 44,
+      "full_suite_verified": false
+    }
+  ]
 }

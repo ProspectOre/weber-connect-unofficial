@@ -51,7 +51,8 @@ def test_ci_admits_same_repo_fork_and_default_branch_on_safe_runners() -> None:
     workflow = _workflow("ci.yml")
 
     assert _pull_request_events(workflow) == TRUSTED_LIFECYCLE_EVENTS
-    assert re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE) == ["ubuntu-latest"] * 4
+    runners = re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE)
+    assert runners and set(runners) == {"ubuntu-latest"}
     assert "self-hosted" not in workflow
     assert "runner.os" not in workflow
     assert "github.event.pull_request.head.repo.full_name != github.repository" in workflow

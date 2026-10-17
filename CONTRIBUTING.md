@@ -2,22 +2,21 @@
 
 ## Development setup
 
-Use Python 3.14, matching Home Assistant 2026.7:
+Use Python 3.14.2 or newer. The [test matrix](.github/ha-test-matrix.json)
+pins matching Home Assistant, test plugin and transport dependencies for the
+minimum and current full-suite lanes. Install each in a separate environment:
 
 ```bash
 python3.14 -m venv .venv
 . .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install \
-  bandit==1.9.4 \
-  homeassistant==2026.7.2 \
-  mypy==1.19.1 \
-  pip-audit==2.10.0 \
-  pytest==9.0.3 \
-  pytest-cov==7.1.0 \
-  pytest-homeassistant-custom-component==0.13.346 \
-  ruff==0.15.22
+python scripts/ha_compatibility.py requirements --lane minimum > /tmp/weber-ha-requirements.txt
+python -m pip install -r requirements-runtime.txt -r /tmp/weber-ha-requirements.txt \
+  bandit==1.9.4 mypy==1.19.1 pip-audit==2.10.0 ruff==0.15.22
 ```
+
+Repeat with `--lane current` in a separate environment. The `latest` lane runs
+imports and pure-protocol smoke checks when the full HA test plugin lags behind
+the latest core release; it does not establish full-suite compatibility.
 
 Run the local gate:
 
@@ -28,6 +27,8 @@ mypy --python-version 3.14 --strict --ignore-missing-imports custom_components/w
 bandit -q -r custom_components/weber_connect scripts
 pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-report=term-missing --cov-fail-under=100
 python scripts/validate_release.py
+python scripts/support.py validate
+python scripts/support.py render --check
 pip-audit --requirement requirements-runtime.txt --no-deps --disable-pip
 ```
 
@@ -82,3 +83,11 @@ diagnostics. Redact identifiers consistently when a sequence needs them.
 
 Add a regression test for every new protocol shape. Update the physical matrix
 only after the path was exercised on real hardware.
+
+Use the structured bug or compatibility form on GitHub. The
+[hardware trial checklist](docs/support/hardware-trials.md) defines opt-in
+physical evidence; [field regressions](docs/support/regressions.md) keep
+reported behavior reproducible without inventing packets. The
+[triage process](docs/support/triage.md) includes reports in PR comments.
+Weekly GitHub checks generate a read-only triage artifact and refresh HA
+compatibility checks; they do not post replies or close issues.

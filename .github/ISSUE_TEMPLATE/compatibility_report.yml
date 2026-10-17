@@ -1,0 +1,106 @@
+name: Compatibility report
+description: Record tested outcomes for a Weber device and exact software release.
+title: "[Compatibility]: "
+body:
+  - type: dropdown
+    id: product_line
+    attributes:
+      label: Product line
+      description: Choose the family you tested. A report records an observation and does not establish or imply confirmed support.
+      options:
+        - Unknown / Other
+        - Connected gas grill
+        - Connected charcoal grill
+        - Connected pellet grill
+        - Connected electric grill
+        - Weber Connect Smart Hub
+        - Smart Probe
+        - Smart Wireless Probe
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Exact model and generation
+      description: If known, include the exact model and generation; otherwise enter Unknown.
+      placeholder: "Example: SmokeFire EX6 (generation if known)"
+  - type: input
+    id: firmware
+    attributes:
+      label: Device firmware
+      description: Optional. Enter the reported version or Unknown.
+  - type: input
+    id: integration_version
+    attributes:
+      label: Exact integration release tested
+      description: Include the exact installed release, not a branch name; enter Unknown if unavailable.
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: Enter the exact Home Assistant version, or Unknown.
+    validations:
+      required: true
+  - type: dropdown
+    id: installation_type
+    attributes:
+      label: Home Assistant installation type
+      options:
+        - Unknown / Other
+        - Home Assistant OS
+        - Home Assistant Supervised
+        - Home Assistant Container
+        - Home Assistant Core
+  - type: input
+    id: connection
+    attributes:
+      label: Bluetooth adapter or proxy
+      description: Optional. Include adapter/proxy type and ESPHome Bluetooth proxy version if applicable. Do not include device addresses or identifiers.
+      placeholder: "Example: ESPHome Bluetooth proxy, version ..."
+  - type: input
+    id: app
+    attributes:
+      label: Weber app platform and version
+      description: Optional; include platform and app version when testing app coexistence.
+      placeholder: "Example: iOS 26, Weber app ..."
+  - type: dropdown
+    id: observation_type
+    attributes:
+      label: Overall observation
+      options:
+        - Unknown / not tested
+        - Successful
+        - Failed
+        - Mixed or partial
+    validations:
+      required: true
+  - type: textarea
+    id: outcomes
+    attributes:
+      label: Per-stage and lifecycle outcomes
+      description: For each item, record Pass, Fail, Not tested, or Unknown, with a short note for failures. See the [hardware trial guidance](https://github.com/ProspectOre/weber-connect-unofficial/blob/main/docs/support/hardware-trials.md). Reports are observations, not support claims.
+      value: |
+        Discovery:
+        Pairing:
+        Cloud association:
+        Live readings:
+        Recovery after disconnect:
+        Entity behavior:
+        Stable entity IDs after reload:
+        Home Assistant restart:
+        Weber app coexistence:
+        Cook session:
+        Endurance / extended run:
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Optional context about the test conditions or observed limitations.
+  - type: textarea
+    id: support_report
+    attributes:
+      label: Generated support report (optional)
+      description: Paste only the integration's generated privacy-safe support report after reviewing it. Do not include raw logs, packets, device IDs/addresses, account identifiers, passwords, or tokens.
+      placeholder: Paste the reviewed support report here, or leave blank.
