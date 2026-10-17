@@ -7,8 +7,10 @@ import logging
 import math
 import re
 from collections.abc import Coroutine
-from typing import Any
+from typing import Any, cast
 
+# HA aliases voluptuous to Probatio on newer cores. Cast only at the flow
+# API boundary: mypy cannot see that alias; runtime schema validation is unchanged.
 import voluptuous as vol
 from home_assistant_bluetooth import BluetoothServiceInfoBleak
 from homeassistant import config_entries
@@ -186,7 +188,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_confirm()
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({}),
+            data_schema=cast(Any, vol.Schema({})),
             description_placeholders={"name": self._name},
         )
 
@@ -232,7 +234,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(discovered)}),
+            data_schema=cast(Any, vol.Schema({vol.Required(CONF_ADDRESS): vol.In(discovered)})),
         )
 
     def _discovery_label(self, info: Any) -> str:
@@ -899,20 +901,28 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
             description_placeholders=report_placeholders(
                 support_report(stage="device_settings", entry=self.config_entry)
             ),
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_PROBES): section(
-                        vol.Schema(
-                            {
-                                vol.Optional(
-                                    f"{CONF_PROBE_NAME_PREFIX}{number}",
-                                    default=probes.get(f"{CONF_PROBE_NAME_PREFIX}{number}", ""),
-                                ): vol.All(str, vol.Length(max=40))
-                                for number in sorted(numbers)
-                            }
+            data_schema=cast(
+                Any,
+                vol.Schema(
+                    {
+                        vol.Required(CONF_PROBES): section(
+                            cast(
+                                Any,
+                                vol.Schema(
+                                    {
+                                        vol.Optional(
+                                            f"{CONF_PROBE_NAME_PREFIX}{number}",
+                                            default=probes.get(
+                                                f"{CONF_PROBE_NAME_PREFIX}{number}", ""
+                                            ),
+                                        ): vol.All(str, vol.Length(max=40))
+                                        for number in sorted(numbers)
+                                    }
+                                ),
+                            ),
+                            {"collapsed": False},
                         ),
-                        {"collapsed": False},
-                    ),
-                }
+                    }
+                ),
             ),
         )
