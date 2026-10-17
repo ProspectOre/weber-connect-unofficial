@@ -20,6 +20,7 @@ from .const import (
     CONF_TRANSPORT_FAMILY,
     MAX_PROBE_SLOTS,
 )
+from .entity import known_probe_numbers
 from .models import WeberRuntimeData
 from .support import cloud_telemetry_metrics, error_category, report_placeholders, support_report
 
@@ -47,6 +48,11 @@ async def async_get_config_entry_diagnostics(
         return support
     coordinator = runtime.coordinator
     state = coordinator.data
+    probe_numbers = known_probe_numbers(hass, entry) | {
+        number
+        for number in state.get("reported_probe_numbers", ())
+        if type(number) is int and 1 <= number <= MAX_PROBE_SLOTS
+    }
     return {
         **support,
         "entry": async_redact_data(
@@ -94,7 +100,7 @@ async def async_get_config_entry_diagnostics(
                 "case_temperature_c": state.get(f"probe_{number}_case_temperature"),
                 "time_remaining_s": state.get(f"probe_{number}_time_remaining"),
             }
-            for number in range(1, MAX_PROBE_SLOTS + 1)
+            for number in sorted(probe_numbers)
         ],
         "timed_sessions": [
             {

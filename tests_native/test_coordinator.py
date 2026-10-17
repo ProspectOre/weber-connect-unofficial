@@ -519,3 +519,27 @@ def test_metadata_lookup_is_scoped_and_skips_unrelated_identity(hass: object) ->
     )
     registry.async_get_device.assert_not_called()
     registry.async_update_device.assert_called_once_with("owned", sw_version="2.0.3_7398")
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_list_only_capability_known_or_reported_probe_slots(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator.entry.data["device_capabilities"] = {"probe_count": 0}
+    coordinator.entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
+    coordinator.async_set_updated_data(coordinator.initial_state())
+    empty = await async_get_config_entry_diagnostics(hass, coordinator.entry)  # type: ignore[arg-type]
+    assert empty["probe_slots"] == []
+
+    coordinator._async_status({"probes": [{"probe_number": 6, "probe_temp_c": 40.0}]})
+    reported = await async_get_config_entry_diagnostics(hass, coordinator.entry)  # type: ignore[arg-type]
+    assert [row["number"] for row in reported["probe_slots"]] == [6]
+    assert reported["probe_slots"][0]["temperature_c"] == 40.0
+
+    coordinator.entry.data["device_capabilities"] = {"probe_count": 2}
+    known = await async_get_config_entry_diagnostics(hass, coordinator.entry)  # type: ignore[arg-type]
+    assert [row["number"] for row in known["probe_slots"]] == [1, 2, 6]
+
+    coordinator.data["reported_probe_numbers"] = (6, True, 0, 17, "private-device-data")
+    bounded = await async_get_config_entry_diagnostics(hass, coordinator.entry)  # type: ignore[arg-type]
+    assert [row["number"] for row in bounded["probe_slots"]] == [1, 2, 6]
+    assert "private-device-data" not in str(bounded)

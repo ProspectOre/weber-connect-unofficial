@@ -282,8 +282,6 @@ READING_STATUS_SENSORS = (
     ),
 )
 
-BASE_PROBE_NUMBERS = (1, 2)
-
 
 def _duration_description(
     key: str,
