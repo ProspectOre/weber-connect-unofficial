@@ -7,6 +7,9 @@ from typing import Final
 DOMAIN: Final = "weber_connect"
 NAME: Final = "Weber Connect Unofficial"
 MANUFACTURER: Final = "Weber"
+# Defensive decoding ceiling, not a promise that an appliance has this many ports.
+# Entities are created only for reported or previously registered physical slots.
+MAX_PROBE_SLOTS: Final = 16
 CLOUD_OFFLINE_RETAINED_KEYS: Final = (
     "battery_level",
     "is_charging",

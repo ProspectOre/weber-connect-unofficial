@@ -40,6 +40,11 @@ class FakeTransport:
         self.socket_connections = 2
         self.fast_recoveries = 1
         self.last_error_type = "TimeoutError"
+        self.fuel_level_reports = 12
+        self.fuel_level_unknown_reports = 3
+        self.fuel_level_changes = 5
+        self.last_recovery_seconds = 12.5
+        self.max_recovery_seconds = 25.0
 
     async def async_run(self, status_callback: object, error_callback: object) -> None:
         self.status_callback = status_callback
@@ -204,7 +209,11 @@ def test_cloud_outage_never_creates_a_repair(hass: object) -> None:
 def test_status_updates_device_firmware_metadata(hass: object) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
     registry = MagicMock()
-    registry.async_get_device.return_value = SimpleNamespace(id="device-id")
+    registry.devices.get_devices_for_config_entry_id.return_value = [
+        SimpleNamespace(
+            id="device-id", identifiers={("weber_connect", coordinator.entry.unique_id)}
+        )
+    ]
 
     with patch.object(coordinator_module.dr, "async_get", return_value=registry):
         coordinator._async_status(
@@ -215,9 +224,10 @@ def test_status_updates_device_firmware_metadata(hass: object) -> None:
             }
         )
 
-    registry.async_get_device.assert_called_once_with(
-        identifiers={("weber_connect", coordinator.entry.unique_id)}
+    registry.devices.get_devices_for_config_entry_id.assert_called_once_with(
+        coordinator.entry.entry_id
     )
+    registry.async_get_device.assert_not_called()
     registry.async_update_device.assert_called_once_with(
         "device-id",
         sw_version="2.0.3_7398",
@@ -239,7 +249,11 @@ def test_status_updates_only_reported_device_version(
 ) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
     registry = MagicMock()
-    registry.async_get_device.return_value = SimpleNamespace(id="device-id")
+    registry.devices.get_devices_for_config_entry_id.return_value = [
+        SimpleNamespace(
+            id="device-id", identifiers={("weber_connect", coordinator.entry.unique_id)}
+        )
+    ]
 
     with patch.object(coordinator_module.dr, "async_get", return_value=registry):
         coordinator._async_status({**status, "probes": []})
@@ -385,6 +399,14 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     assert diagnostics["cloud_socket_connections"] == 2
     assert diagnostics["cloud_socket_fast_recoveries"] == 1
     assert diagnostics["cloud_socket_last_error_type"] == "TimeoutError"
+    assert diagnostics["cloud_telemetry"] == {
+        "fuel_level_reports": 12,
+        "fuel_level_unknown_reports": 3,
+        "fuel_level_changes": 5,
+        "last_recovery_seconds": 12.5,
+        "max_recovery_seconds": 25.0,
+    }
+    assert diagnostics["support_report"]["cloud_telemetry"] == diagnostics["cloud_telemetry"]
     assert "state" not in diagnostics
     assert "cloud_history_schema" not in diagnostics
 
@@ -466,3 +488,34 @@ def test_support_history_records_failures_and_recovery_without_flooding(hass: ob
     ]
     assert history[1]["error"] == "timeout"
     assert "private-token" not in str(history)
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_before_cloud_session_exists_are_safe(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator.async_set_updated_data(coordinator.initial_state())
+    coordinator.cloud_session = None
+    coordinator.entry.runtime_data = WeberRuntimeData(coordinator=coordinator)
+    report = await async_get_config_entry_diagnostics(hass, coordinator.entry)  # type: ignore[arg-type]
+    assert report["cloud_socket_connections"] == 0
+    assert report["cloud_socket_fast_recoveries"] == 0
+    assert report["cloud_socket_last_error_type"] is None
+    assert report["cloud_socket_received_types"] == []
+    assert report["cloud_telemetry"]["fuel_level_reports"] == 0
+    assert report["cloud_telemetry"]["last_recovery_seconds"] is None
+
+
+def test_metadata_lookup_is_scoped_and_skips_unrelated_identity(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    registry = MagicMock()
+    registry.devices.get_devices_for_config_entry_id.return_value = [
+        SimpleNamespace(id="other", identifiers={("weber_connect", "other-identity")}),
+        SimpleNamespace(id="owned", identifiers={("weber_connect", coordinator.entry.unique_id)}),
+    ]
+    with patch.object(coordinator_module.dr, "async_get", return_value=registry):
+        coordinator._async_status({"software_version": "2.0.3_7398"})
+    registry.devices.get_devices_for_config_entry_id.assert_called_once_with(
+        coordinator.entry.entry_id
+    )
+    registry.async_get_device.assert_not_called()
+    registry.async_update_device.assert_called_once_with("owned", sw_version="2.0.3_7398")

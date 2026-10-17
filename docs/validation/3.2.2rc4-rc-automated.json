@@ -2,24 +2,31 @@
   "candidate": "3.2.2rc4",
   "release_channel": "prerelease",
   "evidence_date": "2026-10-16",
-  "runtime_sha256": "9de5bfb63ea0a759a3c77cd34eb55c88035dbc0b7869959077f489d76040fc9b",
+  "runtime_sha256": "8dcf6cf2a56be12accd5ce984c7c5ca5bbd6eb33a60ce0109ea6fa2b373e04a2",
+  "publication_status": "unpublished",
   "home_assistant_test_framework": "2026.7.2",
-  "python": "3.14.2",
+  "python": "3.14.8",
+  "platform": "macOS arm64",
   "tests": {
-    "passed": 430,
+    "passed": 555,
     "failed": 0,
     "combined_statement_branch_coverage_percent": 100,
     "required_coverage_percent": 100,
-    "status": "previous_runtime_passed_current_runtime_pending",
-    "scope": "Previous qualification-only runtime result; runtime adapters now require a fresh measured test run."
+    "status": "passed",
+    "scope": "Complete native suite with PYTHONASYNCIODEBUG=1 and RuntimeWarning errors; generated peers and loopback cloud/TLS fixtures, no physical hardware."
   },
   "local_gates": {
     "ruff": "passed",
     "ruff_format": "passed",
     "strict_mypy": "passed",
-    "bandit": "passed"
+    "bandit": "passed",
+    "runtime_dependency_audit": "passed_no_known_vulnerabilities",
+    "workspace_documentation": "blocked_by_existing_unrelated_document_size_check"
   },
   "hosted_gates": {
-    "final_candidate_pr": "pending exact-head CI and review"
+    "ci": "pending_not_pushed",
+    "hassfest": "pending_not_pushed",
+    "hacs": "pending_not_pushed",
+    "regular_review": "pending_not_pushed"
   }
 }

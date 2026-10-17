@@ -47,7 +47,7 @@ class Qualification(StrEnum):
     NAME_ONLY = "name_only"
     NEEDS_GATT = "needs_gatt"
     NEEDS_SECURE_SESSION = "needs_secure_session"
-    READING_READY = "reading_ready"
+    NEEDS_AUTHENTICATION = "needs_authentication"
     INVALID_ADVERTISEMENT = "invalid_advertisement"
     UNKNOWN_CONTROLLER = "unknown_controller"
 
@@ -108,7 +108,11 @@ def classify_advertisement(
                 TransportFamily.UNKNOWN, Qualification.INVALID_ADVERTISEMENT, JUNE_COMPANY_ID
             )
         model = LEGACY_MODELS.get(model_id)
-        if model_id not in PORTABLE_MODEL_IDS and name.casefold().startswith("smokefire"):
+        if (
+            model_id in LEGACY_MODELS
+            and model_id not in PORTABLE_MODEL_IDS
+            and _name_fallback(name).model == "smokefire"
+        ):
             model = "smokefire"
         if model is None:
             return TransportEvidence(
@@ -188,7 +192,7 @@ def classify_service_shapes(
         family=TransportFamily.SILABS_APPLIANCE if appliance else TransportFamily.PORTABLE,
         qualification=Qualification.NEEDS_SECURE_SESSION
         if appliance
-        else Qualification.READING_READY,
+        else Qualification.NEEDS_AUTHENTICATION,
     )
 
 

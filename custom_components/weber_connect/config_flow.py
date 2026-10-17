@@ -7,7 +7,6 @@ import logging
 import math
 import re
 from collections.abc import Coroutine
-from dataclasses import replace
 from typing import Any
 
 import voluptuous as vol
@@ -45,7 +44,6 @@ from .entity import known_probe_numbers
 from .models import CompanionIdentity, PairingResult
 from .options import WeberOptions
 from .pairing_storage import PairingKeyStore
-from .portable import async_read_portable
 from .protocol_adapters import ProtocolQualificationRequired, adapter_for
 from .silabs_pairing import SiLabsPairingResult
 from .silabs_secure import SiLabsSigningKeys
@@ -113,7 +111,6 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pairing_failure_reason = "The pairing connection ended before setup finished."
         self._cloud_prepare_task: asyncio.Task[None] | None = None
         self._pairing_task: asyncio.Task[PairingResult] | None = None
-        self._portable_task: asyncio.Task[dict[str, Any]] | None = None
         self._cloud_task: asyncio.Task[dict[str, Any]] | None = None
         self._cloud_progress_task: asyncio.Task[None] | None = None
         self._cloud_deadline: float | None = None
@@ -302,10 +299,6 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except ProtocolQualificationRequired as err:
                 self._qualification_reason = str(err)
                 return await self.async_step_protocol_qualification()
-            if evidence.family is TransportFamily.PORTABLE:
-                if evidence.model_id not in (16, 17):
-                    return await self.async_step_portable_model()
-                return await self.async_step_portable()
             return await self.async_step_preparing()
         return self.async_show_form(
             step_id="confirm",
@@ -314,65 +307,6 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "path": self._connection_path,
             },
         )
-
-    async def async_step_portable_model(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        if user_input is not None and self._transport_evidence is not None:
-            model_id = int(user_input["model"])
-            if model_id not in (16, 17):
-                return await self.async_step_portable_model()
-            self._transport_evidence = replace(self._transport_evidence, model_id=model_id)
-            return await self.async_step_portable()
-        return self.async_show_form(
-            step_id="portable_model",
-            data_schema=vol.Schema(
-                {vol.Required("model"): vol.In({"16": "Smart Probe", "17": "Smart Wireless Probe"})}
-            ),
-        )
-
-    async def async_step_portable(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        evidence = self._transport_evidence
-        if self._address is None or evidence is None or evidence.model_id not in (16, 17):
-            return await self.async_step_portable_model()
-        if self._portable_task is None:
-            self._portable_task = self.hass.async_create_task(
-                async_read_portable(self.hass, self._address, evidence.model_id)
-            )
-        task = self._portable_task
-        if not task.done():
-            return self.async_show_progress(
-                step_id="portable", progress_action="reading_probe", progress_task=task
-            )
-        try:
-            reading = await task
-        except Exception:
-            self._portable_task = None
-            return self.async_show_progress_done(next_step_id="portable_failed")
-        self._entry_data = {
-            CONF_ADDRESS: self._address,
-            CONF_TRANSPORT_FAMILY: TransportFamily.PORTABLE.value,
-            CONF_MODEL_ID: evidence.model_id,
-            CONF_MANUFACTURER_ID: evidence.company_id,
-            CONF_MANUFACTURER_SCHEMA: evidence.schema,
-            CONF_CAPABILITIES: {"sensor_count": reading["sensor_count"]},
-        }
-        self._portable_task = None
-        return self.async_show_progress_done(next_step_id="complete")
-
-    async def async_step_portable_failed(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        return self._show_error_menu(
-            step_id="portable_failed", menu_options=["retry_portable", "choose_hub"]
-        )
-
-    async def async_step_retry_portable(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        return await self.async_step_portable()
 
     async def async_step_protocol_qualification(
         self, user_input: dict[str, Any] | None = None
@@ -871,7 +805,6 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._support_snapshot = {}
         self._pairing_bluetooth = None
         self._pairing_task = None
-        self._portable_task = None
         self._cloud_prepare_task = None
         self._cloud_task = None
         self._cloud_progress_task = None
@@ -884,7 +817,6 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for task in (
             self._cloud_prepare_task,
             self._pairing_task,
-            self._portable_task,
             self._cloud_task,
             self._cloud_progress_task,
         ):
@@ -933,15 +865,16 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         result = self._pairing_result
         if not isinstance(result, SiLabsPairingResult):
             return True
+        if self._entry_data is None:
+            return False
         reference = result.credentials.companion_id.hex()
         try:
             await PairingKeyStore(self.hass, reference).async_save(result.credentials)
         except Exception:
             _LOGGER.error("Confirmed SiLabs pairing keys could not be saved privately.")
             return False
-        if self._entry_data is not None:
-            self._entry_data[CONF_PAIRING_KEY_REF] = reference
-            self._entry_data[CONF_CAPABILITIES] = result.capabilities
+        self._entry_data[CONF_PAIRING_KEY_REF] = reference
+        self._entry_data[CONF_CAPABILITIES] = result.capabilities
         return True
 
     @staticmethod
@@ -973,7 +906,7 @@ class OptionsFlow(config_entries.OptionsFlowWithReload):
                             {
                                 vol.Optional(
                                     f"{CONF_PROBE_NAME_PREFIX}{number}",
-                                    default=probes[f"{CONF_PROBE_NAME_PREFIX}{number}"],
+                                    default=probes.get(f"{CONF_PROBE_NAME_PREFIX}{number}", ""),
                                 ): vol.All(str, vol.Length(max=40))
                                 for number in sorted(numbers)
                             }

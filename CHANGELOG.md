@@ -6,9 +6,17 @@
   evidence, with shared automatic/manual discovery and redacted diagnostics.
 - Keep SiLabs appliances and portable probes out of the Saber pairing path.
 - Add SiLabs P-256/ECDH/AES-GCM setup, private pairing storage, stored-key
-  resume and authenticated capability negotiation. Add a separate read-only
-  portable probe session. Hardware interoperability remains pending; tests use
-  synthetic peers, storage and Bluetooth routes.
+  resume primitive and capability negotiation. Keep direct portable telemetry
+  gated pending peer authentication; its decoder remains offline-only. Runtime
+  stays on the authenticated cloud connection without reclaiming phone Bluetooth.
+  Hardware interoperability remains pending; tests use synthetic peers.
+- Integrate the SmokeFire manual-cooking fix from PR #74, use family-aware device
+  labels, and create only supported/reported probe slots, including slots above four.
+- Move HTTPS certificate initialization off the event loop and scope device
+  metadata updates to their config entry. Add fuel-report and recovery metrics
+  without hiding explicit unknown states or changing retry deadlines.
+- Track all applicable connected product lines and unresolved reports in the
+  [compatibility worklist](docs/product-compatibility.md).
 - Preserve RC3 evidence and bind this changed runtime to pending hardware gates.
 
 ## 3.2.2rc3 — 2026-10-16 (beta prerelease)

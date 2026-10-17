@@ -31,28 +31,34 @@ handshake success, then encrypted capability negotiation. Reads, writes and
 response counts are bounded. Invalid tags, keys, framing and duplicate
 nonces/sequences within one connection are rejected. The transport header is
 not GCM authenticated by the app protocol, and session freshness across separate
-connections has no demonstrated challenge/response guarantee.
+connections has no demonstrated challenge/response guarantee. Pairing
+confirmation supplies a plaintext public key; GCM proves possession of that
+exchanged key, not manufacturer identity. The integration separately requires
+physical confirmation and association of the exact appliance with the newly
+generated companion over authenticated HTTPS before saving an entry or keys.
 
 After Bluetooth setup, the existing cloud association check must match the
 BLE-confirmed appliance identity. Only then are keys saved in a separate Home
 Assistant private (0600), atomic storage file; config data contains its reference
 and a capability summary. This is private-file protection, not an encrypted-at-
 rest or OS-keychain guarantee. Protect Home Assistant backups like other secrets.
-A stored-key resume path repeats the authenticated greeting and capabilities
-without a new pairing request. Normal grill telemetry and recovery continue
-through the existing cloud session. Replacement pairing preserves the old entry
+A stored-key resume primitive is tested offline, but runtime does not call it:
+replayed messages from an earlier connection cannot establish current capability
+freshness, and a background BLE connection would compete with the phone. Normal
+telemetry and recovery use only the existing authenticated cloud session. Replacement pairing preserves the old entry
 until the new cloud association and private save succeed; deletion removes the
 private record. Capabilities select available probe slots without name rules.
 
-Portable probes use their own local GATT read/notify transport with no appliance
-pairing command or cloud registration. The app's packed sequence/boot count,
-battery byte, sensor count and signed deci-C readings are parsed separately;
-WASP uses ambient temperature and BATWOMAN uses the coldest non-ambient segment.
-An unknown catalogue model requires the owner to select the probe type. This
-application payload has no demonstrated cryptographic authentication. Link
-bond/authorization requirements and the app's portable account association
-coroutine remain unestablished; a GATT authorization failure is reported without
-attempting a bond or changing security settings.
+Portable service detection stops at a compatibility screen before cloud
+registration, key generation, reading or pairing writes. Its offline decoder
+parses the app's packed sequence/boot count, battery byte, sensor count and
+signed deci-C samples; WASP uses ambient temperature and BATWOMAN uses the
+coldest non-ambient segment. These application bytes have no demonstrated peer
+authentication. Direct portable entries are rejected at runtime as well.
+Link bonding, account association and device evidence remain prerequisites to
+changing [ADR 0003](adr/0003-authenticated-telemetry-boundary.md). A probe whose
+readings arrive through an approved controller uses that controller's cloud
+path; no Bluetooth status is promoted to authenticated telemetry.
 
 Tests use generated synthetic peers, mock storage and mock HA Bluetooth routes.
 They do not establish any grill or probe's hardware acceptance. Unknown or
@@ -82,7 +88,7 @@ compatibility claim, obtain consented sanitized evidence for each controller typ
    Do not include keys, nonces, ciphertext or account identifiers.
 3. Validate the independent secure-session implementation against consented
    device evidence, including protected identity persistence and reconnect
-   behavior. Local portable readings have no application authentication claim.
+   behavior. Direct portable live readings remain disabled pending authentication.
 4. Capability and message-version outcomes, cloud association, restart/reconnect,
    and a live cook or probe reading for the exact product/firmware candidate.
 
@@ -90,5 +96,5 @@ Genesis [issue #65](https://github.com/ProspectOre/weber-connect-unofficial/issu
 is a priority candidate because its reported OTA service resembles the SiLabs
 branch and its greeting fails Saber framing. This remains a hypothesis until
 the structural fixture and physical outcome are captured. SmokeFire EX4 Gen2
-pairing/cloud association has contributor evidence; cook acceptance remains
-pending. These gates are independent of unit-test coverage and CI.
+pairing, cloud association and a 3.5-hour cook have contributor RC3 evidence;
+RC4 cook acceptance remains pending. See the [product worklist](product-compatibility.md). These gates are independent of unit-test coverage and CI.

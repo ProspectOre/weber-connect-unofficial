@@ -95,6 +95,8 @@ async def test_optional_sensor_discovery_survives_malformed_reports_and_deduplic
     listeners[0]()
     keys = [entity.entity_description.key for entity in entities]
     assert set(keys[6:]) == {
+        "probe_5_temperature",
+        "probe_5_reading_status",
         "timed_session_1_time_remaining",
         "timer_1_time_remaining",
         "burner_1_state",
@@ -102,10 +104,10 @@ async def test_optional_sensor_discovery_survives_malformed_reports_and_deduplic
     assert entities[-1].extra_state_attributes["reading_status"] == "receiving"
     assert "last_successful_update" not in entities[-1].extra_state_attributes
     listeners[0]()
-    assert len(entities) == 9
+    assert len(entities) == 11
     coordinator.data.update(
         timed_session_2_time_remaining=0, timer_2_time_remaining=0, burner_2_state="off"
     )
     listeners[0]()
-    assert len(entities) == 12
+    assert len(entities) == 14
     assert entities[-1].native_value == "off"

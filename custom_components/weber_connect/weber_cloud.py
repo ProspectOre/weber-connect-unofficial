@@ -132,7 +132,17 @@ class WeberCloudClient:
         self.timeout = timeout
         self._token: str | None = None
         self._token_expiry = 0.0
-        self._opener = urllib.request.build_opener(_SameOriginRedirectHandler())
+        # Opening the HTTPS client loads certificates, so defer it until _open
+        # runs in Home Assistant's executor.
+        self._opener_instance: urllib.request.OpenerDirector | None = None
+
+    @property
+    def _opener(self) -> urllib.request.OpenerDirector:
+        """Build the blocking urllib opener on first use, in the executor."""
+
+        if self._opener_instance is None:
+            self._opener_instance = urllib.request.build_opener(_SameOriginRedirectHandler())
+        return self._opener_instance
 
     @property
     def messaging_host(self) -> str:

@@ -21,6 +21,10 @@ from custom_components.weber_connect.silabs_secure import (
     SiLabsSigningKeys,
 )
 
+_REAL_STORE_ASYNC_LOAD = HomeAssistantStore._async_load
+_REAL_STORE_ASYNC_WRITE_DATA = HomeAssistantStore._async_write_data
+_REAL_STORE_ASYNC_REMOVE = HomeAssistantStore.async_remove
+
 
 def tlv(tag: int, value: bytes) -> bytes:
     return bytes((tag, len(value))) + value
@@ -290,21 +294,41 @@ async def test_secret_credentials_repr_and_diagnostics_do_not_expose_pairing_mat
 
 
 async def test_real_ha_private_storage_permissions_and_reload(
-    hass: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    hass: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Generated test keys verify private file permissions, never device credentials."""
 
     monkeypatch.setattr(pairing_storage, "Store", HomeAssistantStore)
-    hass.config.config_dir = str(tmp_path)
     record = credentials()
     reference = record.companion_id.hex()
     store = pairing_storage.PairingKeyStore(hass, reference)
-    await store.async_save(record)
-    path = tmp_path / ".storage" / f"weber_connect.pairing.{reference}"
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    reloaded = await pairing_storage.PairingKeyStore(hass, reference).async_load(
-        record.appliance_id.hex()
+    real_store = store._store
+    monkeypatch.setattr(
+        real_store,
+        "_async_load",
+        _REAL_STORE_ASYNC_LOAD.__get__(real_store),
     )
+    monkeypatch.setattr(
+        real_store,
+        "_async_write_data",
+        _REAL_STORE_ASYNC_WRITE_DATA.__get__(real_store),
+    )
+    monkeypatch.setattr(
+        real_store,
+        "async_remove",
+        _REAL_STORE_ASYNC_REMOVE.__get__(real_store),
+    )
+    await store.async_save(record)
+    path = Path(real_store.path)
+    file_stat = await hass.async_add_executor_job(path.stat)
+    assert stat.S_IMODE(file_stat.st_mode) == 0o600
+    reloaded_store = pairing_storage.PairingKeyStore(hass, reference)
+    monkeypatch.setattr(
+        reloaded_store._store,
+        "_async_load",
+        _REAL_STORE_ASYNC_LOAD.__get__(reloaded_store._store),
+    )
+    reloaded = await reloaded_store.async_load(record.appliance_id.hex())
     assert reloaded.keys.private_scalar == record.keys.private_scalar
     await store.async_remove()
-    assert not path.exists()
+    assert not await hass.async_add_executor_job(path.exists)

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from bleak.exc import BleakError
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.weber_connect import bluetooth as ble_transport
@@ -35,6 +36,7 @@ from custom_components.weber_connect.transport_family import (
     PORTABLE_TEMPERATURE_UUID,
     SILABS_COMPANY_ID,
     Qualification,
+    TransportEvidence,
     TransportFamily,
     classify_advertisement,
     classify_discovery,
@@ -132,9 +134,10 @@ def test_gatt_selects_silabs_appliance_or_portable_and_rejects_ambiguity() -> No
     assert appliance.family is TransportFamily.SILABS_APPLIANCE
     assert portable.family is TransportFamily.PORTABLE
     assert appliance.qualification is Qualification.NEEDS_SECURE_SESSION
-    assert portable.qualification is Qualification.READING_READY
-    for family in (appliance, portable):
-        adapter_for(family).require_pairing_support(family)
+    assert portable.qualification is Qualification.NEEDS_AUTHENTICATION
+    adapter_for(appliance).require_pairing_support(appliance)
+    with pytest.raises(ProtocolQualificationRequired, match="cannot yet be verified"):
+        adapter_for(portable).require_pairing_support(portable)
     assert (
         classify_service_shapes(evidence, appliance_services | portable_services).family
         is TransportFamily.UNKNOWN
@@ -143,6 +146,21 @@ def test_gatt_selects_silabs_appliance_or_portable_and_rejects_ambiguity() -> No
         classify_service_shapes(evidence, {COMMAND_UUID: {"write"}}).family
         is TransportFamily.UNKNOWN
     )
+
+
+@pytest.mark.parametrize(
+    ("family", "qualification"),
+    [
+        (TransportFamily.SABER, Qualification.NEEDS_SECURE_SESSION),
+        (TransportFamily.SILABS_APPLIANCE, Qualification.NEEDS_GATT),
+    ],
+)
+def test_silabs_appliance_pairing_requires_matching_family_and_qualification(
+    family: TransportFamily, qualification: Qualification
+) -> None:
+    evidence = TransportEvidence(family, qualification)
+    with pytest.raises(ProtocolQualificationRequired, match="qualification is incomplete"):
+        SiLabsApplianceAdapter().require_pairing_support(evidence)
 
 
 @pytest.mark.parametrize("model_id", [16, 17])
@@ -154,7 +172,7 @@ def test_legacy_portable_ids_require_portable_gatt(model_id: int) -> None:
         evidence, {PORTABLE_SERVICE_UUID: set(), PORTABLE_TEMPERATURE_UUID: {"read"}}
     )
     assert portable.family is TransportFamily.PORTABLE
-    assert portable.qualification is Qualification.READING_READY
+    assert portable.qualification is Qualification.NEEDS_AUTHENTICATION
     for services in (
         {},
         {APPLIANCE_SERVICE_UUID: set(), COMMAND_UUID: {"write"}, RESPONSE_UUID: {"notify"}},
@@ -271,9 +289,11 @@ async def test_simulated_setup_routes_by_qualified_protocol(
             shown = await flow.async_step_user({"address": discovery.address})
         assert shown["step_id"] == "confirm"
         stopped = await flow.async_step_confirm({})
-    assert stopped["type"] is FlowResultType.FORM
+    assert stopped["type"] is (
+        FlowResultType.FORM if family is TransportFamily.SILABS_APPLIANCE else FlowResultType.MENU
+    )
     assert stopped["step_id"] == (
-        "preparing" if family is TransportFamily.SILABS_APPLIANCE else "portable_model"
+        "preparing" if family is TransportFamily.SILABS_APPLIANCE else "protocol_qualification"
     )
     assert flow._identity is None
     qualify.assert_awaited_once()
@@ -344,3 +364,24 @@ async def test_qualification_failures_never_start_cloud_or_pairing(hass: object)
     flow._transport_evidence = classify_advertisement({JUNE_COMPANY_ID: b"\x09"})
     with pytest.raises(WeberBluetoothError, match="unknown_controller"):
         flow._start_pairing()
+
+
+@pytest.mark.parametrize("name", ["SmokeFire EX4", "SmokeFireGarbage"])
+def test_marketing_name_cannot_override_unknown_manufacturer_model(name: str) -> None:
+    evidence = classify_advertisement({JUNE_COMPANY_ID: b"\xff"}, name)
+    assert evidence.family is TransportFamily.UNKNOWN
+    with pytest.raises(ProtocolQualificationRequired):
+        adapter_for(evidence).require_pairing_support(evidence)
+
+
+@pytest.mark.parametrize("error", [BleakError("private-adapter-error"), TimeoutError()])
+async def test_gatt_qualification_wraps_errors_without_disclosing_peer_data(
+    error: Exception,
+) -> None:
+    evidence = classify_advertisement({SILABS_COMPANY_ID: _silabs_payload()})
+    with (
+        patch.object(ble_transport, "_connect", new=AsyncMock(side_effect=error)),
+        pytest.raises(WeberBluetoothError, match="services could not be checked") as captured,
+    ):
+        await ble_transport.async_qualify_gatt(object(), "AA:BB", evidence)  # type: ignore[arg-type]
+    assert "private-adapter-error" not in str(captured.value)

@@ -148,6 +148,18 @@ def _version(value: Any) -> str | None:
     return None
 
 
+def cloud_telemetry_metrics(session: Any) -> dict[str, Any]:
+    """Fixed counters and durations only; never serialize a session or error text."""
+
+    return {
+        "fuel_level_reports": getattr(session, "fuel_level_reports", 0),
+        "fuel_level_unknown_reports": getattr(session, "fuel_level_unknown_reports", 0),
+        "fuel_level_changes": getattr(session, "fuel_level_changes", 0),
+        "last_recovery_seconds": getattr(session, "last_recovery_seconds", None),
+        "max_recovery_seconds": getattr(session, "max_recovery_seconds", None),
+    }
+
+
 def support_report(
     *,
     stage: str,
@@ -184,6 +196,7 @@ def support_report(
             "consecutive_failures": coordinator.consecutive_failures,
             "last_error": error_category(coordinator.last_error),
             "events": coordinator.support_journal.snapshot(),
+            "cloud_telemetry": cloud_telemetry_metrics(getattr(coordinator, "cloud_session", None)),
         }
     )
     return report

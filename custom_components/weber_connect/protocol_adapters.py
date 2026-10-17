@@ -54,16 +54,15 @@ class SiLabsApplianceAdapter:
 
 @dataclass(frozen=True, slots=True)
 class PortableProbeAdapter:
-    """Portable GATT boundary; no appliance-frame or cloud pairing assumption."""
+    """Recognize portable probes while preserving the authenticated-data boundary."""
 
     family: TransportFamily = TransportFamily.PORTABLE
 
     def require_pairing_support(self, evidence: TransportEvidence) -> None:
-        if (
-            evidence.family is not self.family
-            or evidence.qualification is not Qualification.READING_READY
-        ):
-            raise ProtocolQualificationRequired("Portable probe GATT qualification is incomplete.")
+        raise ProtocolQualificationRequired(
+            "Direct Bluetooth readings from this probe cannot yet be verified. "
+            "Use probe readings from a paired Weber Connect controller where available."
+        )
 
 
 @dataclass(frozen=True, slots=True)

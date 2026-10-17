@@ -108,10 +108,10 @@ plus any additional probe slots already registered for that hub. Previously
 saved names are retained even when their fields are hidden. Weber Cloud is
 used automatically; there is no connection-mode selector.
 
-The device page starts with **Probe 1** and **Probe 2**, which are common to the
-supported controllers. **Probe 3** and **Probe 4** are added only after the
-controller reports those slot numbers, so a two-port model does not receive
-unused entities. The built-in **Grill temperature** entity is likewise added
+The device page uses the reported probe count when available, retaining
+**Probe 1** and **Probe 2** as the legacy default. Additional physical slots are
+added only when reported, so a two-port model does not receive unused entities.
+Reported wireless slots above four are supported without changing existing IDs. The built-in **Grill temperature** entity is likewise added
 only when the controller reports that sensor. A diagnostic **Battery** entity
 and **Charging** entity are added when a portable hub reports its power state.
 Once created, each entity keeps its stable slot-based identity. A connected
@@ -164,7 +164,7 @@ controls.
 - A connectable Home Assistant Bluetooth adapter or active ESPHome Bluetooth
   proxy in range during setup.
 - Home Assistant internet access and a hub that is already online in Weber
-  Cloud for grill setup and live grill telemetry. Portable probes use local Bluetooth.
+  Cloud for initial setup and live telemetry.
 
 For an ESPHome proxy, `bluetooth_proxy.active` must be enabled and a connection
 slot must be available. No proxy address or encryption key is entered into this
@@ -172,19 +172,15 @@ integration; Home Assistant owns adapter selection and credentials.
 
 ## Compatibility and validation
 
-Version **3.2.2rc4 is an unpublished qualification candidate**. Its model and
-firmware evidence, including pending SmokeFire and Genesis checks, is recorded in
-the [candidate matrix](docs/validation/3.2.2rc4-readiness.md). The historical
-results below do not certify the changed candidate runtime. Stable 3.2.1 remains
-the rollback release.
-
-The ongoing transport-family work is described in [Bluetooth transport
-qualification](docs/transport-families.md). The official Android `2.12.0.2665`
-code provides distinct Saber, SiLabs appliance, and portable paths. This
-integration routes SiLabs appliances through their authenticated pairing and
-capability exchange, and portable probes through a local read/notify session.
-These paths have synthetic test coverage; exact model/firmware hardware
-acceptance remains pending. A catalogue model is not a compatibility claim.
+The source tree is an **unpublished 3.2.2rc4 candidate**. Its
+[product coverage and feedback worklist](docs/product-compatibility.md) includes
+connected gas, charcoal, pellet and electric lines, hubs and probe accessories.
+Routing uses controller evidence and reported capabilities; a product-family
+name does not establish compatibility. The [candidate matrix](docs/validation/3.2.2rc4-readiness.md)
+keeps exact-candidate physical checks pending. Stable 3.2.1 remains the rollback
+release. Direct portable Bluetooth telemetry stays disabled until a compatible
+peer-authentication mechanism is established; probes reported through a paired
+controller use its authenticated cloud connection.
 
 Testing uses a Weber Connect Hub running `2.0.3_7398`, Home Assistant Yellow on
 Home Assistant `2026.7.2`, Weber app `2.10.0.2439` on a Samsung Galaxy Tab A9+

@@ -247,6 +247,10 @@ async def async_qualify_gatt(
             for characteristic in service.characteristics:
                 shapes[characteristic.uuid.lower()] = set(characteristic.properties)
         return classify_service_shapes(evidence, shapes)
+    except (BleakError, TimeoutError) as exc:
+        raise WeberBluetoothError(
+            "The controller's Bluetooth services could not be checked."
+        ) from exc
     finally:
         if client is not None:
             await _safe_disconnect(client)

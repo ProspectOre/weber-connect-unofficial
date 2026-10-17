@@ -162,6 +162,45 @@ async def test_appliance_status_is_merged_into_cook_status() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fuel_counters_only_track_present_appliance_fuel_tlvs() -> None:
+    connection = FakeConnection(
+        [
+            routed(0x80),  # No appliance frame or fuel report.
+            routed(0x83, tlv(1, bytes([64]))),  # Partial frame omits fuel.
+            routed(0x80),
+            routed(0x83, tlv(20, bytes([0]))),  # Explicitly unknown.
+            routed(0x80),
+            routed(0x80),  # Missing fuel does not repeat cached state.
+            routed(0x83, tlv(20, bytes([1]))),  # Full.
+            routed(0x83, tlv(20, bytes([5]))),  # Low.
+            routed(0x80),
+            routed(0x83, tlv(20, b"")),  # Present, but unusable.
+            routed(0x80),
+            routed(0x80),  # Missing TLV retains the last valid state.
+        ]
+    )
+    session = socket.WeberCloudSession(
+        FakeHass(),  # type: ignore[arg-type]
+        FakeCloudClient(),
+        APPLIANCE_ID,
+        timeout=0.1,
+        subscribe_delay=0,
+    )
+    with patch.object(socket, "connect", AsyncMock(return_value=connection)):
+        statuses = [await session.async_request_status() for _ in range(7)]
+
+    assert "fuel_level" not in statuses[0]
+    assert statuses[2]["fuel_level"] == "unknown"
+    assert statuses[3]["fuel_level"] == "unknown"
+    assert statuses[4]["fuel_level"] == "low"
+    assert statuses[5]["fuel_level"] == "low"
+    assert statuses[6]["fuel_level"] == "low"
+    assert session.fuel_level_reports == 4
+    assert session.fuel_level_unknown_reports == 1
+    assert session.fuel_level_changes == 2
+
+
+@pytest.mark.asyncio
 async def test_partial_appliance_status_preserves_cached_hub_telemetry() -> None:
     connection = FakeConnection(
         [
@@ -237,6 +276,30 @@ async def test_expiring_token_rotates_socket_before_next_request() -> None:
     assert len(second.sent) == 9
     assert cloud.token_calls == 2
     assert connect.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_recovery_timer_waits_for_fresh_cook_status() -> None:
+    connection = FakeConnection([routed(0x83, tlv(1, bytes([64]))), None])
+    session = socket.WeberCloudSession(
+        FakeHass(), FakeCloudClient(), APPLIANCE_ID, timeout=0.01, subscribe_delay=0
+    )
+    with patch.object(socket, "connect", AsyncMock(return_value=connection)):
+        await session._async_connect()
+        session._recovery_started_at = 10.0
+        with pytest.raises(TimeoutError):
+            await session._async_receive_status()
+        assert session.last_recovery_seconds is None
+        assert session.max_recovery_seconds is None
+
+        connection.responses.append(routed(0x80))
+        with patch.object(socket.time, "monotonic", return_value=25.0):
+            status = await session._async_receive_status()
+
+    assert status["kind"] == "cook_session_status"
+    assert session.last_recovery_seconds == 15.0
+    assert session.max_recovery_seconds == 15.0
+    assert session._recovery_started_at is None
 
 
 @pytest.mark.asyncio
@@ -419,6 +482,55 @@ async def test_run_normalizes_connection_error_and_reconnects() -> None:
             await task
     assert "offline" in errors[0]
     assert session._connection is None
+
+
+@pytest.mark.asyncio
+async def test_recovery_duration_uses_first_of_repeated_failures() -> None:
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    statuses: list[dict[str, object]] = []
+    errors: list[str] = []
+    attempts = 0
+
+    async def request_status() -> dict[str, object]:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise OSError(f"offline {attempts}")
+        session._connection = FakeConnection([routed(0x80)])  # type: ignore[assignment]
+        return await session._async_receive_status()
+
+    def publish_status(status: dict[str, object]) -> None:
+        statuses.append(status)
+        session._closed = True
+        session.async_wake()
+
+    def publish_error(message: str) -> None:
+        errors.append(message)
+        session.async_wake()
+
+    monotonic = MagicMock(side_effect=[380.0, 389.0])
+    with (
+        patch.object(session, "async_request_status", AsyncMock(side_effect=request_status)),
+        patch.object(socket, "time", SimpleNamespace(monotonic=monotonic)),
+    ):
+        task = asyncio.create_task(session.async_run(publish_status, publish_error))
+        for _ in range(100):
+            if statuses:
+                break
+            await asyncio.sleep(0)
+        if not statuses:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            pytest.fail("recovery did not reach a fresh cook status")
+        await task
+
+    assert attempts == 3
+    assert len(errors) == 2
+    assert statuses[0]["kind"] == "cook_session_status"
+    assert session.last_recovery_seconds == 9.0
+    assert session.max_recovery_seconds == 9.0
+    assert monotonic.call_count == 2
 
 
 @pytest.mark.asyncio

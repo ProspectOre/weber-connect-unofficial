@@ -2,10 +2,9 @@
   "title": "Weber Connect Unofficial",
   "config": {
     "progress": {
-      "preparing_companion": "**Step 1 of 3 \u00b7 Preparing your connection.** This usually takes a few seconds. No action is needed yet.",
-      "approve_hub": "**Step 2 of 3 \u00b7 Connecting and pairing with {name}.** Using {path}. An active proxy may take up to 90 seconds to establish the Bluetooth connection; reaching this screen does not mean an approval request has reached the device.\n\nWhen the device requests approval:\n\n**Standalone hub:** when all four probe lights turn on, press down once on the top/display within 60 seconds.\n\n**Grill controller:** use its dial or confirmation control when prompted.\n\nIf no prompt appears, wait for the result. The error screen offers a support report with the connection milestones.",
-      "finishing_setup": "**Step 3 of 3 \u00b7 Connecting to Weber Cloud \u00b7 {remaining} remaining.** Physical approval is complete. No further button press is needed; this screen advances automatically.",
-      "reading_probe": "Connecting to the portable probe and checking a local temperature reading. Keep it awake and close the Weber app while Home Assistant connects."
+      "preparing_companion": "**Step 1 of 3 · Preparing your connection.** This usually takes a few seconds. No action is needed yet.",
+      "approve_hub": "**Step 2 of 3 · Connecting and pairing with {name}.** Using {path}. An active proxy may take up to 90 seconds to establish the Bluetooth connection; reaching this screen does not mean an approval request has reached the device.\n\nWhen the device requests approval:\n\n**Standalone hub:** when all four probe lights turn on, press down once on the top/display within 60 seconds.\n\n**Grill controller:** use its dial or confirmation control when prompted.\n\nIf no prompt appears, wait for the result. The error screen offers a support report with the connection milestones.",
+      "finishing_setup": "**Step 3 of 3 · Connecting to Weber Cloud · {remaining} remaining.** Physical approval is complete. No further button press is needed; this screen advances automatically."
     },
     "step": {
       "user": {
@@ -38,8 +37,8 @@
         }
       },
       "protocol_qualification": {
-        "title": "This Weber controller needs protocol validation",
-        "description": "**{reason}**\n\nHome Assistant stopped before registering a cloud companion or sending a pairing command. This device remains unchanged. The support report contains only structural protocol classification; a sanitized advertisement and greeting result are needed to qualify this controller.",
+        "title": "This Weber device needs compatibility validation",
+        "description": "**{reason}**\n\nHome Assistant stopped before registering a cloud companion or sending a pairing command. Use **Get help / report a problem** to share the compatibility report.",
         "menu_options": {
           "choose_hub": "Choose another hub",
           "start_over": "Start over",
@@ -59,7 +58,7 @@
         "title": "The hub is paired, but Weber Cloud has not linked it",
         "description": "Local pairing succeeded. Home Assistant reached Weber Cloud and checked automatically for up to five minutes, but the new connection was not given access to this hub. You do not need to approve the hub again. Turn off phone or tablet Bluetooth and confirm the hub is online in the Weber app; if it is offline there too, restore the hub's Wi-Fi before checking again.",
         "menu_options": {
-          "retry_cloud": "Check Weber Cloud again \u2014 up to 5 minutes",
+          "retry_cloud": "Check Weber Cloud again — up to 5 minutes",
           "start_over": "Start over",
           "support": "Get help / report a problem"
         }
@@ -68,7 +67,7 @@
         "title": "Weber Cloud could not be reached",
         "description": "Local pairing succeeded, but Home Assistant could not complete the online check. The hub does not need approval again. Confirm Home Assistant has internet access. With phone or tablet Bluetooth off, also confirm the hub is online in the Weber app; if it is offline there too, restore the hub's Wi-Fi. Then try again.",
         "menu_options": {
-          "retry_cloud": "Try the online check again \u2014 up to 5 minutes",
+          "retry_cloud": "Try the online check again — up to 5 minutes",
           "start_over": "Start over",
           "support": "Get help / report a problem"
         }
@@ -90,22 +89,6 @@
         "description": "[Open a prefilled GitHub report]({report_url}), describe what happened, then submit it on GitHub. To reply to an existing issue, copy the report below into your comment.\n\nThis report contains versions, connection checks, and recent diagnostic events. It excludes names, addresses, credentials, QR codes, packet contents, and raw logs. Nothing is submitted automatically.\n\n```json\n{report}\n```\n\nSelect **Return to error** to return to the error and keep your retry options.",
         "menu_options": {
           "return_to_error": "Return to error"
-        }
-      },
-      "portable_model": {
-        "title": "Choose your portable probe",
-        "description": "Select the probe type printed on your device. This chooses the matching ambient or wireless temperature interpretation. Readings use the local Bluetooth connection; no Weber account is required.",
-        "data": {
-          "model": "Probe type"
-        }
-      },
-      "portable_failed": {
-        "title": "The portable probe did not provide a reading",
-        "description": "Wake the probe, close the Weber app, and keep it near an active Home Assistant Bluetooth adapter or proxy. This setup reads the local temperature characteristic; it does not create an Android bond or a Weber cloud association.",
-        "menu_options": {
-          "retry_portable": "Try the local reading again",
-          "choose_hub": "Choose another device",
-          "support": "Get help / report a problem"
         }
       }
     },
@@ -147,7 +130,7 @@
         "step": {
           "confirm": {
             "title": "Pair {name} again",
-            "description": "Weber rejected the private connection for {name}. Continue to start pairing recovery, then open the integration\u2019s reauthentication prompt in Devices & services. Approve the replacement connection on the same physical hub. Your existing device, entity IDs, names, dashboards, and automations will be kept.\n\n[Report this problem]({report_url}). The report includes diagnostic events and versions, without credentials or raw logs. Review it on GitHub before submitting."
+            "description": "Weber rejected the private connection for {name}. Continue to start pairing recovery, then open the integration’s reauthentication prompt in Devices & services. Approve the replacement connection on the same physical hub. Your existing device, entity IDs, names, dashboards, and automations will be kept.\n\n[Report this problem]({report_url}). The report includes diagnostic events and versions, without credentials or raw logs. Review it on GitHub before submitting."
           }
         }
       }
@@ -278,7 +261,7 @@
         "name": "Probe {number}"
       },
       "probe_temperature_named": {
-        "name": "{nickname} \u00b7 Probe {number}"
+        "name": "{nickname} · Probe {number}"
       },
       "reading_status": {
         "name": "Reading status",
@@ -286,7 +269,7 @@
           "receiving": "Receiving updates",
           "reading": "Reading available",
           "waiting": "Waiting for first update",
-          "reconnecting": "Reconnecting \u2014 readings may be old",
+          "reconnecting": "Reconnecting — readings may be old",
           "connection_lost": "Connection lost",
           "no_reading": "No probe reading reported",
           "device_off": "Hub reports powered off"
@@ -298,7 +281,7 @@
           "receiving": "Receiving updates",
           "reading": "Reading available",
           "waiting": "Waiting for first update",
-          "reconnecting": "Reconnecting \u2014 readings may be old",
+          "reconnecting": "Reconnecting — readings may be old",
           "connection_lost": "Connection lost",
           "no_reading": "No probe reading reported",
           "device_off": "Hub reports powered off"

@@ -2,17 +2,24 @@
   "candidate": "3.2.2rc4",
   "release_channel": "prerelease",
   "evidence_date": "2026-10-16",
-  "runtime_sha256": "7e57ce228287d3a592ed72e36d213cac1f1429ec7be0ef3ef657d7481e7f8930",
+  "runtime_sha256": "8dcf6cf2a56be12accd5ce984c7c5ca5bbd6eb33a60ce0109ea6fa2b373e04a2",
   "identifiers": "redacted",
   "status": "pending_hardware_validation",
   "verified": {},
   "pending": [
-    "Standalone Hub exact-candidate pairing, cloud association, live readings, app coexistence, recovery, entity identity and endurance",
-    "SmokeFire EX4 Gen2 exact-candidate cook, app coexistence, recovery and entity identity",
-    "Genesis manufacturer and framing evidence, physical approval, cloud association and live readings",
-    "SiLabs physical pairing, private identity persistence, reconnect and capability interoperability",
-    "Portable probe GATT link authorization, reading mapping and hardware acceptance",
-    "Performer exact-candidate pairing, recovery and endurance"
+    "Original Connect Hub exact-candidate pairing, cloud association, live readings, app coexistence, restart, stable entities and endurance",
+    "SmokeFire EX4 Gen2 exact-candidate manual cook, fuel reports, recovery gaps and stable entities",
+    "Genesis issue 65 actual transport evidence, physical approval, cloud association and live readings",
+    "EP-435-style thermometer issue 59 SKU4553721 firmware1.4.4_188 exact controller evidence and pairing results",
+    "SiLabs appliances physical pairing, independent cloud association, private key persistence and capability interoperability",
+    "Searwood and Smoque per-controller qualification and cook acceptance",
+    "Spirit and Summit Smart per-generation qualification and read-only telemetry acceptance",
+    "Performer Smart and Kettle Smart Ring exact-generation pairing, recovery and endurance",
+    "Lumin Smart controller evidence and telemetry acceptance",
+    "Smart Hub Display and Booster and wireless charging boosters actual transport and cloud association",
+    "Cloud-linked wired/wireless probe slot numbering and fresh telemetry on each supported controller",
+    "Direct portable probe authentication and hardware acceptance; live setup remains blocked"
   ],
-  "instructions": "docs/validation/3.2.2rc4-readiness.md"
+  "instructions": "docs/validation/3.2.2rc4-readiness.md",
+  "product_matrix": "docs/product-compatibility.md"
 }

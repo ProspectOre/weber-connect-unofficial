@@ -13,7 +13,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.weber_connect import pairing_storage
+from custom_components.weber_connect import async_remove_entry, pairing_storage
 from custom_components.weber_connect.bluetooth import WeberBluetoothError
 from custom_components.weber_connect.config_flow import WeberConnectConfigFlow
 from custom_components.weber_connect.const import (
@@ -113,7 +113,7 @@ def silabs_evidence() -> TransportEvidence:
 def portable_evidence(model_id: int | None = None) -> TransportEvidence:
     return TransportEvidence(
         TransportFamily.PORTABLE,
-        Qualification.READING_READY,
+        Qualification.NEEDS_AUTHENTICATION,
         company_id=SILABS_COMPANY_ID,
         schema=1,
         model_id=model_id,
@@ -296,9 +296,9 @@ async def test_silabs_pairing_error_stops_before_cloud_association(hass: Any, ro
 
 
 @pytest.mark.asyncio
-async def test_silabs_flow_cancellation_cancels_pair_task_without_saving(hass: Any) -> None:
-    discovery = silabs_discovery()
-    FakeCloudClient.calls = []
+async def test_flow_removal_cancels_pair_task_without_saving(hass: Any) -> None:
+    from custom_components.weber_connect.weber_cloud import CloudConfig
+
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
@@ -310,10 +310,18 @@ async def test_silabs_flow_cancellation_cancels_pair_task_without_saving(hass: A
             cancelled.set()
             raise
 
+    flow = WeberConnectConfigFlow()
+    flow.hass = hass
+    flow.context = {"source": config_entries.SOURCE_USER}
+    flow._address = ADDRESS
+    flow._transport_evidence = silabs_evidence()
+    flow._identity = CompanionIdentity(COMPANION_ID, "00" * 64)
+    flow._cloud_config = CloudConfig.generate(COMPANION_ID)
+    flow._silabs_signing_keys = SiLabsSigningKeys.generate()
     with (
         patch(
-            "custom_components.weber_connect.config_flow.async_qualify_gatt",
-            new=AsyncMock(return_value=silabs_evidence()),
+            "custom_components.weber_connect.config_flow.bluetooth_summary",
+            return_value={"available": True},
         ),
         patch(
             "custom_components.weber_connect.config_flow.async_pair_silabs",
@@ -323,77 +331,66 @@ async def test_silabs_flow_cancellation_cancels_pair_task_without_saving(hass: A
             "custom_components.weber_connect.config_flow.PairingKeyStore.async_save",
             new=AsyncMock(),
         ) as save,
-        patch(
-            "custom_components.weber_connect.config_flow.bluetooth_summary",
-            return_value={"available": True},
-        ),
-        patch("custom_components.weber_connect.config_flow.WeberCloudClient", FakeCloudClient),
     ):
-        result = await prepare_flow(hass, "manual", discovery)
-        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        await hass.async_block_till_done()
-        result = await hass.config_entries.flow.async_configure(result["flow_id"])
-        assert result["type"] is FlowResultType.SHOW_PROGRESS
+        flow._start_pairing()
         await asyncio.wait_for(started.wait(), timeout=1.0)
-        await hass.config_entries.flow.async_abort(result["flow_id"])
-        await hass.async_block_till_done()
+        flow.async_remove()
+        await asyncio.wait_for(cancelled.wait(), timeout=1.0)
 
     assert cancelled.is_set()
     save.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_portable_model_selection_progress_retry_and_no_cloud(hass: Any) -> None:
+async def test_silabs_pairing_without_signing_keys_fails_before_ble_pairing(hass: Any) -> None:
+    from custom_components.weber_connect.weber_cloud import CloudConfig
+
+    flow = WeberConnectConfigFlow()
+    flow.hass = hass
+    flow.context = {"source": config_entries.SOURCE_USER}
+    flow._address = ADDRESS
+    flow._transport_evidence = silabs_evidence()
+    flow._identity = CompanionIdentity(COMPANION_ID, "00" * 64)
+    flow._cloud_config = CloudConfig.generate(COMPANION_ID)
+    with (
+        patch("custom_components.weber_connect.config_flow.bluetooth_summary"),
+        patch("custom_components.weber_connect.config_flow.async_pair_silabs") as pair,
+        pytest.raises(WeberBluetoothError, match="signing identity is missing"),
+    ):
+        flow._start_pairing()
+
+    pair.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_portable_discovery_stops_before_cloud_or_bluetooth_work(hass: Any) -> None:
     discovery = silabs_discovery()
-    reading = {"sensor_count": 2, "probes": [{"probe_number": 1, "probe_temp_c": 22.5}]}
-    read_portable = AsyncMock(
-        side_effect=[WeberBluetoothError("first synthetic read failed"), reading]
-    )
     cloud_factory = Mock(side_effect=AssertionError("portable setup contacted Weber Cloud"))
+    generate_identity = Mock(side_effect=AssertionError("portable setup created a cloud identity"))
+    pair_saber = AsyncMock(side_effect=AssertionError("portable setup used Saber pairing"))
+    pair_silabs = AsyncMock(side_effect=AssertionError("portable setup used appliance pairing"))
     with (
         patch(
             "custom_components.weber_connect.config_flow.async_qualify_gatt",
             new=AsyncMock(return_value=portable_evidence()),
         ),
-        patch(
-            "custom_components.weber_connect.config_flow.async_read_portable",
-            new=read_portable,
-        ),
         patch("custom_components.weber_connect.config_flow.WeberCloudClient", cloud_factory),
-        patch(
-            "custom_components.weber_connect.config_flow.async_pair",
-            new=AsyncMock(side_effect=AssertionError("portable setup used Saber pairing")),
-        ),
+        patch("custom_components.weber_connect.config_flow.generate_identity", generate_identity),
+        patch("custom_components.weber_connect.config_flow.async_pair", new=pair_saber),
         patch(
             "custom_components.weber_connect.config_flow.async_pair_silabs",
-            new=AsyncMock(side_effect=AssertionError("portable setup used appliance pairing")),
-        ),
-        patch(
-            "custom_components.weber_connect.config_flow.generate_identity",
-            side_effect=AssertionError("portable setup created a cloud identity"),
+            new=pair_silabs,
         ),
     ):
         result = await prepare_flow(hass, "manual", discovery)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["step_id"] == "portable_model"
-        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"model": "17"})
-        assert result["type"] is FlowResultType.SHOW_PROGRESS
-        assert result["step_id"] == "portable"
-        result = await finish_progress(hass, result)
         assert result["type"] is FlowResultType.MENU
-        assert result["step_id"] == "portable_failed"
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"next_step_id": "retry_portable"}
-        )
-        assert result["type"] is FlowResultType.SHOW_PROGRESS
-        result = await finish_progress(hass, result)
+        assert result["step_id"] == "protocol_qualification"
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_TRANSPORT_FAMILY] == TransportFamily.PORTABLE.value
-    assert result["data"]["model_id"] == 17
-    assert result["data"][CONF_CAPABILITIES] == {"sensor_count": 2}
-    assert read_portable.await_count == 2
     cloud_factory.assert_not_called()
+    generate_identity.assert_not_called()
+    pair_saber.assert_not_awaited()
+    pair_silabs.assert_not_awaited()
 
 
 def _complete_flow(hass: Any, *, source: str, entry_data: dict[str, Any]) -> WeberConnectConfigFlow:
@@ -458,6 +455,125 @@ async def test_reauth_wrong_hub_does_not_save_and_replacement_removes_old_key_re
     assert replacement._entry_data[CONF_PAIRING_KEY_REF] == COMPANION_ID
     assert old_store_key not in MemoryStore.records
     assert "weber_connect.pairing." + COMPANION_ID in MemoryStore.records
+
+
+@pytest.mark.parametrize(
+    "source", [config_entries.SOURCE_REAUTH, config_entries.SOURCE_RECONFIGURE]
+)
+@pytest.mark.asyncio
+async def test_repair_key_save_failure_preserves_existing_entry_and_key_reference(
+    hass: Any, source: str
+) -> None:
+    old_entry = SimpleNamespace(
+        entry_id="entry-id",
+        data={
+            CONF_ADDRESS: ADDRESS,
+            CONF_APPLIANCE_ID: APPLIANCE_ID,
+            CONF_PAIRING_KEY_REF: OLD_KEY_REF,
+        },
+    )
+    old_store_key = "weber_connect.pairing." + OLD_KEY_REF
+    MemoryStore.records[old_store_key] = {"old": "credentials"}
+    flow = _complete_flow(
+        hass,
+        source=source,
+        entry_data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: APPLIANCE_ID},
+    )
+    flow._get_repair_entry = Mock(return_value=old_entry)  # type: ignore[method-assign]
+    flow.async_update_reload_and_abort = Mock(  # type: ignore[method-assign]
+        return_value={"type": "updated"}
+    )
+    with (
+        patch(
+            "custom_components.weber_connect.config_flow.PairingKeyStore.async_save",
+            new=AsyncMock(side_effect=OSError("synthetic private-store failure")),
+        ) as save,
+        patch(
+            "custom_components.weber_connect.config_flow.bluetooth_summary",
+            return_value={"available": False},
+        ),
+    ):
+        result = await flow.async_step_complete()
+
+    assert result["type"] is FlowResultType.MENU
+    assert result["step_id"] == "setup_failed"
+    assert old_entry.data[CONF_PAIRING_KEY_REF] == OLD_KEY_REF
+    assert CONF_PAIRING_KEY_REF not in flow._entry_data
+    assert MemoryStore.records == {old_store_key: {"old": "credentials"}}
+    flow.async_update_reload_and_abort.assert_not_called()
+    save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retired_key_removal_failure_keeps_successful_replacement(hass: Any) -> None:
+    old_entry = SimpleNamespace(
+        entry_id="entry-id",
+        data={
+            CONF_ADDRESS: ADDRESS,
+            CONF_APPLIANCE_ID: APPLIANCE_ID,
+            CONF_PAIRING_KEY_REF: OLD_KEY_REF,
+        },
+    )
+    old_store_key = "weber_connect.pairing." + OLD_KEY_REF
+    new_store_key = "weber_connect.pairing." + COMPANION_ID
+    MemoryStore.records[old_store_key] = {"old": "credentials"}
+    flow = _complete_flow(
+        hass,
+        source=config_entries.SOURCE_REAUTH,
+        entry_data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: APPLIANCE_ID},
+    )
+    flow._get_repair_entry = Mock(return_value=old_entry)  # type: ignore[method-assign]
+    flow.async_update_reload_and_abort = Mock(  # type: ignore[method-assign]
+        return_value={"type": "updated"}
+    )
+    with patch(
+        "custom_components.weber_connect.config_flow.PairingKeyStore.async_remove",
+        new=AsyncMock(side_effect=OSError("synthetic retired-key removal failure")),
+    ) as remove:
+        result = await flow.async_step_complete()
+
+    assert result == {"type": "updated"}
+    flow.async_update_reload_and_abort.assert_called_once()
+    assert flow._entry_data[CONF_PAIRING_KEY_REF] == COMPANION_ID
+    assert old_entry.data[CONF_PAIRING_KEY_REF] == OLD_KEY_REF
+    assert old_store_key in MemoryStore.records
+    assert new_store_key in MemoryStore.records
+    remove.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pairing_key_save_returns_false_without_entry_data_or_store_write(hass: Any) -> None:
+    flow = _complete_flow(
+        hass,
+        source=config_entries.SOURCE_USER,
+        entry_data={CONF_ADDRESS: ADDRESS, CONF_APPLIANCE_ID: APPLIANCE_ID},
+    )
+    flow._entry_data = None
+
+    assert await flow._async_save_pairing_keys() is False
+    assert MemoryStore.constructions == []
+    assert MemoryStore.records == {}
+
+
+@pytest.mark.parametrize(
+    ("reference", "expected_removed"),
+    [(COMPANION_ID, True), (None, False)],
+)
+@pytest.mark.asyncio
+async def test_entry_removal_deletes_only_its_owned_pairing_record(
+    hass: Any, reference: str | None, expected_removed: bool
+) -> None:
+    store_key = "weber_connect.pairing." + COMPANION_ID
+    MemoryStore.records[store_key] = {"credentials": "synthetic"}
+    entry_data: dict[str, Any] = {CONF_ADDRESS: ADDRESS}
+    if reference is not None:
+        entry_data[CONF_PAIRING_KEY_REF] = reference
+    entry = SimpleNamespace(data=entry_data)
+
+    await async_remove_entry(hass, entry)
+
+    assert (store_key not in MemoryStore.records) is expected_removed
+    assert len(MemoryStore.constructions) == (1 if expected_removed else 0)
 
 
 @pytest.mark.asyncio

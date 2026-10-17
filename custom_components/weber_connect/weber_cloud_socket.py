@@ -16,7 +16,11 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from .const import CLOUD_OFFLINE_RETAINED_KEYS
-from .saber_frames import parse_appliance_status_payload, parse_cook_session_status_payload
+from .saber_frames import (
+    parse_appliance_status_payload,
+    parse_cook_session_status_payload,
+    parse_tlv,
+)
 from .weber_cloud import WeberCloudAuthError
 
 LOGGER = logging.getLogger(__name__)
@@ -133,6 +137,13 @@ class WeberCloudSession:
         self.socket_connections = 0
         self.fast_recoveries = 0
         self._appliance_status: dict[str, Any] = {}
+        self.fuel_level_reports = 0
+        self.fuel_level_unknown_reports = 0
+        self.fuel_level_changes = 0
+        self._last_reported_fuel_level: str | None = None
+        self._recovery_started_at: float | None = None
+        self.last_recovery_seconds: float | None = None
+        self.max_recovery_seconds: float | None = None
 
     def _next_sequence(self) -> int:
         value = self._sequence
@@ -261,6 +272,18 @@ class WeberCloudSession:
                     raise WeberCloudSocketError("The hub rejected the cloud request.")
                 if message.type_value == 0x83:
                     appliance_status = parse_appliance_status_payload(message.payload)
+                    if 20 in parse_tlv(message.payload):
+                        self.fuel_level_reports += 1
+                        fuel_level = appliance_status.get("fuel_level")
+                        if fuel_level == "unknown":
+                            self.fuel_level_unknown_reports += 1
+                        if fuel_level is not None:
+                            if (
+                                self._last_reported_fuel_level is not None
+                                and fuel_level != self._last_reported_fuel_level
+                            ):
+                                self.fuel_level_changes += 1
+                            self._last_reported_fuel_level = fuel_level
                     # Weber can send partial appliance-status frames between full
                     # snapshots. Missing TLVs parse as None, but they mean "not
                     # included in this frame", not that every omitted entity has
@@ -276,6 +299,13 @@ class WeberCloudSession:
                     continue
                 if message.type_value == 0x80:
                     cook_status = parse_cook_session_status_payload(message.payload)
+                    if self._recovery_started_at is not None:
+                        recovery_seconds = max(0.0, time.monotonic() - self._recovery_started_at)
+                        self.last_recovery_seconds = recovery_seconds
+                        self.max_recovery_seconds = max(
+                            self.max_recovery_seconds or 0.0, recovery_seconds
+                        )
+                        self._recovery_started_at = None
                     return {
                         **cook_status,
                         **{
@@ -347,6 +377,8 @@ class WeberCloudSession:
                     raise
                 except Exception as exc:
                     await self._async_close_connection()
+                    if self._recovery_started_at is None:
+                        self._recovery_started_at = time.monotonic()
                     self.error_kind = (
                         "credentials"
                         if isinstance(exc, WeberCloudCredentialError)

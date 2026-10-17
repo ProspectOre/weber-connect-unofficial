@@ -91,7 +91,7 @@ class SiLabsSigningKeys:
 
 
 class SiLabsCipher:
-    """AES-256-GCM session derived from the two authenticated pairing keys."""
+    """AES-256-GCM session derived from the two exchanged pairing keys."""
 
     def __init__(self, own_keys: SiLabsSigningKeys, peer_public_key: bytes) -> None:
         shared = own_keys.private_key.exchange(ec.ECDH(), _load_public_key(peer_public_key))
@@ -115,6 +115,9 @@ class SiLabsExchange:
 
     The caller owns all transport deadlines and cancellation. No device write
     occurs inside this class, and no credentials or packet bytes are logged.
+    The plaintext confirmation supplies a key, not a manufacturer identity.
+    GCM proves possession of that key; the setup caller must separately require
+    physical confirmation and the fresh companion's exact cloud association.
     """
 
     def __init__(self, companion_id: bytes, display_name: str, keys: SiLabsSigningKeys) -> None:

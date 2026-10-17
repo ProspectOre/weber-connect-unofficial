@@ -26,7 +26,7 @@ ruff check custom_components tests_native scripts
 ruff format --check custom_components tests_native scripts
 mypy --python-version 3.14 --strict --ignore-missing-imports custom_components/weber_connect
 bandit -q -r custom_components/weber_connect scripts
-pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-report=term-missing --cov-fail-under=95
+pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-report=term-missing --cov-fail-under=100
 python scripts/validate_release.py
 pip-audit --requirement requirements-runtime.txt --no-deps --disable-pip
 ```

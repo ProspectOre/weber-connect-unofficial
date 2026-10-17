@@ -304,6 +304,16 @@ async def test_real_bluetooth_entry_point_uses_properties_and_disconnects(
     assert len(client.peer.writes) == 2
 
 
+async def test_real_bluetooth_pairing_succeeds_without_progress_callback() -> None:
+    keys = SiLabsSigningKeys.generate()
+    client = GattClient(Peer())
+    identity = CompanionIdentity(COMPANION_ID.hex(), keys.public_key.hex())
+    with patch.object(ble, "_connect", new=AsyncMock(return_value=client)):
+        result = await ble.async_pair_silabs(object(), "address", identity, keys)
+    assert result.capabilities["probe_count"] == 4
+    client.disconnect.assert_awaited_once()
+
+
 async def test_channel_rejects_bad_properties_and_can_fall_back_to_reads() -> None:
     client = GattClient(Peer())
     channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
@@ -340,6 +350,18 @@ async def test_channel_drops_duplicate_frames_and_bounds_queue() -> None:
         client.callback(None, bytearray(b"b"))
     client.callback(None, bytearray(b"c"))
     assert await channel.async_receive() == b"c"
+
+
+async def test_notify_only_channel_waits_for_first_notification() -> None:
+    client = GattClient(Peer(), {"notify"})
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
+    await channel.async_open()
+    receive = asyncio.create_task(channel.async_receive())
+    await asyncio.sleep(0)
+    assert not receive.done()
+    assert client.callback is not None
+    client.callback(None, bytearray(b"arrived later"))
+    assert await asyncio.wait_for(receive, timeout=1) == b"arrived later"
 
 
 @pytest.mark.parametrize("operation", ["pair", "resume"])
