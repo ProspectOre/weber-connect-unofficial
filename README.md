@@ -14,6 +14,13 @@ Stable 3.2.2 is being prepared separately as a small hotfix from stable 3.2.1.
 Use the latest stable HACS release for the established feature set; enable
 prereleases only when participating in the hardware trials below.
 
+## Requirements
+
+Home Assistant 2026.7.0 or newer, HACS, internet access and a hub already online
+through Wi-Fi/Weber Cloud are required. Setup needs a connectable HA Bluetooth
+adapter or an in-range active ESPHome proxy with `bluetooth_proxy.active` enabled
+and a free connection slot. No proxy credentials are entered in this integration.
+
 ## Install
 
 Install Weber Connect Unofficial through HACS:
@@ -86,8 +93,16 @@ telemetry remains disabled until peer authentication is established. Longer
 SmokeFire cooking-time cloud gaps remain unresolved.
 
 RC6's targeted app-closed telemetry and automatic recovery trial is historical
-evidence, described in its [published release](https://github.com/ProspectOre/weber-connect-unofficial/releases/tag/v3.2.2rc6).
+evidence, recorded in its [live receipt](docs/validation/3.2.2rc6-live-observation.json)
+and [published release](https://github.com/ProspectOre/weber-connect-unofficial/releases/tag/v3.2.2rc6).
 It does not establish the new candidate's full physical acceptance.
 
 Detailed behavior, Activity filtering and troubleshooting are preserved in the
 [RC6 user guide](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.2rc6/README.md#everyday-behavior).
+
+## Privacy and removal
+
+Generated private companion credentials stay in the HA config entry. Support
+reports use an allowlist and are shared only when you open and submit them.
+Remove the integration entry under Devices & services, then remove it in HACS
+and restart HA. This removes its entities; it does not reset the Weber app.

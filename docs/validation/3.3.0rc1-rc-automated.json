@@ -4,7 +4,6 @@
   "evidence_date": "2026-10-19",
   "runtime_sha256": "f8624c6681b15fe826fd4e61763343d7a449a5be0bbe5f54f771feb3d94703b0",
   "publication_status": "unpublished",
-  "supersedes_runtime_sha256": "f8624c6681b15fe826fd4e61763343d7a449a5be0bbe5f54f771feb3d94703b0",
   "change": "Continue the controller-family beta under the 3.3 version line; runtime differs from RC6 only by manifest version.",
   "tests": {
     "status": "passed",
@@ -50,5 +49,6 @@
     "ruff_format": "passed",
     "strict_mypy": "passed",
     "support_registry_and_render": "passed"
-  }
+  },
+  "unchanged_runtime_from_release": "3.2.2rc6"
 }

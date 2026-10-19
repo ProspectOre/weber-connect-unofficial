@@ -131,6 +131,30 @@
   ],
   "observations": [
     {
+      "id": "hub-3-2-2rc6-maintainer-targeted",
+      "product_family": "connect_smart_grilling_hub",
+      "exact_model": "Weber Connect controller (diagnostic label; SKU not independently recorded)",
+      "firmware": "2.0.3_7398",
+      "integration_release": "3.2.2rc6",
+      "verification_kind": "maintainer_verified",
+      "passed_stages": [
+        "restart_recovery",
+        "stable_entity_ids",
+        "probe_slot_mapping"
+      ],
+      "evidence": [
+        {
+          "kind": "repository_path",
+          "value": "docs/validation/3.2.2rc6-live-observation.json"
+        },
+        {
+          "kind": "url",
+          "value": "https://github.com/ProspectOre/weber-connect-unofficial/releases/download/v3.2.2rc6/rc6-live-proof.json"
+        }
+      ],
+      "notes": "Targeted app-closed readings and automatic recovery after owner-controlled power cycling and a move from Probe 4 to Probe 2; 18 entity identities preserved. Eleven post-recovery minutes had no new failures. No independently timed power-on latency, actual token-expiry trial, on-wire capture, full stable matrix or other-family qualification."
+    },
+    {
       "id": "hub-3-0-0-rc-maintainer",
       "product_family": "connect_smart_grilling_hub",
       "exact_model": "Weber Connect Hub",
@@ -253,8 +277,8 @@
       "summary": "Runtime evidence is bound to the exact candidate fingerprint and must not be carried across candidates.",
       "status": "instrumented",
       "product_families": ["connect_smart_grilling_hub", "smokefire", "genesis_smart", "portable_probes"],
-      "sources": ["docs/validation/3.2.2rc6-readiness.md", "docs/validation/3.2.2rc6-rc-physical.json"],
-      "disposition": "RC4 community observations remain bound to RC4. RC6 physical receipts are pending with no inherited verified hardware stages."
+      "sources": ["docs/validation/3.3.0rc1-readiness.md", "docs/validation/3.3.0rc1-rc-physical.json", "docs/validation/3.2.2rc6-live-observation.json"],
+      "disposition": "Historical RC4 and targeted RC6 observations remain bound to their releases. The 3.3.0rc1 physical receipt is pending with no inherited verified hardware stages."
     },
     {
       "id": "hacs-read-only-cloud-boundary",
@@ -266,11 +290,12 @@
         "genesis_smart"
       ],
       "sources": [
-        "docs/validation/3.2.2rc6-readiness.md",
+        "docs/validation/3.3.0rc1-readiness.md",
+        "docs/validation/3.2.2rc6-live-observation.json",
         "custom_components/weber_connect/weber_cloud_socket.py",
         "tests_native/test_cloud_socket.py"
       ],
-      "disposition": "RC6 removes both timestamp settings frames and the unused program-details request. The session rejects all commands except empty-payload status and capability reads before connection I/O. Startup, token rotation and failure/reconnect paths are covered by synthetic tests; exact-runtime live telemetry proof is separate."
+      "disposition": "3.3.0rc1 preserves RC6’s removal of both timestamp settings frames and the unused program-details request. The session rejects all commands except empty-payload status and capability reads before connection I/O. Startup, token rotation and failure/reconnect paths are covered by synthetic tests; exact-runtime live telemetry proof is separate."
     }
   ],
   "product_sources": ["https://contact-emea.weber.com/hc/en-us/articles/18254325420573-Security-Updates-Support-Policy", "https://www.weber.com/US/en/pr-release-NPD26.html"]
