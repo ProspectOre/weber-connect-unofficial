@@ -12,7 +12,7 @@ The 3.3.0rc1 beta continues the controller-family work from 3.2.2rc6. It keeps
 cloud session requests limited to empty-payload status and capability reads.
 Stable 3.2.2 is being prepared separately as a small hotfix from stable 3.2.1.
 Use the latest stable HACS release for the established feature set; enable
-prereleases only when participating in the hardware trials below.
+prereleases only when participating in the [hardware trials](docs/support/hardware-trials.md).
 
 ## Requirements
 
