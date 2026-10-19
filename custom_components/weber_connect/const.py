@@ -15,7 +15,7 @@ CLOUD_OFFLINE_RETAINED_KEYS: Final = (
     "is_charging",
     "wifi_signal_strength",
     "wifi_connection_status",
-    "cloud_connection_status",
+    "last_reported_cloud_connection_status",
     "device_state",
 )
 

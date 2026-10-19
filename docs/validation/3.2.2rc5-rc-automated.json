@@ -1,0 +1,67 @@
+{
+  "candidate": "3.2.2rc5",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-18",
+  "runtime_sha256": "87bb5491be6acf4ecb51a86c904f4f2d828326452c9f6ecd5aa172153e9cdb99",
+  "publication_status": "unpublished",
+  "tests": {
+    "status": "passed",
+    "passed": 604,
+    "subtests_passed": 5,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100,
+    "required_coverage_percent": 100,
+    "scope": "Complete native suite in independent minimum/current exact HA/plugin environments; synthetic and loopback fixtures, no physical hardware."
+  },
+  "hosted_gates": {
+    "ci": "pending_not_pushed",
+    "hacs": "pending_not_pushed",
+    "hassfest": "pending_not_pushed",
+    "regular_review": "pending_not_pushed"
+  },
+  "python": "3.14.8",
+  "platform": "macOS arm64",
+  "regression_comparison": {
+    "source": "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6257147619",
+    "cases": 11,
+    "unchanged_rc4_failures": 11,
+    "rc5_passed": 11,
+    "evidence_kind": "synthetic_reproduction_from_report"
+  },
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "scope": "full_native_suite",
+      "passed": 604,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "scope": "full_native_suite",
+      "passed": 604,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.2",
+      "scope": "integration_imports_and_pure_protocol_smoke_only",
+      "integration_modules_imported": 24,
+      "passed": 44,
+      "full_suite_verified": false
+    }
+  ],
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "runtime_dependency_audit": "passed_no_known_vulnerabilities",
+    "actionlint": "passed",
+    "support_registry_and_render": "passed",
+    "workspace_documentation": "blocked_by_existing_unrelated_oversized_markdown",
+    "runtime_static_review": "passed_scoped_runtime_and_tests"
+  }
+}

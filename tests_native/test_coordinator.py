@@ -172,7 +172,8 @@ def test_three_cloud_failures_retain_only_slow_changing_hub_state(hass: object) 
     assert coordinator.data["is_charging"] is True
     assert coordinator.data["wifi_signal_strength"] == -61
     assert coordinator.data["wifi_connection_status"] == "connected"
-    assert coordinator.data["cloud_connection_status"] == "connected"
+    assert coordinator.data["cloud_connection_status"] is None
+    assert coordinator.data["last_reported_cloud_connection_status"] == "connected"
     assert coordinator.data["device_state"] == "idle"
     assert coordinator.data["grill_temperature"] is None
     assert coordinator.data["probe_4_temperature"] is None

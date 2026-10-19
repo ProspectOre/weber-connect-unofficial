@@ -1,0 +1,25 @@
+{
+  "candidate": "3.2.2rc5",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-18",
+  "runtime_sha256": "87bb5491be6acf4ecb51a86c904f4f2d828326452c9f6ecd5aa172153e9cdb99",
+  "identifiers": "redacted",
+  "status": "pending_hardware_validation",
+  "verified": {},
+  "pending": [
+    "Original Connect Hub exact-candidate pairing, cloud association, live readings, app coexistence, restart, stable entities and endurance",
+    "SmokeFire EX4 Gen2 exact-RC5 fuel freshness, stale cloud status, cook/endurance, recovery gaps and stable entities",
+    "Genesis issue 65 actual transport evidence, physical approval, cloud association and live readings",
+    "EP-435-style thermometer issue 59 SKU4553721 firmware1.4.4_188 exact controller evidence and pairing results",
+    "SiLabs appliances physical pairing, independent cloud association, private key persistence and capability interoperability",
+    "Searwood and Smoque per-controller qualification and cook acceptance",
+    "Spirit and Summit Smart per-generation qualification and read-only telemetry acceptance",
+    "Performer Smart and Kettle Smart Ring exact-generation pairing, recovery and endurance",
+    "Lumin Smart controller evidence and telemetry acceptance",
+    "Smart Hub Display and Booster and wireless charging boosters actual transport and cloud association",
+    "Cloud-linked wired/wireless probe slot numbering and fresh telemetry on each supported controller",
+    "Direct portable probe authentication and hardware acceptance; live setup remains blocked"
+  ],
+  "instructions": "docs/validation/3.2.2rc5-readiness.md",
+  "product_matrix": "docs/product-compatibility.md"
+}

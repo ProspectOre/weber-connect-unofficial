@@ -31,6 +31,8 @@ TRANSPORT_HEADER_LENGTH = 6
 MESSAGE_VERSION = 10
 STATUS_INTERVAL = 10.0
 STATUS_TIMEOUT = 12.0
+FUEL_STATUS_MAX_AGE = 60.0
+FUEL_STATUS_TAGS = {"fuel_level": 20, "fuel_percent": 27}
 RECONNECT_DELAYS = (1.0, 2.0, 5.0, 10.0, 30.0)
 
 StatusCallback = Callable[[dict[str, Any]], None]
@@ -140,6 +142,7 @@ class WeberCloudSession:
         self.socket_connections = 0
         self.fast_recoveries = 0
         self._appliance_status: dict[str, Any] = {}
+        self._fuel_sample_times: dict[str, float] = {}
         self.fuel_level_reports = 0
         self.fuel_level_unknown_reports = 0
         self.fuel_level_changes = 0
@@ -227,13 +230,14 @@ class WeberCloudSession:
     async def _async_close_connection(self) -> None:
         connection, self._connection = self._connection, None
         self._subscribed = False
-        # A reconnect may receive cook status before its first appliance-status
-        # frame. Preserve only the slow-changing hub fields needed to bridge
-        # that gap. Live or consumable fields (for example fuel) must wait for
-        # a fresh appliance frame so stale values cannot appear current.
+        # Cook status may arrive before appliance status after a reconnect.
+        # Bridge brief interruptions with fuel sampled within the last minute;
+        # expiry is also checked on every publication, never extended by reuse.
+        # Device cloud status must be reported again on the new connection.
+        self._expire_fuel_status()
         self._appliance_status = {
             key: self._appliance_status[key]
-            for key in CLOUD_OFFLINE_RETAINED_KEYS
+            for key in (*CLOUD_OFFLINE_RETAINED_KEYS, *self._fuel_sample_times)
             if key in self._appliance_status
         }
         if connection is not None:
@@ -241,6 +245,14 @@ class WeberCloudSession:
                 await connection.close()
             except Exception:
                 LOGGER.debug("Could not close cloud socket cleanly", exc_info=True)
+
+    def _expire_fuel_status(self) -> None:
+        """Do not let cook-only or partial frames perpetuate stale fuel."""
+
+        for key, sampled_at in tuple(self._fuel_sample_times.items()):
+            if time.monotonic() - sampled_at >= FUEL_STATUS_MAX_AGE:
+                self._appliance_status.pop(key, None)
+                del self._fuel_sample_times[key]
 
     async def _async_send(self, type_value: int, payload: bytes = b"") -> None:
         connection = await self._async_connect()
@@ -325,6 +337,18 @@ class WeberCloudSession:
                             ):
                                 self.fuel_level_changes += 1
                             self._last_reported_fuel_level = fuel_level
+                    for key, tag in FUEL_STATUS_TAGS.items():
+                        values = fields.get(tag, [])
+                        value = appliance_status[key]
+                        if (
+                            len(values) == 1
+                            and len(values[0]) == 1
+                            and value is not None
+                            and (key != "fuel_percent" or 0 <= value <= 100)
+                        ):
+                            self._fuel_sample_times[key] = time.monotonic()
+                        else:
+                            appliance_status[key] = None
                     # Weber can send partial appliance-status frames between full
                     # snapshots. Missing TLVs parse as None, but they mean "not
                     # included in this frame", not that every omitted entity has
@@ -339,6 +363,7 @@ class WeberCloudSession:
                     )
                     continue
                 if message.type_value == 0x80:
+                    self._expire_fuel_status()
                     cook_status = parse_cook_session_status_payload(message.payload)
                     if self._recovery_started_at is not None:
                         recovery_seconds = max(0.0, time.monotonic() - self._recovery_started_at)

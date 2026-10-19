@@ -1,6 +1,20 @@
 # Changelog
 
-## 3.2.2rc4 — unpublished qualification candidate
+## 3.2.2rc5 — unpublished SmokeFire freshness candidate
+
+- Bridge brief cloud reconnects with fuel sampled within the last 60 seconds,
+  without extending freshness when cook or partial appliance frames omit fuel.
+  Expired fuel clears; explicit unknown/low/full reports still apply immediately.
+- Clear stale cloud status during reconnects and outages. Keep the device's last
+  report in a separate attribute and diagnostics field, and require a fresh
+  appliance-status frame after reconnect before showing cloud status as current.
+- Reproduce the RC4 support report through socket, coordinator, sensor and
+  diagnostic regressions. Preserve entity IDs and the existing offline threshold.
+- Prepare an exact-runtime RC5 hardware checklist. The longer active-cook cloud
+  gaps remain unresolved; powered-off timeout/recovery totals are not cook-only
+  outage evidence. No RC5 physical acceptance is claimed.
+
+## 3.2.2rc4 — 2026-10-17 (beta prerelease)
 
 - Select Weber Bluetooth transport families from advertisement schema and GATT
   evidence, with shared automatic/manual discovery and redacted diagnostics.

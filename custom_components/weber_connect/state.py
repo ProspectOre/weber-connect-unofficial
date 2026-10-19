@@ -85,6 +85,7 @@ def normalize_state(
         ),
         "wifi_connection_status": _text(raw.get("wifi_connection_status")),
         "cloud_connection_status": _text(raw.get("cloud_connection_status")),
+        "last_reported_cloud_connection_status": _text(raw.get("cloud_connection_status")),
         "device_state": _text(raw.get("device_state")),
         "fuel_percent": _percent(raw.get("fuel_percent")),
         "fuel_level": _text(raw.get("fuel_level")),

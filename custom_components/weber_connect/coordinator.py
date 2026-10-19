@@ -136,6 +136,10 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             connected=True,
             last_successful_update=self.last_successful_update,
         )
+        if normalized["last_reported_cloud_connection_status"] is None:
+            normalized["last_reported_cloud_connection_status"] = (self.data or {}).get(
+                "last_reported_cloud_connection_status"
+            )
         self.async_set_updated_data(normalized)
 
         identity = self.entry.unique_id or self.entry.entry_id
@@ -175,6 +179,7 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             pending = dict(self.data or self.initial_state())
             reading_status = "reconnecting" if self.last_successful_update else "waiting"
             pending["reading_status"] = reading_status
+            pending["cloud_connection_status"] = None
             for number in range(1, MAX_PROBE_SLOTS + 1):
                 pending[f"probe_{number}_reading_status"] = reading_status
             self.async_set_updated_data(pending)
