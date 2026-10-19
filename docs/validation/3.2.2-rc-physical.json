@@ -5,19 +5,149 @@
   "runtime_sha256": "1b85d054a914bbd4f6c5728a312f9a037adb78058f357edc89c353d400443a84",
   "identifiers": "redacted",
   "status": "pending_hardware_validation",
-  "verified": {},
+  "verified": {
+    "upgrade_preserves_identity": true,
+    "rollback_tree_verified": true,
+    "desktop_ui": true,
+    "mobile_ui": true,
+    "activity_filter": true,
+    "physical_reauth_cancellation": true
+  },
   "pending": [
-    "upgrade_preserves_identity",
-    "rollback_tree_verified",
     "physical_reauth_success",
-    "physical_reauth_cancellation",
-    "desktop_ui",
-    "mobile_ui",
-    "activity_filter",
     "fresh_recovery",
     "sustained_loss_clears_readings",
-    "cloud_only_app_live",
-    "one_hour_exact_runtime_endurance"
+    "cloud_only_app_live"
   ],
-  "instructions": "docs/validation/3.2.2-readiness.md"
+  "instructions": "docs/validation/3.2.2-readiness.md",
+  "observations": {
+    "installed_source_commit": "bcd868f10c1d5c80e31aa0f83246ea7f54c23716",
+    "loaded_version": "3.2.2",
+    "installed_files_checked": 24,
+    "entry_identity_preserved": true,
+    "entity_identities_preserved": 18,
+    "rollback_tag": "v3.2.1",
+    "rollback_archive_sha256": "671bd1934fbf969f4f9d284c64af63aed91abe2233af0f1882ae986bbad1decc",
+    "ui_inspection": "Chromium desktop 1365x1000 and emulated phone viewport 390x844; screenshots inspected, four probe fields and Submit reachable. No actual-phone claim.",
+    "settings_support_report_loaded_version": "3.2.2",
+    "confirmation_cancellation": "Replacement confirmation and an active approve_hub pairing flow both cancelled before physical approval; connected, options and running entry preserved.",
+    "activity_filter": {
+      "observed_at_utc": "2026-10-19T07:42:03.845842+00:00",
+      "range_start_utc": "2026-10-19T07:35:00+00:00",
+      "last_update_state_available": true,
+      "entities": {
+        "last_update": {
+          "activity_events": 0,
+          "history_records": 0
+        },
+        "status_1": {
+          "activity_events": 1
+        },
+        "status_2": {
+          "activity_events": 1
+        },
+        "status_3": {
+          "activity_events": 1
+        },
+        "status_4": {
+          "activity_events": 1
+        },
+        "status_5": {
+          "activity_events": 1
+        },
+        "status_6": {
+          "activity_events": 1
+        }
+      }
+    },
+    "installed_tree": {
+      "file_count": 24,
+      "extra": [],
+      "missing": []
+    },
+    "rollback_prior_runtime_booted": false,
+    "active_pairing_cancellation": {
+      "observed_at_utc": "2026-10-19T07:49:10.413769+00:00",
+      "steps": [
+        {
+          "type": "form",
+          "step_id": "reauth_confirm",
+          "progress_action": null
+        },
+        {
+          "type": "form",
+          "step_id": "confirm",
+          "progress_action": null
+        },
+        {
+          "type": "progress",
+          "step_id": "preparing",
+          "progress_action": "preparing_companion"
+        },
+        {
+          "type": "progress",
+          "step_id": "pairing",
+          "progress_action": "approve_hub"
+        },
+        {
+          "type": "progress",
+          "step_id": "pairing",
+          "progress_action": "approve_hub"
+        }
+      ],
+      "active_pairing_cancelled": true,
+      "connected_before": true,
+      "connected_after": true,
+      "same_options": true,
+      "failed_updates_before": 0,
+      "failed_updates_after": 0,
+      "updates_before": 74,
+      "updates_after": 74,
+      "scope": "live replacement flow cancelled before physical approval; existing entry not replaced"
+    },
+    "probe_options_after_active_cancellation": {
+      "probe_nickname_fields": 4,
+      "values_unchanged_from_pre_cancellation": true,
+      "values_empty": true,
+      "options_submitted": false
+    },
+    "final_installed_runtime_verified": true,
+    "final_registry_entity_count": 18,
+    "final_unfinished_weber_flows": 0,
+    "live_homeassistant": "2026.10.2",
+    "firmware": "2.0.3_7398",
+    "automatic_cloud_reconnects_during_endurance": 3,
+    "official_app_closed_precondition": "Owner-confirmed before the trials; no subsequent app use reported. App coexistence is a separate pending gate."
+  },
+  "endurance": {
+    "duration_seconds": 3622.091775,
+    "samples": 363,
+    "capture_errors": 0,
+    "disconnected_samples": 0,
+    "new_failed_updates": 0,
+    "unexpected_entry_reloads": 0,
+    "maximum_update_gap_seconds": 20.228151,
+    "maximum_sampled_update_age_seconds": 19.594974,
+    "missing_update_timestamps": 0,
+    "final_connected": true,
+    "first_sample_utc": "2026-10-19T07:39:19.204748+00:00",
+    "last_sample_utc": "2026-10-19T08:39:41.296523+00:00",
+    "versions": [
+      "3.2.2"
+    ],
+    "first_successful_updates": 15,
+    "last_successful_updates": 376,
+    "socket_connections_first": 1,
+    "socket_connections_last": 4,
+    "automatic_recoveries_first": 0,
+    "automatic_recoveries_last": 3,
+    "probe_2_reading_samples": 363,
+    "raw_sha256": "07bf5a3f520cc5282c53bfacde1451ae3b0d0cd64dee6e69877bf4107c64cfa0",
+    "manual_recoveries": 0,
+    "candidate_unchanged": true,
+    "target_sample_interval_seconds": 10,
+    "raw_artifact": "stable-3.2.2-endurance-20261019.jsonl",
+    "raw_artifact_status": "retained_locally_pending_release",
+    "scope": "Idle hub with one connected Probe 2, with the official app closed per owner confirmation; no active-cook or other-family claim."
+  }
 }

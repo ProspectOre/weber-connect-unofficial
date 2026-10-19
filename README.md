@@ -12,6 +12,13 @@ phone secret, MQTT broker or packet capture is required.
 to empty-payload status and capability reads. The broader controller-family work
 is available separately as opt-in 3.3.0 prereleases and has separate hardware gates.
 
+## Requirements
+
+Use Home Assistant 2026.7.0 or newer, HACS and a hub already online through
+Wi-Fi/Weber Cloud. Setup requires a connectable HA Bluetooth adapter or an
+in-range active ESPHome proxy with `bluetooth_proxy.active` enabled and a free
+connection slot. No proxy address or credentials are entered here.
+
 ## Install
 
 Install Weber Connect Unofficial through HACS:
@@ -72,3 +79,14 @@ identifiers and raw packets. See [architecture](ARCHITECTURE.md), [security](SEC
 
 Published historical installation and hardware evidence remains available in the
 [3.2.1 documentation](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.1/README.md).
+
+## Privacy and removal
+
+Private companion credentials stay in the HA config entry. Support reports use
+an allowlist and are shared only when you open and submit them. To uninstall,
+remove the entry under Devices & services, then remove it in HACS and restart HA.
+Its entities are removed; the Weber app is not reset.
+
+Weber may retain an unused server-side companion record after cancellation or
+removal. Registration happens before physical approval, and no supported
+revocation endpoint exists; removing the entry deletes its local credential only.

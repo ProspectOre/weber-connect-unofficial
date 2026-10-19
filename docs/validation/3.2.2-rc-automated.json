@@ -3,7 +3,7 @@
   "release_channel": "stable",
   "evidence_date": "2026-10-19",
   "runtime_sha256": "1b85d054a914bbd4f6c5728a312f9a037adb78058f357edc89c353d400443a84",
-  "status": "local_minimum_passed",
+  "status": "local_minimum_current_passed",
   "tests": {
     "status": "passed",
     "passed": 362,
@@ -22,5 +22,25 @@
     "hacs": "pending",
     "hassfest": "pending",
     "regular_review": "pending"
-  }
+  },
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "websockets": "16.1.1",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 362,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "websockets": "16.1.1",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 362,
+      "combined_statement_branch_coverage_percent": 100
+    }
+  ]
 }
