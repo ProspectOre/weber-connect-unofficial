@@ -36,5 +36,5 @@
   "issue_tracker": "https://github.com/ProspectOre/weber-connect-unofficial/issues",
   "loggers": ["bleak_retry_connector"],
   "requirements": ["websockets==17.1"],
-  "version": "3.2.2rc6"
+  "version": "3.3.0rc1"
 }

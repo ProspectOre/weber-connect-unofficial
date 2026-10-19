@@ -1,0 +1,54 @@
+{
+  "candidate": "3.3.0rc1",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-19",
+  "runtime_sha256": "f8624c6681b15fe826fd4e61763343d7a449a5be0bbe5f54f771feb3d94703b0",
+  "publication_status": "unpublished",
+  "change": "Continue the controller-family beta under the 3.3 version line; runtime differs from RC6 only by manifest version.",
+  "tests": {
+    "status": "passed",
+    "scope": "Complete native suite on exact 3.3.0rc1 working tree in independent minimum/current HA/plugin environments; synthetic and loopback fixtures, no physical hardware.",
+    "required_coverage_percent": 100,
+    "passed": 624,
+    "subtests_passed": 5,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100
+  },
+  "hosted_gates": {
+    "ci": "pending_not_pushed",
+    "hacs": "pending_not_pushed",
+    "hassfest": "pending_not_pushed",
+    "regular_review": "pending_not_pushed"
+  },
+  "python": "3.14.8",
+  "platform": "macOS arm64",
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "websockets": "17.1",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 624,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "websockets": "17.1",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 624,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    }
+  ],
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "support_registry_and_render": "passed"
+  },
+  "unchanged_runtime_from_release": "3.2.2rc6"
+}

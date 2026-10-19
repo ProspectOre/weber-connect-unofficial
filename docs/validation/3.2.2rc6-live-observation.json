@@ -1,0 +1,64 @@
+{
+  "candidate": "3.2.2rc6",
+  "release_commit": "5b6b8aa04d8e911a1b45a6935b29b32230eee558",
+  "runtime_sha256": "f8624c6681b15fe826fd4e61763343d7a449a5be0bbe5f54f771feb3d94703b0",
+  "ha_version": "2026.10.2",
+  "controller_reported_model": "Weber Connect controller",
+  "firmware": "2.0.3_7398",
+  "identifiers": "redacted",
+  "installed_files_checked": 32,
+  "extra_or_missing_installed_files": false,
+  "entry_identity_preserved": true,
+  "entity_identities_preserved": 18,
+  "official_app_closed": "owner_confirmed",
+  "fresh_startup": "passed",
+  "controlled_entry_reload": "passed",
+  "automatic_recovery_trial": {
+    "owner_confirmed_hub_power_cycle": true,
+    "owner_changed_probe_slot": true,
+    "manual_reloads_during_trial": 0,
+    "old_probe_slot": 4,
+    "recovered_probe_slot": 2,
+    "first_recovered_sample_utc": "2026-10-19T07:10:47.200207+00:00",
+    "probe_temperature_f": 75.02,
+    "failed_updates_during_intentional_outage": 5,
+    "power_on_to_recovery_latency": "not independently timed; recovery observed before owner confirmation"
+  },
+  "post_recovery_sampling": {
+    "samples": 67,
+    "capture_errors": 0,
+    "versions": [
+      "3.2.2rc6"
+    ],
+    "phases": [
+      "automatic_recovery_soak"
+    ],
+    "first_observed_at_utc": "2026-10-19T07:11:49.391773+00:00",
+    "last_observed_at_utc": "2026-10-19T07:22:49.766553+00:00",
+    "duration_seconds": 660.37478,
+    "disconnected_samples": 0,
+    "successful_update_delta": 66,
+    "failed_update_delta": 0,
+    "socket_connections_first": 8,
+    "socket_connections_last": 10,
+    "max_sampled_update_age_seconds": 3.306982,
+    "max_observed_successful_update_gap_seconds": 10.523486
+  },
+  "limits": [
+    "Targeted single-controller trial; broader family qualification and full stable acceptance remain pending.",
+    "This receipt binds RC6 and does not authorize a different stable runtime.",
+    "Token rotation and fault branches have synthetic coverage; no actual token-expiry trial claimed.",
+    "On-wire capture was not performed; outbound contract is established by the installed source fingerprint and regression tests."
+  ],
+  "status": "targeted_observation_only",
+  "verified": {
+    "app_closed_live_readings": true,
+    "automatic_hub_recovery": true,
+    "home_assistant_restart_without_repair": true,
+    "four_stable_probe_entities": true,
+    "probe_slot_move_observed": true
+  },
+  "source_receipt": "https://github.com/ProspectOre/weber-connect-unofficial/releases/download/v3.2.2rc6/rc6-live-proof.json",
+  "derivation": "Targeted stage names summarize the original release asset without completing the stable physical matrix; original measurement fields and limits are preserved.",
+  "source_receipt_sha256": "748e694d053e165ebafc3dd76d69f74d2a6bd53833f8ab16dc42b5268e833ac5"
+}
