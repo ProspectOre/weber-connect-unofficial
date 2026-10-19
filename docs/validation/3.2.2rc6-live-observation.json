@@ -59,5 +59,6 @@
     "probe_slot_move_observed": true
   },
   "source_receipt": "https://github.com/ProspectOre/weber-connect-unofficial/releases/download/v3.2.2rc6/rc6-live-proof.json",
-  "derivation": "Targeted stage names summarize the original release asset without completing the stable physical matrix; original measurement fields and limits are preserved."
+  "derivation": "Targeted stage names summarize the original release asset without completing the stable physical matrix; original measurement fields and limits are preserved.",
+  "source_receipt_sha256": "748e694d053e165ebafc3dd76d69f74d2a6bd53833f8ab16dc42b5268e833ac5"
 }

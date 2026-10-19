@@ -382,7 +382,7 @@ def render_markdown(registry: dict[str, Any], root: Path = ROOT) -> str:
             "",
             "## Version-bound hardware observations",
             "",
-            "These observations apply only to the exact model, firmware and integration release shown. They do not carry forward to RC4.",
+            f"These observations apply only to the exact model, firmware and integration release shown. They do not carry forward to {candidate['version']}.",
             "",
             "| Model | Firmware | Integration release | Verification | Passed stages | Evidence |",
             "| --- | --- | --- | --- | --- | --- |",

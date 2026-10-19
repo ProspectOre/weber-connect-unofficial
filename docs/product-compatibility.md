@@ -30,7 +30,7 @@ Current candidate: **3.3.0rc1** (unpublished; hardware: pending_hardware_validat
 
 ## Version-bound hardware observations
 
-These observations apply only to the exact model, firmware and integration release shown. They do not carry forward to RC4.
+These observations apply only to the exact model, firmware and integration release shown. They do not carry forward to 3.3.0rc1.
 
 | Model | Firmware | Integration release | Verification | Passed stages | Evidence |
 | --- | --- | --- | --- | --- | --- |

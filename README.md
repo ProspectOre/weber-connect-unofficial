@@ -106,3 +106,7 @@ Generated private companion credentials stay in the HA config entry. Support
 reports use an allowlist and are shared only when you open and submit them.
 Remove the integration entry under Devices & services, then remove it in HACS
 and restart HA. This removes its entities; it does not reset the Weber app.
+
+Weber may retain an unused server-side companion record after cancellation or
+removal. Registration precedes physical approval, and no supported revocation
+endpoint is available; removing the entry deletes its local credential only.
