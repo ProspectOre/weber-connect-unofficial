@@ -80,6 +80,130 @@ class FakeConnection:
         self.closed = True
 
 
+def assert_telemetry_requests(connection: FakeConnection) -> list[int]:
+    """Check the product contract independently of the production allowlist."""
+
+    messages = [socket.decode_routed_message(data) for data in connection.sent]
+    assert messages
+    assert all(message.type_value in {0x05, 0x07, 0x0E} for message in messages)
+    assert all(message.payload == b"" for message in messages)
+    assert all(message.source_id == DEVICE_ID for message in messages)
+    assert all(message.target_id == APPLIANCE_ID for message in messages)
+    return [message.type_value for message in messages]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connected", [False, True])
+async def test_send_rejects_nontelemetry_commands_before_any_io(connected: bool) -> None:
+    connection = FakeConnection()
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    if connected:
+        session._connection = connection
+    # Include every wire opcode plus integers the generic codec would truncate
+    # into allowed read opcodes. Settings, program reads and unknowns all fail.
+    rejected = [value for value in range(256) if value not in {0x05, 0x07, 0x0E}]
+    rejected.extend([-251, 0x105, 0x107, 0x10E])
+    with patch.object(session, "_async_connect", AsyncMock()) as connect:
+        for type_value in rejected:
+            with pytest.raises(socket.WeberCloudSocketError, match="telemetry requests"):
+                await session._async_send(type_value)
+        with pytest.raises(socket.WeberCloudSocketError, match="telemetry requests"):
+            await session._async_send(0x09, bytes.fromhex("150400d2496b"))
+        with pytest.raises(socket.WeberCloudSocketError, match="telemetry requests"):
+            await session._async_send(0x0B, b"\x01\x00")
+    connect.assert_not_awaited()
+    assert connection.sent == []
+    assert session._sequence == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connected", [False, True])
+@pytest.mark.parametrize("type_value", [0x05, 0x07, 0x0E])
+async def test_send_rejects_payload_on_telemetry_commands(connected: bool, type_value: int) -> None:
+    connection = FakeConnection()
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    if connected:
+        session._connection = connection
+    with patch.object(session, "_async_connect", AsyncMock()) as connect:
+        with pytest.raises(socket.WeberCloudSocketError, match="telemetry requests"):
+            await session._async_send(type_value, b"\x00")
+    connect.assert_not_awaited()
+    assert connection.sent == []
+    assert session._sequence == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("type_value", "payload"),
+    [
+        (5.0, b""),
+        (True, b""),
+        ("5", b""),
+        (None, b""),
+        ([], b""),
+        (0x05, bytearray()),
+        (0x05, memoryview(b"")),
+        (0x05, ""),
+        (0x05, None),
+    ],
+)
+async def test_send_rejects_wrong_argument_types_before_any_io(
+    type_value: object, payload: object
+) -> None:
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    with patch.object(session, "_async_connect", AsyncMock()) as connect:
+        with pytest.raises(socket.WeberCloudSocketError, match="telemetry requests"):
+            await session._async_send(type_value, payload)  # type: ignore[arg-type]
+    connect.assert_not_awaited()
+    assert session._sequence == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_phase", ["connect", "send", "receive"])
+async def test_run_recovers_from_startup_failure_with_only_telemetry_reads(
+    failure_phase: str,
+) -> None:
+    first = FakeConnection([OSError("offline")])
+    second = FakeConnection([routed(0x83, tlv(1, b"\x40")), routed(0x80)])
+    session = socket.WeberCloudSession(
+        FakeHass(), FakeCloudClient(), APPLIANCE_ID, timeout=0.1, subscribe_delay=0
+    )
+    statuses: list[dict[str, object]] = []
+    errors: list[str] = []
+
+    async def fail_during_bootstrap(data: bytes) -> None:
+        first.sent.append(data)
+        if len(first.sent) == 2:
+            raise OSError("offline")
+
+    if failure_phase == "send":
+        first.send = fail_during_bootstrap
+
+    def publish_status(status: dict[str, object]) -> None:
+        statuses.append(status)
+        session._closed = True
+        session.async_wake()
+
+    def publish_error(error: str) -> None:
+        errors.append(error)
+        session.async_wake()
+
+    initial = OSError("offline") if failure_phase == "connect" else first
+    with patch.object(socket, "connect", AsyncMock(side_effect=[initial, second])) as connect:
+        await asyncio.wait_for(session.async_run(publish_status, publish_error), timeout=1)
+
+    assert len(errors) == 1
+    assert "offline" in errors[0]
+    assert len(statuses) == 1
+    assert statuses[0]["battery_level"] == 64
+    assert connect.await_count == 2
+    if failure_phase != "connect":
+        assert first.closed
+        assert_telemetry_requests(first)
+    assert {0x05, 0x07, 0x0E} <= set(assert_telemetry_requests(second))
+    assert second.closed
+
+
 def test_routed_message_round_trip_and_validation() -> None:
     encoded = socket.encode_routed_message(DEVICE_ID, APPLIANCE_ID, 9, 0x80, b"abc")
     decoded = socket.decode_routed_message(encoded)
@@ -126,10 +250,9 @@ async def test_first_status_subscribes_once_and_next_status_reuses_socket() -> N
 
     assert first["kind"] == "cook_session_status"
     assert second["kind"] == "cook_session_status"
-    assert initial_count == 9
-    assert len(connection.sent) == 11
-    assert socket.decode_routed_message(connection.sent[-2]).type_value == 0x07
-    assert socket.decode_routed_message(connection.sent[-1]).type_value == 0x05
+    types = assert_telemetry_requests(connection)
+    assert types[:initial_count] == [0x0E, 0x05, 0x07, 0x0E, 0x05, 0x07]
+    assert types[initial_count:] == [0x07, 0x05]
     assert cloud.wake_calls == [APPLIANCE_ID]
     connect.assert_awaited_once()
     assert connect.await_args.kwargs["proxy"] is None
@@ -212,7 +335,7 @@ async def test_idle_socket_renews_subscription_once_before_failure() -> None:
     with patch.object(socket, "connect", AsyncMock(return_value=connection)):
         status = await session.async_request_status()
     assert status["kind"] == "cook_session_status"
-    assert len(connection.sent) == 18
+    assert assert_telemetry_requests(connection) == [0x0E, 0x05, 0x07, 0x0E, 0x05, 0x07] * 2
 
 
 @pytest.mark.asyncio
@@ -233,8 +356,8 @@ async def test_expiring_token_rotates_socket_before_next_request() -> None:
         await session.async_request_status()
 
     assert first.closed is True
-    assert len(first.sent) == 9
-    assert len(second.sent) == 9
+    assert assert_telemetry_requests(first) == [0x0E, 0x05, 0x07, 0x0E, 0x05, 0x07]
+    assert assert_telemetry_requests(second) == [0x0E, 0x05, 0x07, 0x0E, 0x05, 0x07]
     assert cloud.token_calls == 2
     assert connect.await_count == 2
 
@@ -551,7 +674,7 @@ async def test_subscription_pacing_and_unrecognized_frame_before_status() -> Non
         status = await session.async_request_status()
     assert status["kind"] == "cook_session_status"
     assert session.received_types == [0x82, 0x80]
-    assert sleep.await_count == 9
+    assert sleep.await_count == 6
     assert all(call.args == (0.05,) for call in sleep.await_args_list)
     await session.async_close()
 

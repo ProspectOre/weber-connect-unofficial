@@ -1,0 +1,23 @@
+{
+  "candidate": "3.2.2",
+  "release_channel": "stable",
+  "evidence_date": "2026-10-19",
+  "runtime_sha256": "1b85d054a914bbd4f6c5728a312f9a037adb78058f357edc89c353d400443a84",
+  "identifiers": "redacted",
+  "status": "pending_hardware_validation",
+  "verified": {},
+  "pending": [
+    "upgrade_preserves_identity",
+    "rollback_tree_verified",
+    "physical_reauth_success",
+    "physical_reauth_cancellation",
+    "desktop_ui",
+    "mobile_ui",
+    "activity_filter",
+    "fresh_recovery",
+    "sustained_loss_clears_readings",
+    "cloud_only_app_live",
+    "one_hour_exact_runtime_endurance"
+  ],
+  "instructions": "docs/validation/3.2.2-readiness.md"
+}

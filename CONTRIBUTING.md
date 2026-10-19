@@ -8,6 +8,7 @@ Use Python 3.14, matching Home Assistant 2026.7:
 python3.14 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
+python -m pip install --requirement requirements-runtime.txt
 python -m pip install \
   bandit==1.9.4 \
   homeassistant==2026.7.2 \
@@ -26,7 +27,7 @@ ruff check custom_components tests_native scripts
 ruff format --check custom_components tests_native scripts
 mypy --python-version 3.14 --strict --ignore-missing-imports custom_components/weber_connect
 bandit -q -r custom_components/weber_connect scripts
-pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-report=term-missing --cov-fail-under=95
+pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-report=term-missing --cov-fail-under=100
 python scripts/validate_release.py
 pip-audit --requirement requirements-runtime.txt --no-deps --disable-pip
 ```
@@ -68,3 +69,10 @@ diagnostics. Redact identifiers consistently when a sequence needs them.
 
 Add a regression test for every new protocol shape. Update the physical matrix
 only after the path was exercised on real hardware.
+
+## Stable maintenance
+
+Stable 3.2 fixes target `release/3.2.x`; broader beta work stays on `main`. Public
+CI uses isolated GitHub-hosted runners. Require exact-head `ci` and canonical
+`review`, resolved conversations and an explicit platform merge. Physical release
+acceptance remains a separate gate; do not reuse another runtime's receipt.
