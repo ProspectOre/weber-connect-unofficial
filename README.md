@@ -155,7 +155,8 @@ Home Assistant device and in diagnostics.
 The integration is deliberately read-only. It exposes reported targets and
 timer progress, but does not expose recipe text or instructions and cannot
 start, stop, or change cooks, temperatures, timers, burners, or other appliance
-controls.
+controls. Cloud telemetry never sets the hub clock or requests program details;
+the session permits only empty-payload status and capability reads.
 
 ## Requirements
 
@@ -172,18 +173,19 @@ integration; Home Assistant owns adapter selection and credentials.
 
 ## Compatibility and validation
 
-The source tree is an **unpublished 3.2.2rc5 candidate**. Its
+The source tree is an **unpublished 3.2.2rc6 candidate**. Its
 [product coverage and feedback worklist](docs/product-compatibility.md) includes
 connected gas, charcoal, pellet and electric lines, hubs and probe accessories.
 Routing uses controller evidence and reported capabilities; a product-family
-name does not establish compatibility. The [candidate matrix](docs/validation/3.2.2rc5-readiness.md)
+name does not establish compatibility. The [candidate matrix](docs/validation/3.2.2rc6-readiness.md)
 keeps exact-candidate physical checks pending. Stable 3.2.1 remains the rollback
 release. Direct portable Bluetooth telemetry stays disabled until a compatible
 peer-authentication mechanism is established; probes reported through a paired
 controller use its authenticated cloud connection.
 
-RC5 targets the RC4 SmokeFire feedback: fuel bridges brief reconnects only while
-its last valid sample is under 60 seconds old, and cloud status becomes unknown
+RC6 removes implicit clock/settings writes and unused program-detail requests.
+It retains the RC5 fixes for RC4 SmokeFire feedback: fuel bridges brief reconnects
+only while its last valid sample is under 60 seconds old, and cloud status becomes unknown
 during interruptions. The cloud sensor's `last_reported_status` attribute retains
 the historical device report; the Connection and Reading status entities describe
 Home Assistant's current health. Longer cooking-time cloud gaps remain unresolved.

@@ -29,6 +29,9 @@ SOCKET_PATH = "/2/messaging/websocket/companion"
 ROUTING_HEADER_LENGTH = 35
 TRANSPORT_HEADER_LENGTH = 6
 MESSAGE_VERSION = 10
+# Telemetry requests have no payload. Keep this boundary separate from the
+# generic frame codec, which also handles incoming messages and protocol tools.
+READ_ONLY_REQUEST_TYPES = frozenset({0x05, 0x07, 0x0E})
 STATUS_INTERVAL = 10.0
 STATUS_TIMEOUT = 12.0
 FUEL_STATUS_MAX_AGE = 60.0
@@ -255,6 +258,15 @@ class WeberCloudSession:
                 del self._fuel_sample_times[key]
 
     async def _async_send(self, type_value: int, payload: bytes = b"") -> None:
+        # Reject before connecting, waking the hub, or allocating a sequence.
+        # In particular, settings and program-detail requests are not telemetry.
+        if (
+            type(type_value) is not int
+            or type(payload) is not bytes
+            or type_value not in READ_ONLY_REQUEST_TYPES
+            or payload != b""
+        ):
+            raise WeberCloudSocketError("Only empty-payload telemetry requests are permitted.")
         connection = await self._async_connect()
         await connection.send(
             encode_routed_message(
@@ -267,21 +279,13 @@ class WeberCloudSession:
         )
 
     async def _async_subscribe(self) -> None:
-        """Send the observed initial subscription used by the companion app."""
-
-        now = int(time.time())
-
-        def timestamp(value: int) -> bytes:
-            return bytes([0x15, 0x04]) + struct.pack("<I", value)
+        """Initialize telemetry using only capability and current-status reads."""
 
         requests = (
             (0x0E, b""),
             (0x05, b""),
-            (0x09, timestamp(now)),
             (0x07, b""),
-            (0x0B, b"\x01\x00"),
             (0x0E, b""),
-            (0x09, timestamp(now + 1)),
             (0x05, b""),
             (0x07, b""),
         )

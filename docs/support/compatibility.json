@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "current_candidate": {
-    "version": "3.2.2rc5",
+    "version": "3.2.2rc6",
     "publication_status": "unpublished",
     "hardware_status": "pending_hardware_validation",
     "receipts": {
-      "readiness": "docs/validation/3.2.2rc5-readiness.md",
-      "automated": "docs/validation/3.2.2rc5-rc-automated.json",
-      "physical": "docs/validation/3.2.2rc5-rc-physical.json"
+      "readiness": "docs/validation/3.2.2rc6-readiness.md",
+      "automated": "docs/validation/3.2.2rc6-rc-automated.json",
+      "physical": "docs/validation/3.2.2rc6-rc-physical.json"
     }
   },
   "product_families": [
@@ -18,7 +18,7 @@
       "implementation_summary": "Saber setup and authenticated cloud telemetry are implemented; historical physical evidence is bound to its own release.",
       "implementation_evidence": ["custom_components/weber_connect/bluetooth.py", "custom_components/weber_connect/coordinator.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "smokefire",
@@ -27,7 +27,7 @@
       "implementation_summary": "Legacy classification and cloud telemetry are present; RC4 manual cooking is community-observed. RC5 fuel freshness and stale cloud-status fixes await a new hardware trial.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/state.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "searwood_smoque",
@@ -36,7 +36,7 @@
       "implementation_summary": "Applicable connected lines are identified; product-specific controller qualification and physical acceptance are not established.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "docs/transport-families.md"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "spirit_smart",
@@ -45,7 +45,7 @@
       "implementation_summary": "Legacy model ID 7 is classified; newer controller pairing, cloud readings and physical acceptance remain generation-specific.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/protocol_adapters.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "genesis_smart",
@@ -54,7 +54,7 @@
       "implementation_summary": "Legacy model classification and a separately qualified SiLabs setup path exist; issue 65 framing and all hardware acceptance remain unresolved.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/protocol_adapters.py", "custom_components/weber_connect/silabs_pairing.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "summit_smart",
@@ -63,7 +63,7 @@
       "implementation_summary": "Read-only burner telemetry can be represented when reported; exact controller qualification and physical sensor acceptance are not established.",
       "implementation_evidence": ["custom_components/weber_connect/state.py", "custom_components/weber_connect/sensor.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "performer_smart",
@@ -72,7 +72,7 @@
       "implementation_summary": "A community observation exists for one exact older release; current pairing, recovery and endurance are unverified.",
       "implementation_evidence": ["custom_components/weber_connect/coordinator.py", "custom_components/weber_connect/sensor.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "kettle_smart_ring",
@@ -81,7 +81,7 @@
       "implementation_summary": "Applicability is identified; actual controller evidence and complete hardware acceptance are absent. No airflow control is implemented.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/protocol_adapters.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "lumin_smart",
@@ -90,7 +90,7 @@
       "implementation_summary": "Connect applicability is identified; product-specific transport, pairing and telemetry evidence is absent. Ordinary Lumin does not imply connectivity.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/transport_family.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "newer_hubs_boosters",
@@ -99,7 +99,7 @@
       "implementation_summary": "These accessories are tracked as separate targets; legacy Hub behavior and wired/wireless slot mapping are not assumed.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/transport_family.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "portable_probes",
@@ -108,7 +108,7 @@
       "implementation_summary": "Portable service classification and offline decoding exist; direct live setup remains blocked pending peer authentication. Hub-linked slots need hardware validation.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/portable.py", "docs/adr/0003-authenticated-telemetry-boundary.md"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "pulse_igrill",
@@ -117,7 +117,7 @@
       "implementation_summary": "These are tracked as separate iGrill protocol targets; a similar product name does not establish compatibility.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/transport_family.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     },
     {
       "id": "other_non_connected_grills",
@@ -126,7 +126,7 @@
       "implementation_summary": "The grill itself has no assumed connected interface; monitoring may be possible through a separately compatible Hub or probe accessory.",
       "implementation_evidence": ["docs/transport-families.md", "docs/adr/0003-authenticated-telemetry-boundary.md"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc6-rc-physical.json"
     }
   ],
   "observations": [
@@ -253,8 +253,24 @@
       "summary": "Runtime evidence is bound to the exact candidate fingerprint and must not be carried across candidates.",
       "status": "instrumented",
       "product_families": ["connect_smart_grilling_hub", "smokefire", "genesis_smart", "portable_probes"],
-      "sources": ["docs/validation/3.2.2rc5-readiness.md", "docs/validation/3.2.2rc5-rc-physical.json"],
-      "disposition": "RC4 community observations remain bound to RC4. RC5 physical receipts are pending with no inherited verified hardware stages."
+      "sources": ["docs/validation/3.2.2rc6-readiness.md", "docs/validation/3.2.2rc6-rc-physical.json"],
+      "disposition": "RC4 community observations remain bound to RC4. RC6 physical receipts are pending with no inherited verified hardware stages."
+    },
+    {
+      "id": "hacs-read-only-cloud-boundary",
+      "summary": "HACS review identified device-settings writes inside cloud subscription despite the read-only contract.",
+      "status": "fixed_in_candidate",
+      "product_families": [
+        "connect_smart_grilling_hub",
+        "smokefire",
+        "genesis_smart"
+      ],
+      "sources": [
+        "docs/validation/3.2.2rc6-readiness.md",
+        "custom_components/weber_connect/weber_cloud_socket.py",
+        "tests_native/test_cloud_socket.py"
+      ],
+      "disposition": "RC6 removes both timestamp settings frames and the unused program-details request. The session rejects all commands except empty-payload status and capability reads before connection I/O. Startup, token rotation and failure/reconnect paths are covered by synthetic tests; exact-runtime live telemetry proof is separate."
     }
   ],
   "product_sources": ["https://contact-emea.weber.com/hc/en-us/articles/18254325420573-Security-Updates-Support-Policy", "https://www.weber.com/US/en/pr-release-NPD26.html"]
