@@ -1,6 +1,6 @@
 [project]
 name = "weber-connect-unofficial"
-version = "3.2.2rc6"
+version = "3.3.0rc1"
 requires-python = ">=3.14"
 
 [tool.ruff]
