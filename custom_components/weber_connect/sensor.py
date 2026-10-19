@@ -189,6 +189,7 @@ def _enum_sensor(
     *,
     entity_category: EntityCategory | None = None,
     icon: str | None = None,
+    attributes_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> WeberSensorDescription:
     return WeberSensorDescription(
         key=key,
@@ -198,6 +199,7 @@ def _enum_sensor(
         entity_category=entity_category,
         icon=icon,
         value_fn=_value(key),
+        attributes_fn=attributes_fn,
     )
 
 
@@ -215,6 +217,7 @@ CLOUD_STATUS_SENSOR = _enum_sensor(
     CLOUD_STATUS_OPTIONS,
     entity_category=EntityCategory.DIAGNOSTIC,
     icon="mdi:cloud-outline",
+    attributes_fn=_attributes(last_reported_status="last_reported_cloud_connection_status"),
 )
 DEVICE_STATE_SENSOR = _enum_sensor(
     "device_state",

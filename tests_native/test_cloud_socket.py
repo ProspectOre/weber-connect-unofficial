@@ -626,12 +626,12 @@ async def test_reconnect_preserves_cached_appliance_status() -> None:
     assert after_reconnect["is_charging"] is True
     assert after_reconnect["wifi_signal_strength"] == -61
     assert after_reconnect["wifi_connection_status"] == "connected"
-    assert after_reconnect["cloud_connection_status"] == "connected"
+    assert "cloud_connection_status" not in after_reconnect
     assert after_reconnect["device_state"] == "active"
     assert before_reconnect["fuel_level"] == "low"
     assert before_reconnect["fuel_percent"] == 18
-    assert "fuel_level" not in after_reconnect
-    assert "fuel_percent" not in after_reconnect
+    assert after_reconnect["fuel_level"] == "low"
+    assert after_reconnect["fuel_percent"] == 18
     assert "software_version" not in after_reconnect
     assert "hardware_version" not in after_reconnect
     assert first.closed is True

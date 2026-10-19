@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "current_candidate": {
-    "version": "3.2.2rc4",
+    "version": "3.2.2rc5",
     "publication_status": "unpublished",
     "hardware_status": "pending_hardware_validation",
     "receipts": {
-      "readiness": "docs/validation/3.2.2rc4-readiness.md",
-      "automated": "docs/validation/3.2.2rc4-rc-automated.json",
-      "physical": "docs/validation/3.2.2rc4-rc-physical.json"
+      "readiness": "docs/validation/3.2.2rc5-readiness.md",
+      "automated": "docs/validation/3.2.2rc5-rc-automated.json",
+      "physical": "docs/validation/3.2.2rc5-rc-physical.json"
     }
   },
   "product_families": [
@@ -18,16 +18,16 @@
       "implementation_summary": "Saber setup and authenticated cloud telemetry are implemented; historical physical evidence is bound to its own release.",
       "implementation_evidence": ["custom_components/weber_connect/bluetooth.py", "custom_components/weber_connect/coordinator.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "smokefire",
       "name": "SmokeFire",
       "implementation_status": "implemented",
-      "implementation_summary": "Legacy model classification and supported cloud telemetry are present; the manual-cooking fix is source-tested in RC4.",
+      "implementation_summary": "Legacy classification and cloud telemetry are present; RC4 manual cooking is community-observed. RC5 fuel freshness and stale cloud-status fixes await a new hardware trial.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/state.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "searwood_smoque",
@@ -36,7 +36,7 @@
       "implementation_summary": "Applicable connected lines are identified; product-specific controller qualification and physical acceptance are not established.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "docs/transport-families.md"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "spirit_smart",
@@ -45,7 +45,7 @@
       "implementation_summary": "Legacy model ID 7 is classified; newer controller pairing, cloud readings and physical acceptance remain generation-specific.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/protocol_adapters.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "genesis_smart",
@@ -54,7 +54,7 @@
       "implementation_summary": "Legacy model classification and a separately qualified SiLabs setup path exist; issue 65 framing and all hardware acceptance remain unresolved.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/protocol_adapters.py", "custom_components/weber_connect/silabs_pairing.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "summit_smart",
@@ -63,7 +63,7 @@
       "implementation_summary": "Read-only burner telemetry can be represented when reported; exact controller qualification and physical sensor acceptance are not established.",
       "implementation_evidence": ["custom_components/weber_connect/state.py", "custom_components/weber_connect/sensor.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "performer_smart",
@@ -72,7 +72,7 @@
       "implementation_summary": "A community observation exists for one exact older release; current pairing, recovery and endurance are unverified.",
       "implementation_evidence": ["custom_components/weber_connect/coordinator.py", "custom_components/weber_connect/sensor.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "kettle_smart_ring",
@@ -81,7 +81,7 @@
       "implementation_summary": "Applicability is identified; actual controller evidence and complete hardware acceptance are absent. No airflow control is implemented.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/protocol_adapters.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "lumin_smart",
@@ -90,7 +90,7 @@
       "implementation_summary": "Connect applicability is identified; product-specific transport, pairing and telemetry evidence is absent. Ordinary Lumin does not imply connectivity.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/transport_family.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "newer_hubs_boosters",
@@ -99,7 +99,7 @@
       "implementation_summary": "These accessories are tracked as separate targets; legacy Hub behavior and wired/wireless slot mapping are not assumed.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/transport_family.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "portable_probes",
@@ -108,7 +108,7 @@
       "implementation_summary": "Portable service classification and offline decoding exist; direct live setup remains blocked pending peer authentication. Hub-linked slots need hardware validation.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/portable.py", "docs/adr/0003-authenticated-telemetry-boundary.md"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "pulse_igrill",
@@ -117,7 +117,7 @@
       "implementation_summary": "These are tracked as separate iGrill protocol targets; a similar product name does not establish compatibility.",
       "implementation_evidence": ["docs/transport-families.md", "custom_components/weber_connect/transport_family.py"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     },
     {
       "id": "other_non_connected_grills",
@@ -126,7 +126,7 @@
       "implementation_summary": "The grill itself has no assumed connected interface; monitoring may be possible through a separately compatible Hub or probe accessory.",
       "implementation_evidence": ["docs/transport-families.md", "docs/adr/0003-authenticated-telemetry-boundary.md"],
       "candidate_status": "pending_hardware_validation",
-      "candidate_receipt": "docs/validation/3.2.2rc4-rc-physical.json"
+      "candidate_receipt": "docs/validation/3.2.2rc5-rc-physical.json"
     }
   ],
   "observations": [
@@ -162,6 +162,17 @@
       "passed_stages": ["discovery", "pairing", "cloud_association", "live_readings", "app_coexistence", "restart_recovery", "stable_entity_ids", "cook_session"],
       "evidence": [{"kind": "url", "value": "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248"}],
       "notes": "Community comment reports a 3.5-hour manual cook with the Android app open, restart recovery and stable IDs/nicknames. It also reports fuel changes and two cloud gaps; endurance is not marked passed. Bound to RC3 only."
+    },
+    {
+      "id": "smokefire-ex4-gen2-3-2-2rc4-community",
+      "product_family": "smokefire",
+      "exact_model": "SmokeFire EX4 Gen 2",
+      "firmware": "2.0.3_7398",
+      "integration_release": "3.2.2rc4",
+      "verification_kind": "community_verified",
+      "passed_stages": ["live_readings", "app_coexistence", "stable_entity_ids", "cook_session"],
+      "evidence": [{"kind": "url", "value": "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6254713063"}, {"kind": "url", "value": "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6257147619"}],
+      "notes": "Empty-grill manual trial on HA 2026.10.2, firmware 2.0.3_7398, app open and BLE proxy off: cooking/model/warnings corrected, stable IDs, real low/full agrees, all three cloud gaps self-recovered. Fuel flicker and 2-5.5 minute gaps remain; no controlled endurance pass or RC5 acceptance."
     }
   ],
   "feedback": [
@@ -171,7 +182,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["smokefire"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/74", "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248"],
-      "disposition": "RC4 counts an active appliance in a known cooking mode without requiring burner or recipe sessions; unknown and cleaning modes do not imply cooking. Physical RC4 regression is pending."
+      "disposition": "RC4 counts an active appliance in a known cooking mode without requiring app recipe/alert sessions. The RC4 empty-grill trial confirms manual cooking through shutdown; exact-RC5 physical regression is pending."
     },
     {
       "id": "generic-hub-model-label",
@@ -179,7 +190,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["smokefire", "connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71", "docs/product-compatibility.md"],
-      "disposition": "RC4 uses observed model evidence or a recognized SmokeFire entry title, with a conservative controller label for unknown models. Physical confirmation is pending."
+      "disposition": "RC4 uses observed model evidence or a recognized SmokeFire title. Its community trial confirms the SmokeFire label; RC5 remains pending hardware regression."
     },
     {
       "id": "blocking-certificate-setup",
@@ -187,7 +198,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/73", "docs/validation/3.2.2rc4-readiness.md"],
-      "disposition": "HTTPS opener creation is deferred into the synchronous executor request path. Candidate source behavior has not yet received a hardware release trial."
+      "disposition": "HTTPS opener creation is deferred into the executor request path. The RC4 reporter confirms the blocking-SSL warning disappeared; RC5 physical regression is pending."
     },
     {
       "id": "deprecated-unscoped-device-lookup",
@@ -195,23 +206,23 @@
       "status": "fixed_in_candidate",
       "product_families": ["connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/73", "docs/validation/3.2.2rc4-readiness.md"],
-      "disposition": "Firmware updates are scoped to devices owned by the config entry using APIs available on the supported Home Assistant baseline."
+      "disposition": "Firmware updates use a config-entry-scoped lookup compatible with the HA baseline. The RC4 reporter confirms the deprecated-registry warning disappeared; RC5 physical regression is pending."
     },
     {
       "id": "smokefire-fuel-unknown-churn",
       "summary": "SmokeFire fuel reports changed between full and unknown during the community run.",
-      "status": "instrumented_unresolved",
+      "status": "fixed_in_candidate",
       "product_families": ["smokefire"],
-      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248"],
-      "disposition": "The candidate preserves genuine device unknowns, rejects malformed fuel fields, and records bounded report/change counters (custom_components/weber_connect/weber_cloud_socket.py). A reported zero remains distinct from unknown; the community churn is unresolved pending a version-bound hardware run."
+      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248", "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6257147619"],
+      "disposition": "RC4 diagnostics report no unknown/invalid fuel codes. RC5 bridges brief reconnects with individually aged fuel samples for at most 60 seconds, expires stale samples and applies explicit device unknown/low/full immediately. Synthetic regressions pass only after the fix; exact-RC5 hardware results remain pending."
     },
     {
       "id": "smokefire-cloud-gaps",
-      "summary": "The SmokeFire community run included two cloud gaps of roughly 2 to 2.5 minutes.",
+      "summary": "SmokeFire cooking-time cloud gaps last multiple minutes despite automatic recovery.",
       "status": "instrumented_unresolved",
       "product_families": ["smokefire"],
-      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248"],
-      "disposition": "The candidate bounds recovery to a 30-second deadline with one retry and requires fresh readings after recovery (custom_components/weber_connect/weber_cloud_socket.py). The reported gaps are not claimed fixed; their cause and behavior remain unresolved pending a version-bound hardware run."
+      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248", "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6257147619"],
+      "disposition": "RC4 recovered its three reported gaps automatically. Its aggregate recovery maximum includes overnight off time and recent events cover the off period. The active-gap cause remains unresolved; request during/after-gap JSON, time/state histories, live app readings and concurrent HA connectivity. RC5 does not claim to fix these gaps."
     },
     {
       "id": "genesis-issue-65-framing",
@@ -230,16 +241,21 @@
       "disposition": "No successful pairing evidence or reviewed support report is recorded. The exact controller, firmware, approval result and last successful stage remain needed."
     },
     {
+      "id": "stale-cloud-status",
+      "summary": "Cloud status stayed connected while Home Assistant stopped receiving readings.",
+      "status": "fixed_in_candidate",
+      "product_families": ["smokefire", "connect_smart_grilling_hub"],
+      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6257147619"],
+      "disposition": "RC5 clears the current cloud status during transport failures and reconnects; the old device report is separate historical context. A fresh appliance report restores status. Synthetic entity/diagnostic regressions cover failure, persistent loss and recovery; hardware validation is pending."
+    },
+    {
       "id": "candidate-evidence-fingerprint",
       "summary": "Runtime evidence is bound to the exact candidate fingerprint and must not be carried across candidates.",
       "status": "instrumented",
       "product_families": ["connect_smart_grilling_hub", "smokefire", "genesis_smart", "portable_probes"],
-      "sources": ["docs/validation/3.2.2rc4-readiness.md", "docs/validation/3.2.2rc4-rc-physical.json"],
-      "disposition": "RC3 and older observations remain bound to their own releases. RC4 physical receipts are pending and contain no verified hardware stages."
+      "sources": ["docs/validation/3.2.2rc5-readiness.md", "docs/validation/3.2.2rc5-rc-physical.json"],
+      "disposition": "RC4 community observations remain bound to RC4. RC5 physical receipts are pending with no inherited verified hardware stages."
     }
   ],
-  "product_sources": [
-    "https://contact-emea.weber.com/hc/en-us/articles/18254325420573-Security-Updates-Support-Policy",
-    "https://www.weber.com/US/en/pr-release-NPD26.html"
-  ]
+  "product_sources": ["https://contact-emea.weber.com/hc/en-us/articles/18254325420573-Security-Updates-Support-Policy", "https://www.weber.com/US/en/pr-release-NPD26.html"]
 }

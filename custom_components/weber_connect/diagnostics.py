@@ -83,6 +83,7 @@ async def async_get_config_entry_diagnostics(
         "wifi_signal_strength": state.get("wifi_signal_strength"),
         "wifi_connection_status": state.get("wifi_connection_status"),
         "cloud_connection_status": state.get("cloud_connection_status"),
+        "last_reported_cloud_connection_status": state.get("last_reported_cloud_connection_status"),
         "device_state": state.get("device_state"),
         "fuel_percent": state.get("fuel_percent"),
         "fuel_level": state.get("fuel_level"),
