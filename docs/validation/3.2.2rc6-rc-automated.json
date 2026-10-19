@@ -1,0 +1,65 @@
+{
+  "candidate": "3.2.2rc6",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-10-18",
+  "runtime_sha256": "f8624c6681b15fe826fd4e61763343d7a449a5be0bbe5f54f771feb3d94703b0",
+  "publication_status": "unpublished",
+  "supersedes_runtime_sha256": "87bb5491be6acf4ecb51a86c904f4f2d828326452c9f6ecd5aa172153e9cdb99",
+  "change": "Restrict cloud session sends to empty-payload status/capability reads; remove settings and unused program-detail requests.",
+  "tests": {
+    "status": "passed",
+    "scope": "Complete native suite in independent minimum/current exact HA/plugin environments; synthetic and loopback fixtures, no physical hardware.",
+    "required_coverage_percent": 100,
+    "passed": 624,
+    "subtests_passed": 5,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100
+  },
+  "hosted_gates": {
+    "ci": "pending_not_pushed",
+    "hacs": "pending_not_pushed",
+    "hassfest": "pending_not_pushed",
+    "regular_review": "pending_not_pushed"
+  },
+  "python": "3.14.8",
+  "platform": "macOS arm64",
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "scope": "full_native_suite",
+      "status": "passed",
+      "passed": 624,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 624,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.2",
+      "status": "passed",
+      "scope": "integration_imports_and_pure_protocol_smoke_only",
+      "integration_modules_imported": 24,
+      "passed": 44,
+      "full_suite_verified": false
+    }
+  ],
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "runtime_dependency_audit": "passed_no_known_vulnerabilities",
+    "actionlint": "passed",
+    "support_registry_and_render": "passed",
+    "runtime_static_review": "passed_scoped_runtime_and_tests; full_release_diff_requires_exact_head_review",
+    "workspace_documentation": "blocked_by_existing_unrelated_oversized_markdown"
+  }
+}

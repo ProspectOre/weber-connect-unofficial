@@ -1,6 +1,18 @@
 # Changelog
 
-## 3.2.2rc5 — unpublished SmokeFire freshness candidate
+## 3.2.2rc6 — read-only cloud candidate
+
+- Remove both device-settings timestamp frames from cloud initialization;
+  Home Assistant no longer sends implicit clock/settings writes.
+- Remove the unused program-details request. Only empty-payload current-status
+  and capability reads may pass the cloud session send boundary. Invalid types,
+  unknown or out-of-range commands, and payload-bearing requests fail before I/O.
+- Cover cold startup, polling, token rotation, partial initialization failure,
+  timeout and disconnect recovery with outbound-contract regressions.
+- Preserve the RC5 freshness fixes. Exact-runtime hardware and HACS acceptance
+  are tracked separately in the RC6 readiness record.
+
+## 3.2.2rc5 — 2026-10-18 (beta prerelease)
 
 - Bridge brief cloud reconnects with fuel sampled within the last 60 seconds,
   without extending freshness when cook or partial appliance frames omit fuel.
