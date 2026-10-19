@@ -205,7 +205,7 @@ async def test_first_status_subscribes_once_and_next_status_reuses_socket() -> N
     assert first["kind"] == "cook_session_status"
     assert second["kind"] == "cook_session_status"
     types = assert_telemetry_requests(connection)
-    assert {0x05, 0x07, 0x0E} <= set(types[:initial_count])
+    assert types[:initial_count] == [0x0E, 0x05, 0x07, 0x0E, 0x05, 0x07]
     assert types[initial_count:] == [0x07, 0x05]
     assert cloud.wake_calls == [APPLIANCE_ID]
     connect.assert_awaited_once()

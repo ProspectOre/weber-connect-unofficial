@@ -182,7 +182,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["smokefire"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/74", "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248"],
-      "disposition": "RC4 counts an active appliance in a known cooking mode without requiring app recipe/alert sessions. The RC4 empty-grill trial confirms manual cooking through shutdown; exact-RC5 physical regression is pending."
+      "disposition": "RC4 counts an active appliance in a known cooking mode without requiring app recipe/alert sessions. The RC4 empty-grill trial confirms manual cooking through shutdown; exact-RC6 physical regression is pending."
     },
     {
       "id": "generic-hub-model-label",
@@ -190,7 +190,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["smokefire", "connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71", "docs/product-compatibility.md"],
-      "disposition": "RC4 uses observed model evidence or a recognized SmokeFire title. Its community trial confirms the SmokeFire label; RC5 remains pending hardware regression."
+      "disposition": "RC4 uses observed model evidence or a recognized SmokeFire title. Its community trial confirms the SmokeFire label; RC6 remains pending hardware regression."
     },
     {
       "id": "blocking-certificate-setup",
@@ -198,7 +198,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/73", "docs/validation/3.2.2rc4-readiness.md"],
-      "disposition": "HTTPS opener creation is deferred into the executor request path. The RC4 reporter confirms the blocking-SSL warning disappeared; RC5 physical regression is pending."
+      "disposition": "HTTPS opener creation is deferred into the executor request path. The RC4 reporter confirms the blocking-SSL warning disappeared; RC6 physical regression is pending."
     },
     {
       "id": "deprecated-unscoped-device-lookup",
@@ -206,7 +206,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/73", "docs/validation/3.2.2rc4-readiness.md"],
-      "disposition": "Firmware updates use a config-entry-scoped lookup compatible with the HA baseline. The RC4 reporter confirms the deprecated-registry warning disappeared; RC5 physical regression is pending."
+      "disposition": "Firmware updates use a config-entry-scoped lookup compatible with the HA baseline. The RC4 reporter confirms the deprecated-registry warning disappeared; RC6 physical regression is pending."
     },
     {
       "id": "smokefire-fuel-unknown-churn",
@@ -214,7 +214,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["smokefire"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6227317248", "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6257147619"],
-      "disposition": "RC4 diagnostics report no unknown/invalid fuel codes. RC5 bridges brief reconnects with individually aged fuel samples for at most 60 seconds, expires stale samples and applies explicit device unknown/low/full immediately. Synthetic regressions pass only after the fix; exact-RC5 hardware results remain pending."
+      "disposition": "RC4 diagnostics report no unknown/invalid fuel codes. RC5 bridges brief reconnects with individually aged fuel samples for at most 60 seconds, expires stale samples and applies explicit device unknown/low/full immediately. Synthetic regressions pass only after the fix; exact-RC6 hardware results remain pending."
     },
     {
       "id": "smokefire-cloud-gaps",
