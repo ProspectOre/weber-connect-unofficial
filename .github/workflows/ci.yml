@@ -16,8 +16,8 @@ concurrency:
 jobs:
   validate:
     name: Native integration
-    # Persistent runners accept only trusted same-repository branches. Fork
-    # pull requests are hard-stopped and never execute submitted code locally.
+    # PR code runs on isolated GitHub-hosted runners. The workflow token has
+    # read-only contents access, and checkout credentials are not persisted.
     if: >-
       github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
