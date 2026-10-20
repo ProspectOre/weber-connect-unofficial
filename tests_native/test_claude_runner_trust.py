@@ -36,6 +36,10 @@ def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None
     assert workflow["permissions"] == {"contents": "read"}
     assert {job["runs-on"] for job in workflow["jobs"].values()} == {"ubuntu-latest"}
     assert all("permissions" not in job for job in workflow["jobs"].values())
+    for job in workflow["jobs"].values():
+        assert str(job.get("continue-on-error", "false")).lower() == "false"
+        for step in job["steps"]:
+            assert str(step.get("continue-on-error", "false")).lower() == "false"
 
     expected_admission = """github.event_name != 'pull_request'
       || (github.event.pull_request.draft == false
@@ -73,8 +77,18 @@ def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None
             ("HACS", "hacs"),
         )
     )
-    for job in ("VALIDATE", "HASSFEST", "HACS"):
-        assert f'test "${job}" = success' in gate["run"]
+    expected_gate_script = "\n".join(
+        (
+            'echo "native integration: $VALIDATE"',
+            'echo "hassfest: $HASSFEST"',
+            'echo "hacs: $HACS"',
+            'test "$VALIDATE" = success',
+            'test "$HASSFEST" = success',
+            'test "$HACS" = success',
+        )
+    )
+    actual_gate_script = "\n".join(line.rstrip() for line in gate["run"].strip().splitlines())
+    assert actual_gate_script == expected_gate_script
 
 
 def test_claude_preflight_bootstraps_brew_path_before_gh() -> None:
