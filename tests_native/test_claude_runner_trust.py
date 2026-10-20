@@ -12,6 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TRUSTED_LIFECYCLE_EVENTS = {"opened", "ready_for_review", "synchronize"}
+CI_PUSH_BRANCHES = {"main", "release/3.2.x"}
 
 
 def _workflow(name: str) -> str:
@@ -32,7 +33,9 @@ def _pull_request_events(workflow: str) -> set[str]:
 def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None:
     workflow = _workflow_doc("ci.yml")
 
+    assert set(workflow["on"]) == {"pull_request", "push"}
     assert set(workflow["on"]["pull_request"]["types"]) == TRUSTED_LIFECYCLE_EVENTS
+    assert set(workflow["on"]["push"]["branches"]) == CI_PUSH_BRANCHES
     assert workflow["permissions"] == {"contents": "read"}
     assert {job["runs-on"] for job in workflow["jobs"].values()} == {"ubuntu-latest"}
     assert all("permissions" not in job for job in workflow["jobs"].values())
@@ -48,7 +51,17 @@ def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None
       && github.event.sender.type != 'Bot'
       && (github.event.pull_request.head.repo.full_name != github.repository
       || contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.pull_request.author_association)))))"""
-    candidate_jobs = {"validate", "hassfest", "hacs"}
+    aggregate_jobs = {
+        job_name
+        for job_name, job in workflow["jobs"].items()
+        if job.get("if") == "always()" and job.get("needs")
+    }
+    assert len(aggregate_jobs) == 1
+    aggregate_name = next(iter(aggregate_jobs))
+    assert aggregate_name == "ci"
+    aggregate = workflow["jobs"][aggregate_name]
+    assert aggregate["name"] == "ci"
+    candidate_jobs = set(workflow["jobs"]) - aggregate_jobs
     admissions = {
         job_name: " ".join(workflow["jobs"][job_name]["if"].split()) for job_name in candidate_jobs
     }
@@ -62,33 +75,51 @@ def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None
             if step.get("uses", "").startswith("actions/checkout@"):
                 assert step["with"]["persist-credentials"] == "false"
 
-    aggregate = workflow["jobs"]["ci"]
     assert aggregate["if"] == "always()"
-    assert set(aggregate["needs"]) == set(workflow["jobs"]) - {"ci"}
+    assert set(aggregate["needs"]) == candidate_jobs
     assert all("uses" not in step for step in aggregate["steps"])
     assert len(aggregate["steps"]) == 1
     gate = aggregate["steps"][0]
-    assert set(gate["env"]) == {"VALIDATE", "HASSFEST", "HACS"}
-    assert all(
-        gate["env"][key] == f"${{{{ needs.{job}.result }}}}"
-        for key, job in (
-            ("VALIDATE", "validate"),
-            ("HASSFEST", "hassfest"),
-            ("HACS", "hacs"),
+    assert set(gate) == {"name", "env", "run"}
+
+    # The aggregate gate must receive and check every prerequisite result. Bind
+    # env names to their needs expressions, then inspect the run script by
+    # variable so adding a prerequisite cannot silently leave it unchecked.
+    result_env = {
+        expression.split(".")[1]: env_name
+        for env_name, expression in gate["env"].items()
+        if re.fullmatch(r"\$\{\{ needs\.[^.]+\.result }}", expression)
+    }
+    assert set(result_env) == candidate_jobs
+    assert len(result_env) == len(gate["env"])
+    script = gate["run"]
+    for env_name in result_env.values():
+        assert re.search(rf"\${re.escape(env_name)}\b", script)
+        assert re.search(rf'test\s+"\${re.escape(env_name)}"\s+=\s+success', script)
+
+    # GitHub's default bash run shell uses -e. Exercise the actual gate script
+    # with each successful, failed, and skipped prerequisite result to ensure
+    # shell behavior rejects every non-success state.
+    for job_name in candidate_jobs:
+        values = {env_name: "success" for env_name in result_env.values()}
+        assert (
+            subprocess.run(
+                ["bash", "-e", "-c", script], env={**os.environ, **values}, check=False
+            ).returncode
+            == 0
         )
-    )
-    expected_gate_script = "\n".join(
-        (
-            'echo "native integration: $VALIDATE"',
-            'echo "hassfest: $HASSFEST"',
-            'echo "hacs: $HACS"',
-            'test "$VALIDATE" = success',
-            'test "$HASSFEST" = success',
-            'test "$HACS" = success',
-        )
-    )
-    actual_gate_script = "\n".join(line.rstrip() for line in gate["run"].strip().splitlines())
-    assert actual_gate_script == expected_gate_script
+        for result in ("failure", "skipped"):
+            failed_values = {**values, result_env[job_name]: result}
+            assert (
+                subprocess.run(
+                    ["bash", "-e", "-c", script],
+                    env={**os.environ, **failed_values},
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                ).returncode
+                != 0
+            )
 
 
 def test_claude_preflight_bootstraps_brew_path_before_gh() -> None:
