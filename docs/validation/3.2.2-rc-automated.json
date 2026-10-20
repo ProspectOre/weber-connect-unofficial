@@ -1,0 +1,46 @@
+{
+  "candidate": "3.2.2",
+  "release_channel": "stable",
+  "evidence_date": "2026-10-19",
+  "runtime_sha256": "1b85d054a914bbd4f6c5728a312f9a037adb78058f357edc89c353d400443a84",
+  "status": "local_minimum_current_passed",
+  "tests": {
+    "status": "passed",
+    "passed": 362,
+    "failed": 0,
+    "combined_statement_branch_coverage_percent": 100,
+    "statements": 1954,
+    "branches": 516,
+    "homeassistant": "2026.7.2",
+    "pytest_homeassistant_custom_component": "0.13.346",
+    "websockets": "16.1.1",
+    "python": "3.14.8"
+  },
+  "scope": "Stable 3.2.1 runtime with only read-only cloud send-boundary changes; broader 3.3 beta excluded.",
+  "hosted_gates": {
+    "ci": "pending",
+    "hacs": "pending",
+    "hassfest": "pending",
+    "regular_review": "pending"
+  },
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "websockets": "16.1.1",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 362,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "websockets": "16.1.1",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 362,
+      "combined_statement_branch_coverage_percent": 100
+    }
+  ]
+}
