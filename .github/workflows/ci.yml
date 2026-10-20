@@ -107,9 +107,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: 'false'
+      # Keep Hassfest pinned to this immutable upstream revision for reproducible validation.
       - uses: home-assistant/actions/hassfest@50baf3a307f87100cf550d4ae127746595030d5d
 
   hacs:
@@ -125,24 +126,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: 'false'
-      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
         with:
           category: integration
 
   ci:
     name: ci
-    if: >-
-      always()
-      && (github.event_name != 'pull_request'
-      || (github.event.pull_request.draft == false
-      && (github.event.pull_request.user.login == 'dependabot[bot]'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))))
+    # This job only evaluates prerequisite results; it must run even when
+    # candidate validation is skipped by its admission policy.
+    if: always()
     needs: [validate, hassfest, hacs]
     runs-on: ubuntu-latest
     timeout-minutes: 5

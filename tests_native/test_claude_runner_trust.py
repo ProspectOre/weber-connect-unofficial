@@ -12,11 +12,16 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TRUSTED_LIFECYCLE_EVENTS = {"opened", "ready_for_review", "synchronize"}
-TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+CI_PUSH_BRANCHES = {"main", "release/3.2.x"}
 
 
 def _workflow(name: str) -> str:
     return (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+
+
+def _workflow_doc(name: str) -> dict:
+    # BaseLoader preserves GitHub's `on` key as a string instead of YAML 1.1 bool.
+    return yaml.load(_workflow(name), Loader=yaml.BaseLoader)
 
 
 def _pull_request_events(workflow: str) -> set[str]:
@@ -25,43 +30,98 @@ def _pull_request_events(workflow: str) -> set[str]:
     return {event.strip() for event in match.group(1).split(",")}
 
 
-def _ci_admitted(
-    *,
-    event: str,
-    draft: bool = False,
-    same_repository: bool = True,
-    author_login: str = "contributor",
-    author_type: str = "User",
-    sender_type: str = "User",
-    author_association: str = "CONTRIBUTOR",
-) -> bool:
-    if event != "pull_request":
-        return True
-    return not draft and (
-        author_login == "dependabot[bot]"
-        or (
-            author_type != "Bot"
-            and sender_type != "Bot"
-            and (not same_repository or author_association in TRUSTED_ASSOCIATIONS)
+def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None:
+    workflow = _workflow_doc("ci.yml")
+
+    assert "shell" not in workflow.get("defaults", {}).get("run", {})
+    assert set(workflow["on"]) == {"pull_request", "push"}
+    assert set(workflow["on"]["pull_request"]["types"]) == TRUSTED_LIFECYCLE_EVENTS
+    assert set(workflow["on"]["push"]["branches"]) == CI_PUSH_BRANCHES
+    assert workflow["permissions"] == {"contents": "read"}
+    assert {job["runs-on"] for job in workflow["jobs"].values()} == {"ubuntu-latest"}
+    assert all("permissions" not in job for job in workflow["jobs"].values())
+    for job in workflow["jobs"].values():
+        assert str(job.get("continue-on-error", "false")).lower() == "false"
+        for step in job["steps"]:
+            assert str(step.get("continue-on-error", "false")).lower() == "false"
+
+    expected_admission = """github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && (github.event.pull_request.user.login == 'dependabot[bot]'
+      || (github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.pull_request.author_association)))))"""
+    aggregate_jobs = {
+        job_name
+        for job_name, job in workflow["jobs"].items()
+        if job.get("if") == "always()" and job.get("needs")
+    }
+    assert len(aggregate_jobs) == 1
+    aggregate_name = next(iter(aggregate_jobs))
+    assert aggregate_name == "ci"
+    aggregate = workflow["jobs"][aggregate_name]
+    assert aggregate["name"] == "ci"
+    assert "shell" not in aggregate.get("defaults", {}).get("run", {})
+    candidate_jobs = set(workflow["jobs"]) - aggregate_jobs
+    admissions = {
+        job_name: " ".join(workflow["jobs"][job_name]["if"].split()) for job_name in candidate_jobs
+    }
+    expected_admission = " ".join(expected_admission.split())
+    assert set(admissions) == candidate_jobs
+    assert len(set(admissions.values())) == 1
+    assert next(iter(admissions.values())) == expected_admission
+
+    for job_name in candidate_jobs:
+        for step in workflow["jobs"][job_name]["steps"]:
+            if step.get("uses", "").startswith("actions/checkout@"):
+                assert step["with"]["persist-credentials"] == "false"
+
+    assert aggregate["if"] == "always()"
+    assert set(aggregate["needs"]) == candidate_jobs
+    assert all("uses" not in step for step in aggregate["steps"])
+    assert len(aggregate["steps"]) == 1
+    gate = aggregate["steps"][0]
+    assert set(gate) == {"name", "env", "run"}
+
+    # The aggregate gate must receive and check every prerequisite result. Bind
+    # env names to their needs expressions, then inspect the run script by
+    # variable so adding a prerequisite cannot silently leave it unchecked.
+    result_env = {
+        expression.split(".")[1]: env_name
+        for env_name, expression in gate["env"].items()
+        if re.fullmatch(r"\$\{\{ needs\.[^.]+\.result }}", expression)
+    }
+    assert set(result_env) == candidate_jobs
+    assert len(result_env) == len(gate["env"])
+    script = gate["run"]
+    for env_name in result_env.values():
+        assert re.search(rf"\${re.escape(env_name)}\b", script)
+        assert re.search(rf'test\s+"\${re.escape(env_name)}"\s+=\s+success', script)
+
+    # GitHub's default bash run shell uses -e. Exercise the actual gate script
+    # with each successful, failed, and skipped prerequisite result to ensure
+    # shell behavior rejects every non-success state.
+    for job_name in candidate_jobs:
+        values = {env_name: "success" for env_name in result_env.values()}
+        assert (
+            subprocess.run(
+                ["bash", "-e", "-c", script], env={**os.environ, **values}, check=False
+            ).returncode
+            == 0
         )
-    )
-
-
-def test_ci_admits_same_repo_fork_and_default_branch_on_safe_runners() -> None:
-    workflow = _workflow("ci.yml")
-
-    assert _pull_request_events(workflow) == TRUSTED_LIFECYCLE_EVENTS
-    runners = re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE)
-    assert runners and set(runners) == {"ubuntu-latest"}
-    assert "self-hosted" not in workflow
-    assert "runner.os" not in workflow
-    assert "github.event.pull_request.head.repo.full_name != github.repository" in workflow
-    assert _ci_admitted(event="pull_request", same_repository=True, author_association="MEMBER")
-    assert _ci_admitted(event="pull_request", same_repository=False)
-    assert _ci_admitted(event="push")
-    assert not _ci_admitted(event="pull_request", draft=True, same_repository=False)
-    assert not _ci_admitted(event="pull_request", author_type="Bot")
-    assert not _ci_admitted(event="pull_request", sender_type="Bot")
+        for result in ("failure", "skipped"):
+            failed_values = {**values, result_env[job_name]: result}
+            assert (
+                subprocess.run(
+                    ["bash", "-e", "-c", script],
+                    env={**os.environ, **failed_values},
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                ).returncode
+                != 0
+            )
 
 
 def test_claude_preflight_bootstraps_brew_path_before_gh() -> None:
