@@ -33,6 +33,7 @@ def _pull_request_events(workflow: str) -> set[str]:
 def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None:
     workflow = _workflow_doc("ci.yml")
 
+    assert "shell" not in workflow.get("defaults", {}).get("run", {})
     assert set(workflow["on"]) == {"pull_request", "push"}
     assert set(workflow["on"]["pull_request"]["types"]) == TRUSTED_LIFECYCLE_EVENTS
     assert set(workflow["on"]["push"]["branches"]) == CI_PUSH_BRANCHES
@@ -61,6 +62,7 @@ def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None
     assert aggregate_name == "ci"
     aggregate = workflow["jobs"][aggregate_name]
     assert aggregate["name"] == "ci"
+    assert "shell" not in aggregate.get("defaults", {}).get("run", {})
     candidate_jobs = set(workflow["jobs"]) - aggregate_jobs
     admissions = {
         job_name: " ".join(workflow["jobs"][job_name]["if"].split()) for job_name in candidate_jobs
