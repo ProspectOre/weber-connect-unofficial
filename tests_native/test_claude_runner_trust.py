@@ -12,11 +12,15 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TRUSTED_LIFECYCLE_EVENTS = {"opened", "ready_for_review", "synchronize"}
-TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
 def _workflow(name: str) -> str:
     return (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+
+
+def _workflow_doc(name: str) -> dict:
+    # BaseLoader preserves GitHub's `on` key as a string instead of YAML 1.1 bool.
+    return yaml.load(_workflow(name), Loader=yaml.BaseLoader)
 
 
 def _pull_request_events(workflow: str) -> set[str]:
@@ -25,43 +29,51 @@ def _pull_request_events(workflow: str) -> set[str]:
     return {event.strip() for event in match.group(1).split(",")}
 
 
-def _ci_admitted(
-    *,
-    event: str,
-    draft: bool = False,
-    same_repository: bool = True,
-    author_login: str = "contributor",
-    author_type: str = "User",
-    sender_type: str = "User",
-    author_association: str = "CONTRIBUTOR",
-) -> bool:
-    if event != "pull_request":
-        return True
-    return not draft and (
-        author_login == "dependabot[bot]"
-        or (
-            author_type != "Bot"
-            and sender_type != "Bot"
-            and (not same_repository or author_association in TRUSTED_ASSOCIATIONS)
+def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None:
+    workflow = _workflow_doc("ci.yml")
+
+    assert set(workflow["on"]["pull_request"]["types"]) == TRUSTED_LIFECYCLE_EVENTS
+    assert workflow["permissions"] == {"contents": "read"}
+    assert {job["runs-on"] for job in workflow["jobs"].values()} == {"ubuntu-latest"}
+    assert all("permissions" not in job for job in workflow["jobs"].values())
+
+    expected_admission_terms = (
+        "github.event.pull_request.draft == false",
+        "github.event.pull_request.user.login == 'dependabot[bot]'",
+        "github.event.pull_request.user.type != 'Bot'",
+        "github.event.sender.type != 'Bot'",
+        "github.event.pull_request.head.repo.full_name != github.repository",
+        "github.event.pull_request.author_association",
+        "OWNER",
+        "MEMBER",
+        "COLLABORATOR",
+    )
+    for job_name in ("validate", "hassfest", "hacs"):
+        admission = workflow["jobs"][job_name]["if"]
+        for term in expected_admission_terms:
+            assert term in admission
+
+        for step in workflow["jobs"][job_name]["steps"]:
+            if step.get("uses", "").startswith("actions/checkout@"):
+                assert step["with"]["persist-credentials"] == "false"
+
+    aggregate = workflow["jobs"]["ci"]
+    assert aggregate["if"] == "always()"
+    assert set(aggregate["needs"]) == {"validate", "hassfest", "hacs"}
+    assert all("uses" not in step for step in aggregate["steps"])
+    assert len(aggregate["steps"]) == 1
+    gate = aggregate["steps"][0]
+    assert set(gate["env"]) == {"VALIDATE", "HASSFEST", "HACS"}
+    assert all(
+        gate["env"][key] == f"${{{{ needs.{job}.result }}}}"
+        for key, job in (
+            ("VALIDATE", "validate"),
+            ("HASSFEST", "hassfest"),
+            ("HACS", "hacs"),
         )
     )
-
-
-def test_ci_admits_same_repo_fork_and_default_branch_on_safe_runners() -> None:
-    workflow = _workflow("ci.yml")
-
-    assert _pull_request_events(workflow) == TRUSTED_LIFECYCLE_EVENTS
-    runners = re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE)
-    assert runners and set(runners) == {"ubuntu-latest"}
-    assert "self-hosted" not in workflow
-    assert "runner.os" not in workflow
-    assert "github.event.pull_request.head.repo.full_name != github.repository" in workflow
-    assert _ci_admitted(event="pull_request", same_repository=True, author_association="MEMBER")
-    assert _ci_admitted(event="pull_request", same_repository=False)
-    assert _ci_admitted(event="push")
-    assert not _ci_admitted(event="pull_request", draft=True, same_repository=False)
-    assert not _ci_admitted(event="pull_request", author_type="Bot")
-    assert not _ci_admitted(event="pull_request", sender_type="Bot")
+    for job in ("VALIDATE", "HASSFEST", "HACS"):
+        assert f'test "${job}" = success' in gate["run"]
 
 
 def test_claude_preflight_bootstraps_brew_path_before_gh() -> None:
