@@ -1,14 +1,6 @@
+# No self-hosted runners: every job runs on a GitHub-hosted label, so actionlint
+# reports any custom runner label.
 self-hosted-runner:
-  labels:
-    - macOS
-    - ARM64
-    - remote-ci
-    - backend
-    - ios
-    - android
-    - xcode
-    - weber
-    - mbp
-    - mini-fallback
+  labels: []
 
 config-variables: null
