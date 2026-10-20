@@ -13,10 +13,24 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 TRUSTED_LIFECYCLE_EVENTS = {"opened", "ready_for_review", "synchronize"}
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
-GITHUB_HOSTED_RUNNER = re.compile(
-    r"ubuntu-(?:latest|\d{2}\.\d{2})(?:-arm)?"
-    r"|windows-(?:latest|\d{4})(?:-arm)?"
-    r"|macos-(?:latest|\d{2})(?:-intel|-large|-xlarge)?"
+# Exact GitHub-hosted labels. A new hosted image fails here until it is added,
+# which is the safe direction: a lookalike label could be a self-hosted runner.
+GITHUB_HOSTED_RUNNERS = frozenset(
+    {
+        "ubuntu-latest",
+        "ubuntu-24.04",
+        "ubuntu-22.04",
+        "ubuntu-24.04-arm",
+        "ubuntu-22.04-arm",
+        "windows-latest",
+        "windows-2025",
+        "windows-2022",
+        "windows-11-arm",
+        "macos-latest",
+        "macos-15",
+        "macos-14",
+        "macos-15-intel",
+    }
 )
 
 
@@ -195,7 +209,7 @@ def _runner_violations(path: Path) -> list[str]:
         violations.append(f"{path.name}: defines no jobs")
     for name, job in jobs.items():
         runs_on = job.get("runs-on") if isinstance(job, dict) else None
-        if not isinstance(runs_on, str) or not GITHUB_HOSTED_RUNNER.fullmatch(runs_on):
+        if not isinstance(runs_on, str) or runs_on not in GITHUB_HOSTED_RUNNERS:
             violations.append(f"{path.name}:{name}: runs-on {runs_on!r}")
     return violations
 
@@ -217,6 +231,8 @@ def test_every_workflow_job_runs_on_a_github_hosted_runner() -> None:
         "  build:\n    uses: ./.github/workflows/reusable.yml\n",
         "  build:\n    runs-on: ubuntu-latest  # not self-hosted\n",
         "  build:\n    runs-on: ubuntu-mine\n",
+        "  build:\n    runs-on: ubuntu-99.99\n",
+        "  build:\n    runs-on: macos-99-xlarge\n",
     ],
 )
 def test_runner_check_rejects_runners_that_are_not_github_hosted(tmp_path: Path, jobs: str) -> None:
