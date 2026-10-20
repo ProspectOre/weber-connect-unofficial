@@ -37,29 +37,30 @@ def test_ci_workflow_admission_permissions_and_checkout_are_restricted() -> None
     assert {job["runs-on"] for job in workflow["jobs"].values()} == {"ubuntu-latest"}
     assert all("permissions" not in job for job in workflow["jobs"].values())
 
-    expected_admission_terms = (
-        "github.event.pull_request.draft == false",
-        "github.event.pull_request.user.login == 'dependabot[bot]'",
-        "github.event.pull_request.user.type != 'Bot'",
-        "github.event.sender.type != 'Bot'",
-        "github.event.pull_request.head.repo.full_name != github.repository",
-        "github.event.pull_request.author_association",
-        "OWNER",
-        "MEMBER",
-        "COLLABORATOR",
-    )
-    for job_name in ("validate", "hassfest", "hacs"):
-        admission = workflow["jobs"][job_name]["if"]
-        for term in expected_admission_terms:
-            assert term in admission
+    expected_admission = """github.event_name != 'pull_request'
+      || (github.event.pull_request.draft == false
+      && (github.event.pull_request.user.login == 'dependabot[bot]'
+      || (github.event.pull_request.user.type != 'Bot'
+      && github.event.sender.type != 'Bot'
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.pull_request.author_association)))))"""
+    candidate_jobs = {"validate", "hassfest", "hacs"}
+    admissions = {
+        job_name: " ".join(workflow["jobs"][job_name]["if"].split()) for job_name in candidate_jobs
+    }
+    expected_admission = " ".join(expected_admission.split())
+    assert set(admissions) == candidate_jobs
+    assert len(set(admissions.values())) == 1
+    assert next(iter(admissions.values())) == expected_admission
 
+    for job_name in candidate_jobs:
         for step in workflow["jobs"][job_name]["steps"]:
             if step.get("uses", "").startswith("actions/checkout@"):
                 assert step["with"]["persist-credentials"] == "false"
 
     aggregate = workflow["jobs"]["ci"]
     assert aggregate["if"] == "always()"
-    assert set(aggregate["needs"]) == {"validate", "hassfest", "hacs"}
+    assert set(aggregate["needs"]) == set(workflow["jobs"]) - {"ci"}
     assert all("uses" not in step for step in aggregate["steps"])
     assert len(aggregate["steps"]) == 1
     gate = aggregate["steps"][0]
