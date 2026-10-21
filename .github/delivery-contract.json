@@ -1,0 +1,9 @@
+{
+  "workflows": {
+    "ci.yml": "ci",
+    "codeql-analysis.yml": "ci",
+    "compatibility-watch.yml": "nightly"
+  },
+  "hosted": true,
+  "dependabot": true
+}
