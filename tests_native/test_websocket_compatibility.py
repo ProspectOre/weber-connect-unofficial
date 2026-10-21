@@ -8,7 +8,6 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -18,8 +17,9 @@ from websockets.asyncio.server import serve
 from custom_components.weber_connect.weber_cloud_socket import WeberCloudSession
 
 
-@pytest.mark.enable_socket
-async def test_real_library_connects_with_session_options_and_binary_frames(tmp_path) -> None:
+async def test_real_library_connects_with_session_options_and_binary_frames(
+    tmp_path, socket_enabled: None
+) -> None:
     """Use loopback TLS and synthetic credentials; never contact Weber Cloud."""
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
