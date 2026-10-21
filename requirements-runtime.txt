@@ -1,2 +1,2 @@
 # Runtime dependencies not already supplied by Home Assistant 2026.7.
-websockets==17.1
+websockets==17.2
