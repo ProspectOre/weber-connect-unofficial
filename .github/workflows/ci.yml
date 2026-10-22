@@ -2,28 +2,42 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
 permissions:
   contents: read
 
+# Every PR runs the same gates, whoever opened it. A title or body edit changes
+# no code: its run rechecks attribution and reports the last code run for the
+# same head instead of rerunning the suite. A base change reruns everything.
+env:
+  RECHECK: ${{ github.event.action == 'edited' && !github.event.changes.base }}
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{
+    github.event.action == 'edited' && !github.event.changes.base
+    && github.run_id || 'code' }}
   cancel-in-progress: true
 
 jobs:
+  attribution:
+    name: Attribution
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+      - name: Check for AI attribution
+        run: python3 .github/scripts/attribution.py
+
   matrix:
     name: Resolve Home Assistant matrix
-    if: >-
-      github.event_name != 'pull_request'
-      || (github.event.pull_request.draft == false
-      && (github.event.pull_request.user.login == 'dependabot[bot]'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.base) }}
     runs-on: ubuntu-latest
     outputs:
       full_matrix: ${{ steps.resolve.outputs.full_matrix }}
@@ -47,14 +61,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.full_matrix) }}
-    if: >-
-      github.event_name != 'pull_request'
-      || (github.event.pull_request.draft == false
-      && (github.event.pull_request.user.login == 'dependabot[bot]'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -120,14 +126,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.latest_matrix) }}
-    if: >-
-      github.event_name != 'pull_request'
-      || (github.event.pull_request.draft == false
-      && (github.event.pull_request.user.login == 'dependabot[bot]'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -152,14 +150,7 @@ jobs:
 
   hassfest:
     name: Hassfest
-    if: >-
-      github.event_name != 'pull_request'
-      || (github.event.pull_request.draft == false
-      && (github.event.pull_request.user.login == 'dependabot[bot]'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.base) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -170,14 +161,7 @@ jobs:
 
   hacs:
     name: HACS
-    if: >-
-      github.event_name != 'pull_request'
-      || (github.event.pull_request.draft == false
-      && (github.event.pull_request.user.login == 'dependabot[bot]'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))))
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.base) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -190,34 +174,48 @@ jobs:
 
   ci:
     name: ci
-    if: >-
-      always()
-      && (github.event_name != 'pull_request'
-      || (github.event.pull_request.draft == false
-      && (github.event.pull_request.user.login == 'dependabot[bot]'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))))
-    needs: [matrix, validate, latest-smoke, hassfest, hacs]
+    if: always()
+    needs: [attribution, matrix, validate, latest-smoke, hassfest, hacs]
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      checks: read
     steps:
       - name: Require every release gate
+        if: ${{ !fromJSON(env.RECHECK) }}
         env:
+          ATTRIBUTION: ${{ needs.attribution.result }}
           MATRIX: ${{ needs.matrix.result }}
           VALIDATE: ${{ needs.validate.result }}
           LATEST_SMOKE: ${{ needs.latest-smoke.result }}
           HASSFEST: ${{ needs.hassfest.result }}
           HACS: ${{ needs.hacs.result }}
+          EVENT: ${{ github.event_name }}
         run: |
+          echo "attribution: $ATTRIBUTION"
           echo "matrix resolution: $MATRIX"
           echo "native integration matrix: $VALIDATE"
           echo "latest Home Assistant smoke: $LATEST_SMOKE"
           echo "hassfest: $HASSFEST"
           echo "hacs: $HACS"
+          if [ "$EVENT" = pull_request ]; then test "$ATTRIBUTION" = success; fi
           test "$MATRIX" = success
           test "$VALIDATE" = success
           test "$LATEST_SMOKE" = success
           test "$HASSFEST" = success
           test "$HACS" = success
+      - if: ${{ fromJSON(env.RECHECK) }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+          sparse-checkout: .github/scripts
+      - name: Require attribution and the last code run for this head
+        if: ${{ fromJSON(env.RECHECK) }}
+        env:
+          ATTRIBUTION: ${{ needs.attribution.result }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$ATTRIBUTION" = success
+          .github/scripts/last-code-run.sh ci

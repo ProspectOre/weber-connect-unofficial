@@ -2,10 +2,10 @@
 
 Keep physical acceptance separate from source review and CI.
 
-## Apple tool capabilities
+## Workspace and attribution
 
-- Inherit `/Users/alec/Dev/AGENTS.md`. Prefer discovered native `xcode-tools` for builds, tests, previews, and diagnostics; use XcodeBuildMCP or shell when unavailable or insufficient.
-- Use official Apple documentation for API references when `DocumentationSearch` is absent. Rediscover tools each session; do not impose a fixed tool count or version requirement. Dated bridge evidence lives in `/Users/alec/Dev/wiki/workflows/xcode.md`.
+- Inherit `/Users/alec/Dev/AGENTS.md` when present (native `xcode-tools` preference included); this file adds repository facts only.
+- No AI attribution: no AI co-author or `Assisted-by` trailers, agent session links, "Generated with/by" footers or AI sign-offs in commits, PR titles or bodies, reviews or comments; commit as the account owner; name branches by purpose. `.github/scripts/attribution.py` enforces it in `ci`.
 
 ## CI, review, deploy
 

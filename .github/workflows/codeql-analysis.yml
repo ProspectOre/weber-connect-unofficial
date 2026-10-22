@@ -4,7 +4,7 @@ on:
   push:
     branches: ["main", "master"]
   pull_request:
-    types: [synchronize]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -19,13 +19,7 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (python)
-    if: >-
-      (github.event.repository.private == false || github.event_name == 'workflow_dispatch')
-      && (github.event_name != 'pull_request'
-      || (github.event.pull_request.user.type != 'Bot'
-      && github.event.sender.type != 'Bot'
-      && (github.event.pull_request.head.repo.full_name != github.repository
-      || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))))
+    if: github.event.repository.private == false || github.event_name == 'workflow_dispatch'
     # All analysis runs use an ephemeral hosted worker, including manual branch runs.
     runs-on: ubuntu-latest
     timeout-minutes: 60
