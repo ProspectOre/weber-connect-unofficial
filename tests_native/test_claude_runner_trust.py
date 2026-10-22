@@ -9,8 +9,8 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-TRUSTED_LIFECYCLE_EVENTS = {"opened", "ready_for_review", "synchronize"}
-TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+PULL_REQUEST_EVENTS = {"opened", "synchronize", "reopened", "edited"}
+EDIT_ONLY = "github.event.action == 'edited' && !github.event.changes.base"
 GITHUB_HOSTED_RUNNER = re.compile(
     r"ubuntu-(?:latest|\d{2}\.\d{2})(?:-arm)?"
     r"|windows-(?:latest|\d{4})(?:-arm)?"
@@ -28,43 +28,40 @@ def _pull_request_events(workflow: str) -> set[str]:
     return {event.strip() for event in match.group(1).split(",")}
 
 
-def _ci_admitted(
-    *,
-    event: str,
-    draft: bool = False,
-    same_repository: bool = True,
-    author_login: str = "contributor",
-    author_type: str = "User",
-    sender_type: str = "User",
-    author_association: str = "CONTRIBUTOR",
-) -> bool:
-    if event != "pull_request":
-        return True
-    return not draft and (
-        author_login == "dependabot[bot]"
-        or (
-            author_type != "Bot"
-            and sender_type != "Bot"
-            and (not same_repository or author_association in TRUSTED_ASSOCIATIONS)
-        )
+def _author_gates(workflow: str) -> list[str]:
+    """Conditions that admit or skip a run by who opened or pushed it."""
+    return re.findall(
+        r"author_association|pull_request\.user\.|sender\.type|dependabot\[bot\]", workflow
     )
 
 
-def test_ci_admits_same_repo_fork_and_default_branch_on_safe_runners() -> None:
+def test_ci_runs_every_pull_request_on_safe_runners() -> None:
     workflow = _workflow("ci.yml")
+    jobs = yaml.safe_load(workflow)["jobs"]
 
-    assert _pull_request_events(workflow) == TRUSTED_LIFECYCLE_EVENTS
+    assert _pull_request_events(workflow) == PULL_REQUEST_EVENTS
     runners = re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE)
     assert runners and set(runners) == {"ubuntu-latest"}
     assert "self-hosted" not in workflow
     assert "runner.os" not in workflow
-    assert "github.event.pull_request.head.repo.full_name != github.repository" in workflow
-    assert _ci_admitted(event="pull_request", same_repository=True, author_association="MEMBER")
-    assert _ci_admitted(event="pull_request", same_repository=False)
-    assert _ci_admitted(event="push")
-    assert not _ci_admitted(event="pull_request", draft=True, same_repository=False)
-    assert not _ci_admitted(event="pull_request", author_type="Bot")
-    assert not _ci_admitted(event="pull_request", sender_type="Bot")
+    # Every PR, bot or person, same repository or fork, runs the same gates.
+    assert _author_gates(workflow) == []
+    assert "draft" not in workflow
+    # An edit changes no code: only the heavy lanes skip, and the required
+    # check reports the last code run for the head instead of passing.
+    for name in ("matrix", "hassfest", "hacs"):
+        assert jobs[name]["if"] == f"${{{{ !({EDIT_ONLY}) }}}}"
+    assert jobs["attribution"]["if"] == "github.event_name == 'pull_request'"
+    assert jobs["ci"]["if"] == "always()"
+    assert set(jobs["ci"]["needs"]) == {
+        "attribution",
+        "matrix",
+        "validate",
+        "latest-smoke",
+        "hassfest",
+        "hacs",
+    }
+    assert ".github/scripts/last-code-run.sh ci" in workflow
 
 
 def test_retired_review_gate_is_not_restored() -> None:
@@ -76,8 +73,8 @@ def test_retired_review_gate_is_not_restored() -> None:
 def test_codeql_admits_fork_analysis_without_fork_result_upload() -> None:
     workflow = _workflow("codeql-analysis.yml")
 
-    assert _pull_request_events(workflow) == {"synchronize"}
-    assert "github.event.pull_request.head.repo.full_name != github.repository" in workflow
+    assert _pull_request_events(workflow) == {"opened", "synchronize", "reopened"}
+    assert _author_gates(workflow) == []
     assert re.findall(r"^\s+runs-on: (.+)$", workflow, re.MULTILINE) == ["ubuntu-latest"]
     assert "self-hosted" not in workflow
     assert "upload: ${{ github.event_name != 'pull_request'" in workflow
