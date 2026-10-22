@@ -2,23 +2,23 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
 permissions:
   contents: read
 
-# Every PR runs the same gates, whoever opened it. A title or body edit, or a
-# draft marked ready, changes no code: that run rechecks attribution and
-# reports the last code run's result for the same head instead of rerunning.
+# Every PR runs the same gates, whoever opened it. A title or body edit changes
+# no code: its run rechecks attribution and reports the last code run for the
+# same head instead of rerunning the suite. A base change reruns everything.
 env:
-  RECHECK: ${{ github.event.action == 'ready_for_review' || (github.event.action == 'edited' && !github.event.changes.base) }}
+  RECHECK: ${{ github.event.action == 'edited' && !github.event.changes.base }}
 
 concurrency:
   group: >-
     ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{
-    (github.event.action == 'ready_for_review' || (github.event.action == 'edited' && !github.event.changes.base))
+    github.event.action == 'edited' && !github.event.changes.base
     && github.run_id || 'code' }}
   cancel-in-progress: true
 
@@ -37,7 +37,7 @@ jobs:
 
   matrix:
     name: Resolve Home Assistant matrix
-    if: ${{ !(github.event.action == 'ready_for_review' || (github.event.action == 'edited' && !github.event.changes.base)) }}
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.base) }}
     runs-on: ubuntu-latest
     outputs:
       full_matrix: ${{ steps.resolve.outputs.full_matrix }}
@@ -150,7 +150,7 @@ jobs:
 
   hassfest:
     name: Hassfest
-    if: ${{ !(github.event.action == 'ready_for_review' || (github.event.action == 'edited' && !github.event.changes.base)) }}
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.base) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -161,7 +161,7 @@ jobs:
 
   hacs:
     name: HACS
-    if: ${{ !(github.event.action == 'ready_for_review' || (github.event.action == 'edited' && !github.event.changes.base)) }}
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.base) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -205,6 +205,11 @@ jobs:
           test "$LATEST_SMOKE" = success
           test "$HASSFEST" = success
           test "$HACS" = success
+      - if: ${{ fromJSON(env.RECHECK) }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: 'false'
+          sparse-checkout: .github/scripts
       - name: Require attribution and the last code run for this head
         if: ${{ fromJSON(env.RECHECK) }}
         env:
@@ -212,17 +217,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          set -euo pipefail
           test "$ATTRIBUTION" = success
-          own=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .check_suite_id)
-          for _ in $(seq 110); do
-            prior=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=ci&filter=all&per_page=100" --jq "
-              [.check_runs[] | select(.app.slug == \"github-actions\" and .check_suite.id < $own
-               and .conclusion != \"cancelled\" and .conclusion != \"skipped\")] | max_by(.id)
-              | select(.) | \"\\(.status) \\(.conclusion) \\(.html_url)\"")
-            if [ -z "$prior" ]; then echo "No code run for this head yet; push or reopen to run CI."; exit 1; fi
-            read -r status conclusion url <<<"$prior"
-            if [ "$status" = completed ]; then echo "Last code run: $conclusion ($url)"; test "$conclusion" = success; exit; fi
-            sleep 30
-          done
-          echo "The last code run for this head did not finish."; exit 1
+          .github/scripts/last-code-run.sh ci
