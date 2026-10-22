@@ -48,6 +48,10 @@ workflow source without that billing switch or a local runner fallback.
 Larger runners are billed even for public repositories; artifact storage and
 cache allowances have separate billing boundaries.
 
+Leave AI attribution out of commits and PR text (co-author trailers, session
+links, tool footers). `ci` warns on fork PRs; the maintainer strips any left at
+merge.
+
 ## Design constraints
 
 - Use Home Assistant's documented Bluetooth manager. Never connect directly to
