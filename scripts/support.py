@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import posixpath
 import re
 import shutil
 
@@ -14,7 +15,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 # Make the sibling scripts namespace importable when invoked as a file path,
@@ -342,10 +343,12 @@ def validate_registry(registry: dict[str, Any], root: Path = ROOT) -> None:
             raise SupportError("product_sources must be HTTPS URLs")
 
 
-def _md_link(value: str, root: Path = ROOT) -> str:
+def _md_link(value: str) -> str:
+    """Link registry paths from docs/product-compatibility.md's directory."""
     if value.startswith("https://"):
         return f"[{value}]({value})"
-    return f"[{value}]({value})"
+    target = quote(posixpath.relpath(value, "docs"), safe="/")
+    return f"[{value}]({target})"
 
 
 def render_markdown(registry: dict[str, Any], root: Path = ROOT) -> str:
