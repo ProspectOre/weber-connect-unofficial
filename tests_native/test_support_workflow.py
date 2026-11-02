@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
@@ -25,6 +27,29 @@ def test_registry_and_generated_matrix_are_current() -> None:
     validate_registry(registry, ROOT)
     assert render_markdown(registry, ROOT) == (ROOT / "docs/product-compatibility.md").read_text()
     assert len(registry["product_families"]) == 13
+
+
+def test_rendered_evidence_links_resolve_from_matrix_directory() -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    markdown = render_markdown(registry, ROOT)
+    links = re.findall(r"\[([^\]]+)\]\(([^)]+)\)", markdown)
+    assert links
+    repository_links = external_links = 0
+    for label, destination in links:
+        url = urlsplit(destination)
+        if url.scheme:
+            assert url.scheme == "https"
+            assert destination == label
+            external_links += 1
+            continue
+        resolved = (ROOT / "docs" / unquote(url.path)).resolve()
+        assert resolved.is_file(), destination
+        assert resolved.is_relative_to(ROOT)
+        if (ROOT / label).is_file():
+            assert resolved == (ROOT / label).resolve()
+        repository_links += 1
+    assert repository_links > 0
+    assert external_links > 0
 
 
 def test_render_cli_works_when_invoked_by_path() -> None:
