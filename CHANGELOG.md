@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.0rc2 — controller-family beta
+
+- Raise the websockets runtime requirement from 17.1 to 17.3. Integration code is
+  unchanged from 3.3.0rc1.
+- Bind new automated and pending physical receipts to the changed runtime; rc1
+  evidence does not carry over.
+
 ## 3.3.0rc1 — controller-family beta
 
 - Move the broader 3.2.2 prerelease work to the 3.3 version line, leaving stable
