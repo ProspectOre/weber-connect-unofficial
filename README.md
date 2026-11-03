@@ -8,7 +8,7 @@ authenticated Weber Cloud companion for ongoing temperatures and status. The
 Weber app can continue using Bluetooth after setup. No Weber account password,
 phone secret, MQTT broker or packet capture is required.
 
-The 3.3.0rc1 beta continues the controller-family work from 3.2.2rc6. It keeps
+The 3.3.0rc2 beta continues the controller-family work from 3.3.0rc1. It keeps
 cloud session requests limited to empty-payload status and capability reads.
 Stable 3.2.2 is being prepared separately as a small hotfix from stable 3.2.1.
 Use the latest stable HACS release for the established feature set; enable
@@ -77,7 +77,7 @@ other product families are not qualified merely by being discovered.
 For a failure, choose **Get help / report a problem**, review the generated report,
 and share it in the existing issue. Please exclude credentials, QR codes, private
 identifiers and raw packets. See [architecture](ARCHITECTURE.md), [security](SECURITY.md), and the
-[3.3.0rc1 validation record](docs/validation/3.3.0rc1-readiness.md).
+[3.3.0rc2 validation record](docs/validation/3.3.0rc2-readiness.md).
 
 Published historical installation and hardware evidence remains available in the
 [3.2.1 documentation](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.1/README.md).
