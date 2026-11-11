@@ -490,11 +490,13 @@ class WeberCloudSession:
                     status = await self.async_request_status()
                     self.error_kind = "connection"
                     status_callback(status)
-                    delay_index = 0
                     await self._async_listen_until_poll(
                         max(1.0, STATUS_INTERVAL - (asyncio.get_running_loop().time() - started)),
                         status_callback,
                     )
+                    # A status followed by another disconnect is not a healthy
+                    # poll interval and must not reset escalating backoff.
+                    delay_index = 0
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:

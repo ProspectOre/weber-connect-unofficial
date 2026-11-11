@@ -322,6 +322,34 @@ async def test_between_poll_repeated_failure_uses_normal_error_path():
     assert connection.closed and replacement.closed
 
 
+async def test_repeated_failed_poll_windows_escalate_until_a_healthy_window():
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    errors, delays = [], []
+
+    def error(message):
+        errors.append(message)
+        if len(errors) == 8:
+            session._closed = True
+
+    async def wait_for_retry(awaitable, *, timeout):
+        awaitable.close()
+        delays.append(timeout)
+
+    with (
+        patch.object(session, "async_request_status", AsyncMock(return_value={})),
+        patch.object(
+            session,
+            "_async_listen_until_poll",
+            AsyncMock(side_effect=[OSError() for _ in range(6)] + [None, OSError(), OSError()]),
+        ),
+        patch.object(asyncio, "wait_for", wait_for_retry),
+    ):
+        async with asyncio.timeout(2):
+            await session.async_run(lambda _: None, error)
+    assert len(errors) == 8
+    assert delays == [1.0, 2.0, 5.0, 10.0, 30.0, 30.0, 1.0, 2.0]
+
+
 @pytest.mark.parametrize("stop", ["closed", "wake"])
 async def test_between_poll_failure_during_stop_does_not_reconnect(stop):
     session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
