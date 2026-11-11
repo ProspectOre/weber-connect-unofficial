@@ -1,9 +1,10 @@
 {
   "candidate": "3.3.0rc3",
   "evidence_date": "2026-11-10",
+  "timezone": "America/Los_Angeles",
   "identifiers": "redacted",
-  "status": "partial_live_validation",
-  "runtime_sha256": "f0bcbadfdc1a7ee6b8531184a86a77696fc2e72e22cacd47cbda76bbefcf7dea",
+  "status": "targeted_checks_passed",
+  "runtime_sha256": "ae1e858e989d14f9f56d27f0369eeb3612dc7cc77360e7434b37dbdaa36a0840",
   "hardware": {
     "controller": "Weber Connect Hub",
     "firmware": "2.0.3_7398",
@@ -12,49 +13,82 @@
     "tablet": "Samsung SM-X210",
     "home_assistant": "2026.11.0"
   },
-  "observations": [
-    {
-      "test": "single_target",
-      "runtime_sha256": "819b616854a908b66334307913d2c4495ba74e8f498ad64f2f1c87da4713c912",
-      "result": "observed",
+  "observed": {
+    "single_target": {
       "oem_f": 120,
-      "home_assistant_f": 119.84,
+      "ha_f": 119.84,
       "wire_c": 48.8,
-      "note": "Observed after HA restart; OEM rounds to whole Fahrenheit degrees."
+      "observed_after_seconds": 10.13
     },
-    {
-      "test": "target_edit_120_to_140_f",
-      "runtime_sha256": "819b616854a908b66334307913d2c4495ba74e8f498ad64f2f1c87da4713c912",
-      "result": "failed_to_refresh",
-      "note": "Old target cleared on changed plan identity; replacement remained unknown while ordinary temperatures continued."
+    "single_target_edit": {
+      "from_oem_f": 120,
+      "to_oem_f": 140,
+      "ha_f": 140.0,
+      "observed_after_seconds": 2.21,
+      "old_target_cleared_while_fetching": true
     },
-    {
-      "test": "range_70_to_100_f_wire_capture",
-      "result": "observed_direct_read",
-      "wire_lower_c": 21.1,
-      "wire_upper_c": 37.7,
-      "note": "Two direct reads returned the same 65-byte program. Limits are prompt triggers. Both now covered by a sanitized fixture; this alone does not verify installed HA range entities."
+    "initial_range": {
+      "oem_f": [
+        70,
+        100
+      ],
+      "ha_f": [
+        69.98,
+        99.86
+      ],
+      "observed_after_ha_restart": true,
+      "unchanged_at_checks_over_115_seconds": true
     },
-    {
-      "test": "program_read_reliability",
-      "result": "unresolved",
-      "note": "Subsequent exclusive reads, including after 65 seconds without program requests, timed out after 30 seconds while ordinary status frames continued. Relay reported online. A high sequence seed was not necessary for a successful read, and no workaround was added."
+    "range_edit": {
+      "to_oem_f": [
+        65,
+        95
+      ],
+      "ha_f": [
+        64.94,
+        95.0
+      ],
+      "observed_after_seconds": 9.28,
+      "old_limits_cleared_while_fetching": true
     },
-    {
-      "test": "remove_temporary_range_alert",
-      "runtime_sha256": "335c3118066d7a6988cfc0eeb741dd9a477da60e7cf2800953b85836dac48ff7",
-      "result": "observed",
-      "note": "OEM alert removed at 22:27 PST. OEM shows no target; HA cooking is off and no numeric target remains. Range entities had never obtained values, so this does not prove clearing a previously populated range."
-    }
+    "range_removal": {
+      "limits_unknown": true,
+      "cooking_off": true,
+      "observed_after_seconds": 1.08
+    },
+    "active_entry_reload": {
+      "target_recovered_f": 140.0,
+      "require_core_restart": false,
+      "observed_after_reload_return_seconds": 11.34,
+      "fresh_socket_connections": 1,
+      "failed_updates": 0
+    },
+    "single_target_removal": {
+      "target_unknown": true,
+      "cooking_off": true,
+      "observed_after_seconds": 0.08
+    },
+    "entity_continuity": {
+      "baseline_entities": 18,
+      "retained": 18,
+      "missing": 0
+    },
+    "app_coexistence": "OEM edits remained available while HA received cloud temperatures and program details"
+  },
+  "timing_method": "Approximate observation delays from a local one-second HA state poll started immediately after the OEM confirmation action; not a latency guarantee. Fahrenheit differences reflect the wire deci-C precision and OEM whole-degree rounding.",
+  "defects_found_and_fixed": [
+    "Manual alerts use the valid all-zero primitive program UUID.",
+    "Controller reply sequences are independent of request sequences.",
+    "Manual range thresholds are prompt triggers, combined with step exit criteria.",
+    "Legacy plan tag 4 must not serve as a probe-type fallback; absent type defaults to wired.",
+    "One-status-then-sleep reception queued newer status and program replies. A serialized reader now consumes messages between polls."
   ],
-  "pending": [
-    "Final installed candidate startup and target/range comparison",
-    "Hub power-cycle retest requested from owner",
-    "Stop temporary Fileeditor after installation verification"
-  ],
-  "acceptance_limit": "This targeted Connect Hub trial is not full physical acceptance, endurance evidence, or qualification of other controllers. No new beta or stable release is authorized by this record.",
+  "earlier_trial_limit": "Pre-fix targets stalled or arrived late; an OEM removal remained falsely active in HA for minutes. Those earlier builds do not qualify this runtime. Isolated cloud-read timeouts were also observed; no sequence-counter workaround was introduced.",
   "cleanup": {
     "temporary_oem_alerts": "removed",
-    "tablet_bluetooth": "restored_off"
-  }
+    "tablet_bluetooth": "restored_off",
+    "temporary_fileeditor": "stopped",
+    "original_3_2_2_rollback": "retained"
+  },
+  "acceptance_limit": "Only this Connect Hub target lifecycle, restart/reload and brief app coexistence were exercised. No timed physical power-cycle result, pairing, endurance, cooking, other-controller qualification or full stable acceptance is established. Global physical gates remain pending."
 }

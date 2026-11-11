@@ -70,13 +70,19 @@ while the exit criterion is a user action. RC3 now combines both trigger sources
 A sanitized 65-byte response fixture decodes 21.1–37.7°C, matching the OEM app
 after its whole-degree Fahrenheit rounding. A successful direct response proves
 the wire format, not reliable delivery to installed HA; see the targeted live
-record for the unresolved intermittent replies.
+record for the final lifecycle results and earlier failures.
 
 The range trial also exposed a false probe-type fallback: legacy plan tag 4
 with value 2 labeled a wired probe as wireless. OEM `ProbeSessionStatusTLV_TLVKt`
 keeps tag 4 (plan) and tag 19 (probe type) separate; `ProbeSessionStatusKt`
 defaults an absent type to wired. RC3 follows that default and does not use plan
 IDs as types. Present zero and malformed type data remain unknown.
+
+The later live trial exposed queued stale status: reading one cook frame and
+sleeping let newer session changes and program replies accumulate. RC3 now
+consumes incoming messages between status polls with one serialized reader.
+The final target/range edits, removals and active entry reload passed; measured
+results are in the [targeted observation](3.3.0rc3-probe-target-observation.json).
 
 ## Pairing and remaining hardware evidence
 
