@@ -434,6 +434,17 @@ def _u32(value: bytes | None) -> int | None:
     return int.from_bytes(value[:4], "little", signed=False)
 
 
+def _versioned_uint(
+    fields: dict[int, list[bytes]], modern_tag: int, legacy_tag: int, size: int
+) -> int | None:
+    """Prefer a present modern field, including zero, without masking bad widths."""
+
+    value = _last(fields, modern_tag)
+    if value is None:
+        return _u8(_last(fields, legacy_tag))
+    return int.from_bytes(value, "little") if len(value) == size else None
+
+
 def _i32(value: bytes | None) -> int | None:
     if value is None or len(value) < 4:
         return None
@@ -490,7 +501,13 @@ def parse_probe_session_status_tlv(payload: bytes) -> dict[str, Any]:
     fields = parse_tlv(payload)
     slot_index = _u8(_last(fields, 1))
     state_value = _u8(_last(fields, 12))
-    probe_type_value = _u8(_last(fields, 19)) or _u8(_last(fields, 4))
+    # Tag 4 is the legacy plan ID, never a fallback for the probe type.
+    # OEM ProbeSessionStatusKt defaults missing tag 19 to a wired probe.
+    probe_type_data = _last(fields, 19)
+    if probe_type_data is None:
+        probe_type_value: int | None = 1
+    else:
+        probe_type_value = probe_type_data[0] if len(probe_type_data) == 1 else None
     probe_temp_dc = _i16(_last(fields, 10))
     segment_temps = [_i16(item) for item in fields.get(23, [])]
 
@@ -500,13 +517,13 @@ def parse_probe_session_status_tlv(payload: bytes) -> dict[str, Any]:
         "label": f"Probe {slot_index + 1}" if slot_index is not None else "Probe",
         "session_id": _u8(_last(fields, 2)),
         "program_id_hex": bytes_to_hex(_last(fields, 3) or b"") or None,
-        "plan_id": _u32(_last(fields, 16)) or _u8(_last(fields, 4)),
+        "plan_id": _versioned_uint(fields, 16, 4, 4),
         "time_remaining_s": _u32(_last(fields, 5)),
         "time_elapsed_s": _u32(_last(fields, 6)),
-        "step_id": _u16(_last(fields, 17)) or _u8(_last(fields, 7)),
+        "step_id": _versioned_uint(fields, 17, 7, 2),
         "prompt_time_remaining_s": _u32(_last(fields, 8)),
         "prompt_time_elapsed_s": _u32(_last(fields, 9)),
-        "prompt_id": _u16(_last(fields, 18)) or _u8(_last(fields, 11)),
+        "prompt_id": _versioned_uint(fields, 18, 11, 2),
         "state_value": state_value,
         "state": _lookup(SESSION_STATES, state_value),
         "probe_type_value": probe_type_value,

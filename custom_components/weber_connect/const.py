@@ -10,6 +10,11 @@ MANUFACTURER: Final = "Weber"
 # Defensive decoding ceiling, not a promise that an appliance has this many ports.
 # Entities are created only for reported or previously registered physical slots.
 MAX_PROBE_SLOTS: Final = 16
+PROBE_TARGET_FIELDS: Final = (
+    "target_temperature",
+    "target_lower_temperature",
+    "target_upper_temperature",
+)
 CLOUD_OFFLINE_RETAINED_KEYS: Final = (
     "battery_level",
     "is_charging",

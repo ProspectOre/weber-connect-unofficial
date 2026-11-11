@@ -15,7 +15,14 @@ from homeassistant.core import HomeAssistant
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-from .const import CLOUD_OFFLINE_RETAINED_KEYS
+from .const import CLOUD_OFFLINE_RETAINED_KEYS, MAX_PROBE_SLOTS
+from .probe_targets import ProbeTargets
+from .programs import (
+    PROBE_SESSION,
+    PROGRAM_REQUEST,
+    PROGRAM_RESPONSE,
+    SUPPORTED_PROGRAM_VERSIONS,
+)
 from .saber_frames import (
     parse_appliance_status_payload,
     parse_cook_session_status_payload,
@@ -29,8 +36,8 @@ SOCKET_PATH = "/2/messaging/websocket/companion"
 ROUTING_HEADER_LENGTH = 35
 TRANSPORT_HEADER_LENGTH = 6
 MESSAGE_VERSION = 10
-# Telemetry requests have no payload. Keep this boundary separate from the
-# generic frame codec, which also handles incoming messages and protocol tools.
+# Status/capability reads have no payload. Program reads below permit only a
+# physical probe selector; settings and cooking commands remain forbidden.
 READ_ONLY_REQUEST_TYPES = frozenset({0x05, 0x07, 0x0E})
 STATUS_INTERVAL = 10.0
 STATUS_TIMEOUT = 12.0
@@ -145,6 +152,7 @@ class WeberCloudSession:
         self.socket_connections = 0
         self.fast_recoveries = 0
         self._appliance_status: dict[str, Any] = {}
+        self._probe_targets = ProbeTargets()
         self._fuel_sample_times: dict[str, float] = {}
         self.fuel_level_reports = 0
         self.fuel_level_unknown_reports = 0
@@ -158,6 +166,10 @@ class WeberCloudSession:
             "reserved": 0,
         }
         self.fuel_level_invalid_field_count = 0
+
+    @property
+    def program_reads_suspended(self) -> bool:
+        return self._probe_targets.requests_suspended
 
     def _next_sequence(self) -> int:
         value = self._sequence
@@ -233,6 +245,7 @@ class WeberCloudSession:
     async def _async_close_connection(self) -> None:
         connection, self._connection = self._connection, None
         self._subscribed = False
+        self._probe_targets.clear()
         # Cook status may arrive before appliance status after a reconnect.
         # Bridge brief interruptions with fuel sampled within the last minute;
         # expiry is also checked on every publication, never extended by reuse.
@@ -257,26 +270,43 @@ class WeberCloudSession:
                 self._appliance_status.pop(key, None)
                 del self._fuel_sample_times[key]
 
-    async def _async_send(self, type_value: int, payload: bytes = b"") -> None:
+    async def _async_send(
+        self,
+        type_value: int,
+        payload: bytes = b"",
+        *,
+        message_version: int = MESSAGE_VERSION,
+    ) -> int:
         # Reject before connecting, waking the hub, or allocating a sequence.
-        # In particular, settings and program-detail requests are not telemetry.
         if (
             type(type_value) is not int
             or type(payload) is not bytes
-            or type_value not in READ_ONLY_REQUEST_TYPES
-            or payload != b""
+            or type(message_version) is not int
+            or message_version not in SUPPORTED_PROGRAM_VERSIONS
+            or not (
+                (type_value in READ_ONLY_REQUEST_TYPES and payload == b"")
+                or (
+                    type_value == PROGRAM_REQUEST
+                    and len(payload) == 2
+                    and payload[0] == PROBE_SESSION
+                    and payload[1] < MAX_PROBE_SLOTS
+                )
+            )
         ):
-            raise WeberCloudSocketError("Only empty-payload telemetry requests are permitted.")
+            raise WeberCloudSocketError("Only supported telemetry requests are permitted.")
         connection = await self._async_connect()
+        sequence = self._next_sequence()
         await connection.send(
             encode_routed_message(
                 self.cloud_client.config.device_id,
                 self.appliance_id,
-                self._next_sequence(),
+                sequence,
                 type_value,
                 payload,
+                message_version=message_version,
             )
         )
+        return sequence
 
     async def _async_subscribe(self) -> None:
         """Initialize telemetry using only capability and current-status reads."""
@@ -312,7 +342,15 @@ class WeberCloudSession:
                     )
                 self.received_types = [*self.received_types[-19:], message.type_value]
                 if message.type_value == 0x87:
+                    self._probe_targets.controller_error(time.monotonic())
                     raise WeberCloudSocketError("The hub rejected the cloud request.")
+                if message.type_value == PROGRAM_RESPONSE:
+                    self._probe_targets.receive(
+                        message.payload,
+                        message.message_version,
+                        time.monotonic(),
+                    )
+                    continue
                 if message.type_value == 0x83:
                     fields = parse_tlv(message.payload)
                     if -1 in fields:
@@ -369,8 +407,18 @@ class WeberCloudSession:
                 if message.type_value == 0x80:
                     self._expire_fuel_status()
                     cook_status = parse_cook_session_status_payload(message.payload)
+                    received_at = time.monotonic()
+                    for slot in self._probe_targets.sync(
+                        cook_status["probes"], message.message_version, received_at
+                    ):
+                        await self._async_send(
+                            PROGRAM_REQUEST,
+                            bytes([PROBE_SESSION, slot]),
+                            message_version=message.message_version,
+                        )
+                        self._probe_targets.requested(slot, time.monotonic())
                     if self._recovery_started_at is not None:
-                        recovery_seconds = max(0.0, time.monotonic() - self._recovery_started_at)
+                        recovery_seconds = max(0.0, received_at - self._recovery_started_at)
                         self.last_recovery_seconds = recovery_seconds
                         self.max_recovery_seconds = max(
                             self.max_recovery_seconds or 0.0, recovery_seconds
@@ -398,10 +446,14 @@ class WeberCloudSession:
                 # intentionally absent so it cannot stack another read window.
                 if previous_connection is None or self._connection is not previous_connection:
                     raise
-                await self._async_close_connection()
-                status = await self._async_request_status_once()
-                self.fast_recoveries += 1
-                return status
+                return await self._async_recover_status()
+
+    async def _async_recover_status(self) -> dict[str, Any]:
+        """Make one fresh-connection attempt after an established socket fails."""
+        await self._async_close_connection()
+        status = await self._async_request_status_once()
+        self.fast_recoveries += 1
+        return status
 
     async def _async_request_status_once(self) -> dict[str, Any]:
         """Send a status request and wait for a fresh cook-status frame."""
@@ -436,6 +488,15 @@ class WeberCloudSession:
                 started = asyncio.get_running_loop().time()
                 try:
                     status = await self.async_request_status()
+                    self.error_kind = "connection"
+                    status_callback(status)
+                    await self._async_listen_until_poll(
+                        max(1.0, STATUS_INTERVAL - (asyncio.get_running_loop().time() - started)),
+                        status_callback,
+                    )
+                    # A status followed by another disconnect is not a healthy
+                    # poll interval and must not reset escalating backoff.
+                    delay_index = 0
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -455,19 +516,57 @@ class WeberCloudSession:
                     delay = RECONNECT_DELAYS[min(delay_index, len(RECONNECT_DELAYS) - 1)]
                     delay_index += 1
                 else:
-                    self.error_kind = "connection"
-                    status_callback(status)
-                    delay_index = 0
-                    delay = max(
-                        1.0,
-                        STATUS_INTERVAL - (asyncio.get_running_loop().time() - started),
-                    )
+                    continue
                 try:
                     await asyncio.wait_for(self._wake.wait(), timeout=delay)
                 except TimeoutError:
                     pass
         finally:
             await self.async_close()
+
+    async def _async_listen_until_poll(self, delay: float, status_callback: StatusCallback) -> None:
+        """Consume unsolicited frames between polls without overlapping readers.
+
+        Status changes and optional program replies can arrive at any time.
+        Sleeping with those frames queued makes old sessions look fresh and can
+        let a valid program reply outlive its request window before we read it.
+        """
+        deadline = asyncio.get_running_loop().time() + delay
+        recovered = False
+        while not self._closed and not self._wake.is_set():
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return
+            receiver = asyncio.create_task(self._async_receive_status())
+            wake = asyncio.create_task(self._wake.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    (receiver, wake), timeout=remaining, return_when=asyncio.FIRST_COMPLETED
+                )
+                if receiver in done:
+                    try:
+                        status = receiver.result()
+                    except ConnectionClosed, OSError, TimeoutError:
+                        if self._closed or self._wake.is_set():
+                            return
+                        if recovered:
+                            # A flapping replacement must use normal backoff,
+                            # not start another handshake in this poll window.
+                            raise
+                        recovered = True
+                        # Preserve the same bounded one-shot recovery used by
+                        # polling when a persistent socket closes between polls.
+                        async with asyncio.timeout(self.request_timeout):
+                            status = await self._async_recover_status()
+                    status_callback(status)
+                if wake in done or not done:
+                    return
+            finally:
+                # websockets recv cancellation preserves the next message.
+                # Finish cancellation before the next poll can start a reader.
+                receiver.cancel()
+                wake.cancel()
+                await asyncio.gather(receiver, wake, return_exceptions=True)
 
     def async_wake(self) -> None:
         """Request an immediate cloud retry."""

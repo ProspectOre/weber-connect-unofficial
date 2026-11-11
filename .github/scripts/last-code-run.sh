@@ -9,7 +9,8 @@
 # results. Needs GH_TOKEN with checks:read and actions:read, and HEAD_SHA.
 set -euo pipefail
 check=$1
-own=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .check_suite_id)
+read -r own workflow < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+  --jq '"\(.check_suite_id) \(.workflow_id)"')
 for _ in $(seq 110); do
   prior=$(gh api --method GET "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
     -f check_name="$check" -f filter=all -f per_page=100 --jq "
@@ -17,8 +18,19 @@ for _ in $(seq 110); do
       and .conclusion != \"cancelled\" and .conclusion != \"skipped\")]
     | max_by(.id) | select(.) | \"\(.status) \(.conclusion) \(.html_url)\"")
   if [ -z "$prior" ]; then
-    echo "No code run of '$check' for this head; push or reopen the PR to run CI."
-    exit 1
+    # The aggregate check is created only after its prerequisite jobs finish.
+    # Wait only while an older workflow can still create it. A missing,
+    # cancelled or approval-held code run must not consume the whole deadline.
+    running=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs" \
+      -f head_sha="$HEAD_SHA" -f per_page=100 --jq "
+      [.workflow_runs[] | select(.check_suite_id < $own
+        and (.status == \"queued\" or .status == \"in_progress\"))] | length")
+    if [ "$running" -eq 0 ]; then
+      echo "No active code run of '$check' for this head; approve, push or reopen the PR to run CI."
+      exit 1
+    fi
+    sleep 30
+    continue
   fi
   read -r status conclusion url <<<"$prior"
   if [ "$status" = completed ]; then
@@ -28,5 +40,5 @@ for _ in $(seq 110); do
   fi
   sleep 30
 done
-echo "The last code run of '$check' did not finish in time."
+echo "The last code run of '$check' did not appear or finish in time."
 exit 1

@@ -210,10 +210,10 @@ class CookSessionStatusTests(unittest.TestCase):
         )
 
     def _minimal_probe(self) -> bytes:
-        # No tag19/tag16/tag17/tag18: exercise the `or` fallbacks and Nones.
+        # Legacy IDs do not supply an absent probe type.
         return b"".join(
             [
-                tlv(4, bytes([2])),  # probe_type fallback + plan_id fallback
+                tlv(4, bytes([2])),  # legacy plan_id
                 tlv(7, bytes([9])),  # step_id fallback
                 tlv(11, bytes([4])),  # prompt_id fallback
             ]
@@ -297,7 +297,7 @@ class CookSessionStatusTests(unittest.TestCase):
         self.assertEqual(minimal["plan_id"], 2)  # fallback tag4
         self.assertEqual(minimal["step_id"], 9)
         self.assertEqual(minimal["prompt_id"], 4)
-        self.assertEqual(minimal["probe_type"], "WIRELESS")
+        self.assertEqual(minimal["probe_type"], "WIRED")
 
         # sentinel deci-celsius sets the *_c/*_f pair to None.
         self.assertIsNone(parsed["target_cavity_temp_c"])

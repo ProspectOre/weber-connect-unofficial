@@ -18,7 +18,7 @@ Repeat with `--lane current` in a separate environment. The `latest` lane runs
 imports and pure-protocol smoke checks when the full HA test plugin lags behind
 the latest core release; it does not establish full-suite compatibility.
 
-Run the local gate:
+Install `jq` for the CI-helper regression tests, then run the local gate:
 
 ```bash
 ruff check custom_components tests_native scripts
@@ -36,8 +36,9 @@ Hassfest and HACS validation run in GitHub Actions.
 
 ## CI routing
 
-This public repository uses standard GitHub-hosted Ubuntu runners for CI,
-CodeQL, and review jobs. Standard runner minutes are
+This public repository uses standard GitHub-hosted Ubuntu runners for CI and
+CodeQL. `/review` uses the shared review runner, as in the other repositories.
+Standard hosted runner minutes are
 [free for public repositories](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 Required tests, HACS, Hassfest, security analysis, and exact-head review remain
 merge requirements. Physical pairing and appliance acceptance are separate.

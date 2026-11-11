@@ -36,6 +36,7 @@ class FakeTransport:
         self.started = asyncio.Event()
         self.release = asyncio.Event()
         self.received_types = [0x80]
+        self.program_reads_suspended = False
         self.error_kind = "connection"
         self.socket_connections = 2
         self.fast_recoveries = 1
@@ -198,6 +199,28 @@ def test_three_cloud_failures_retain_only_slow_changing_hub_state(hass: object) 
     assert coordinator.last_error is None
 
 
+def test_first_transport_failure_clears_program_targets(hass: object) -> None:
+    coordinator, _transport = _coordinator(hass, cloud=True)
+    coordinator._async_status(
+        {
+            "probes": [
+                {
+                    "probe_number": 3,
+                    "probe_temp_c": 25,
+                    "target_temperature_c": 50,
+                    "target_lower_temperature_c": 40,
+                    "target_upper_temperature_c": 60,
+                }
+            ]
+        }
+    )
+    assert coordinator.data["probe_3_target_temperature"] == 50
+    coordinator._async_error("temporary interruption")
+    assert coordinator.data["probe_3_temperature"] == 25
+    for key in ("target_temperature", "target_lower_temperature", "target_upper_temperature"):
+        assert coordinator.data[f"probe_3_{key}"] is None
+
+
 def test_cloud_outage_never_creates_a_repair(hass: object) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
     for _ in range(20):
@@ -351,10 +374,13 @@ async def test_cloud_close_releases_socket_then_discards_token(hass: object) -> 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("suspended", [False, True])
 async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     hass: object,
+    suspended: bool,
 ) -> None:
     coordinator, _transport = _coordinator(hass, cloud=True)
+    _transport.program_reads_suspended = suspended
     coordinator._async_status(
         {
             "actual_cavity_temp_c": 121.5,
@@ -371,7 +397,15 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
             "fuel_level": "low",
             "software_version": "2.0.3_7398",
             "hardware_version": "rev-b",
-            "probes": [{"probe_number": 1, "probe_temp_c": 63.5}],
+            "probes": [
+                {"probe_number": 1, "probe_temp_c": 63.5, "target_temperature_c": 70.0},
+                {
+                    "probe_number": 2,
+                    "probe_temp_c": 61.0,
+                    "target_lower_temperature_c": 60.0,
+                    "target_upper_temperature_c": 75.0,
+                },
+            ],
         }
     )
     entry = _entry(hass, cloud=True)
@@ -405,6 +439,13 @@ async def test_diagnostics_are_minimal_and_redact_legacy_and_current_secrets(
     assert diagnostics["fuel_percent"] == 18
     assert diagnostics["software_version"] == "2.0.3_7398"
     assert diagnostics["probe_slots"][0]["temperature_c"] == 63.5
+    assert diagnostics["probe_slots"][0]["target_temperature_c"] == 70.0
+    assert diagnostics["probe_slots"][0]["target_lower_temperature_c"] is None
+    assert diagnostics["probe_slots"][0]["target_upper_temperature_c"] is None
+    assert diagnostics["probe_slots"][1]["target_temperature_c"] is None
+    assert diagnostics["probe_slots"][1]["target_lower_temperature_c"] == 60.0
+    assert diagnostics["probe_slots"][1]["target_upper_temperature_c"] == 75.0
+    assert diagnostics["probe_program_reads_suspended"] is suspended
     assert diagnostics["cloud_socket_received_types"] == [0x80]
     assert diagnostics["cloud_socket_connections"] == 2
     assert diagnostics["cloud_socket_fast_recoveries"] == 1

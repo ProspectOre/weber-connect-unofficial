@@ -19,6 +19,7 @@ from .const import (
     CONF_PAIRING_KEY_REF,
     CONF_TRANSPORT_FAMILY,
     MAX_PROBE_SLOTS,
+    PROBE_TARGET_FIELDS,
 )
 from .entity import known_probe_numbers
 from .models import WeberRuntimeData
@@ -94,6 +95,10 @@ async def async_get_config_entry_diagnostics(
             {
                 "number": number,
                 "temperature_c": state.get(f"probe_{number}_temperature"),
+                **{
+                    f"{target_key}_c": state.get(f"probe_{number}_{target_key}")
+                    for target_key in PROBE_TARGET_FIELDS
+                },
                 "state": state.get(f"probe_{number}_state"),
                 "type": state.get(f"probe_{number}_type"),
                 "battery_level": state.get(f"probe_{number}_battery"),
@@ -131,6 +136,11 @@ async def async_get_config_entry_diagnostics(
             }
             for number in state.get("reported_burner_numbers", ())
         ],
+        "probe_program_reads_suspended": (
+            coordinator.cloud_session.program_reads_suspended
+            if coordinator.cloud_session is not None
+            else False
+        ),
         "cloud_socket_received_types": (
             list(coordinator.cloud_session.received_types)
             if coordinator.cloud_session is not None

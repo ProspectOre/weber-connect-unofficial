@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from .const import MAX_PROBE_SLOTS
+from .const import MAX_PROBE_SLOTS, PROBE_TARGET_FIELDS
 
 ACTIVE_SESSION_STATES = {"PRIMED", "READY", "ACTIVE", "PAUSED", "ACTIVE_FIXED", "PREHEAT"}
 ACTIVE_COOK_MODES = {
@@ -106,6 +106,10 @@ def normalize_state(
     for number in range(1, MAX_PROBE_SLOTS + 1):
         probe = probes_by_number.get(number, {})
         state[f"probe_{number}_temperature"] = probe.get("probe_temp_c")
+        for target_key in PROBE_TARGET_FIELDS:
+            state[f"probe_{number}_{target_key}"] = (
+                _number(probe.get(f"{target_key}_c")) if connected else None
+            )
         state[f"probe_{number}_ambient_temperature"] = probe.get("ambient_temp_c")
         state[f"probe_{number}_case_temperature"] = probe.get("case_temp_c")
         state[f"probe_{number}_battery"] = _percent(probe.get("battery_level"))

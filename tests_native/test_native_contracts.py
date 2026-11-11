@@ -43,7 +43,7 @@ def test_manifest_and_hacs_contract() -> None:
     manifest = json.loads((ROOT / "custom_components" / DOMAIN / "manifest.json").read_text())
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == DOMAIN
-    assert manifest["version"] == "3.3.0rc2"
+    assert manifest["version"] == "3.3.0rc3"
     assert manifest["config_flow"] is True
     assert manifest["dependencies"] == ["bluetooth_adapters"]
     assert manifest["iot_class"] == "cloud_polling"
@@ -477,6 +477,9 @@ async def test_sensor_platform_adds_all_reported_dynamic_telemetry(hass: object)
             "probe_1_sku": "SKU",
             "probe_1_ambient_temperature": 38.5,
             "probe_1_case_temperature": 41.0,
+            "probe_1_target_temperature": 50.0,
+            "probe_1_target_lower_temperature": 40.0,
+            "probe_1_target_upper_temperature": 60.0,
             "probe_1_time_remaining": 900,
             "probe_1_time_elapsed": 60,
             "probe_1_prompt_time_remaining": 30,
@@ -534,11 +537,25 @@ async def test_sensor_platform_adds_all_reported_dynamic_telemetry(hass: object)
         "probe_1_battery",
         "probe_1_ambient_temperature",
         "probe_1_case_temperature",
+        "probe_1_target_temperature",
+        "probe_1_target_lower_temperature",
+        "probe_1_target_upper_temperature",
         "probe_1_time_remaining",
         "timed_session_2_time_remaining",
         "timer_3_time_remaining",
         "burner_1_state",
     }
+    for suffix, expected in (
+        ("temperature", 50.0),
+        ("lower_temperature", 40.0),
+        ("upper_temperature", 60.0),
+    ):
+        key = f"probe_1_target_{suffix}"
+        entity = dynamic[key]
+        assert entity.native_value == expected
+        assert entity.native_unit_of_measurement == "°C"
+        coordinator.data[key] = None
+        assert entity.native_value is None
     assert dynamic["probe_1_battery"].extra_state_attributes == {
         "probe_type": "WIRELESS",
         "serial_number": "SERIAL",

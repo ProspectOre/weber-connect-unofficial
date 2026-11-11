@@ -8,9 +8,9 @@ authenticated Weber Cloud companion for ongoing temperatures and status. The
 Weber app can continue using Bluetooth after setup. No Weber account password,
 phone secret, MQTT broker or packet capture is required.
 
-The 3.3.0rc2 beta continues the controller-family work from 3.3.0rc1. It keeps
-cloud session requests limited to empty-payload status and capability reads.
-Stable 3.2.2 is being prepared separately as a small hotfix from stable 3.2.1.
+The 3.3.0rc3 candidate adds read-only probe targets to the controller-family
+work. It reads active program details to distinguish single targets from ranges.
+It is not yet published; the current stable release is 3.2.2.
 Use the latest stable HACS release for the established feature set; enable
 prereleases only when participating in the [hardware trials](docs/support/hardware-trials.md).
 
@@ -28,8 +28,7 @@ Install Weber Connect Unofficial through HACS:
 [![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ProspectOre&repository=weber-connect-unofficial&category=integration)
 
 1. Select the button above to open this repository in HACS, then choose
-   **Download**. If HACS cannot find the repository while its default-store
-   submission is pending, use the manual fallback below.
+   **Download**. If HACS cannot find the repository, use the manual fallback below.
 2. Restart Home Assistant when HACS prompts you.
 3. Open **Settings → Devices & services**. Select the discovered Weber hub, or
    choose **Add integration → Weber Connect Unofficial**.
@@ -50,7 +49,7 @@ Install Weber Connect Unofficial through HACS:
 
 ### Manual HACS fallback
 
-If HACS cannot find the repository while its default-store submission is pending,
+If HACS cannot find the repository,
 add `https://github.com/ProspectOre/weber-connect-unofficial` under **HACS →
 Integrations → ⋮ → Custom repositories**, category **Integration**, then download
 and restart Home Assistant.
@@ -70,6 +69,11 @@ health and last-update context. Cloud telemetry needs internet access and the
 hub's Wi-Fi/cloud connection. An offline hub or an unplugged probe can legitimately
 show unknown readings. Local telemetry without authenticated peer setup is disabled.
 
+An active probe program can add a target-temperature sensor, or separate lower
+and upper target sensors for a range. Targets clear when the session ends or
+the connection fails. Unsupported or unavailable program data stays unknown;
+the integration does not change targets in the Weber app.
+
 The integration sends no ignition, cooking-program, target-temperature, Wi-Fi or
 mode-control commands. Pairing compatibility depends on the exact controller;
 other product families are not qualified merely by being discovered.
@@ -77,7 +81,7 @@ other product families are not qualified merely by being discovered.
 For a failure, choose **Get help / report a problem**, review the generated report,
 and share it in the existing issue. Please exclude credentials, QR codes, private
 identifiers and raw packets. See [architecture](ARCHITECTURE.md), [security](SECURITY.md), and the
-[3.3.0rc2 validation record](docs/validation/3.3.0rc2-readiness.md).
+[3.3.0rc3 validation record](docs/validation/3.3.0rc3-readiness.md).
 
 Published historical installation and hardware evidence remains available in the
 [3.2.1 documentation](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.1/README.md).
@@ -94,7 +98,7 @@ SmokeFire cooking-time cloud gaps remain unresolved.
 
 RC6's targeted app-closed telemetry and automatic recovery trial is historical
 evidence, recorded in its [live receipt](docs/validation/3.2.2rc6-live-observation.json)
-and [published release](https://github.com/ProspectOre/weber-connect-unofficial/releases/tag/v3.2.2rc6).
+and [preserved original receipt](https://github.com/ProspectOre/weber-connect-unofficial/releases/download/v3.2.2/historical-3.2.2rc6-live-proof.json).
 It does not establish the new candidate's full physical acceptance.
 
 Detailed behavior, Activity filtering and troubleshooting are preserved in the

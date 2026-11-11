@@ -100,7 +100,7 @@ async def test_send_rejects_nontelemetry_commands_before_any_io(connected: bool)
     if connected:
         session._connection = connection
     # Include every wire opcode plus integers the generic codec would truncate
-    # into allowed read opcodes. Settings, program reads and unknowns all fail.
+    # into allowed read opcodes. Empty program reads and unknowns all fail.
     rejected = [value for value in range(256) if value not in {0x05, 0x07, 0x0E}]
     rejected.extend([-251, 0x105, 0x107, 0x10E])
     with patch.object(session, "_async_connect", AsyncMock()) as connect:
@@ -110,7 +110,7 @@ async def test_send_rejects_nontelemetry_commands_before_any_io(connected: bool)
         with pytest.raises(socket.WeberCloudSocketError, match="telemetry requests"):
             await session._async_send(0x09, bytes.fromhex("150400d2496b"))
         with pytest.raises(socket.WeberCloudSocketError, match="telemetry requests"):
-            await session._async_send(0x0B, b"\x01\x00")
+            await session._async_send(0x0B, b"\x01\x10")
     connect.assert_not_awaited()
     assert connection.sent == []
     assert session._sequence == 1
@@ -434,7 +434,10 @@ async def test_request_budget_bounds_a_stalled_connect() -> None:
         request_timeout=0.02,
         subscribe_delay=0,
     )
-    with patch.object(socket, "connect", AsyncMock(side_effect=stalled_connect)) as connect:
+    with (
+        patch.object(socket.ssl, "create_default_context", return_value=object()),
+        patch.object(socket, "connect", AsyncMock(side_effect=stalled_connect)) as connect,
+    ):
         with pytest.raises(TimeoutError):
             await session.async_request_status()
     connect.assert_awaited_once()
@@ -459,7 +462,10 @@ async def test_request_budget_bounds_stalled_send_and_receive() -> None:
         request_timeout=0.02,
         subscribe_delay=0,
     )
-    with patch.object(socket, "connect", AsyncMock(return_value=connection)) as connect:
+    with (
+        patch.object(socket.ssl, "create_default_context", return_value=MagicMock()),
+        patch.object(socket, "connect", AsyncMock(return_value=connection)) as connect,
+    ):
         with pytest.raises(TimeoutError):
             await session.async_request_status()
     connect.assert_awaited_once()
@@ -476,7 +482,10 @@ async def test_request_budget_bounds_stalled_send_and_receive() -> None:
         request_timeout=0.02,
         subscribe_delay=0,
     )
-    with patch.object(socket, "connect", AsyncMock(return_value=connection)) as connect:
+    with (
+        patch.object(socket.ssl, "create_default_context", return_value=MagicMock()),
+        patch.object(socket, "connect", AsyncMock(return_value=connection)) as connect,
+    ):
         with pytest.raises(TimeoutError):
             await session.async_request_status()
     connect.assert_awaited_once()
@@ -1127,3 +1136,26 @@ async def test_run_delay_timeout_retries_then_honors_close() -> None:
     assert statuses == [{"ok": True}, {"ok": True}]
     assert poll.await_count == 2
     assert session._closed
+
+
+@pytest.mark.asyncio
+async def test_run_recovers_after_backoff_without_manual_wake() -> None:
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    statuses, errors = [], []
+
+    def publish(status: dict[str, object]) -> None:
+        statuses.append(status)
+        session._closed = True
+
+    with (
+        patch.object(socket, "RECONNECT_DELAYS", (0.01,)),
+        patch.object(
+            session,
+            "async_request_status",
+            AsyncMock(side_effect=[OSError("offline"), {"ok": True}]),
+        ) as poll,
+    ):
+        await asyncio.wait_for(session.async_run(publish, errors.append), timeout=1)
+    assert statuses == [{"ok": True}]
+    assert len(errors) == 1
+    assert poll.await_count == 2

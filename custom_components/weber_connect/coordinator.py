@@ -24,6 +24,7 @@ from .const import (
     CONF_TRANSPORT_FAMILY,
     DOMAIN,
     MAX_PROBE_SLOTS,
+    PROBE_TARGET_FIELDS,
 )
 from .options import WeberOptions
 from .state import normalize_state
@@ -182,6 +183,8 @@ class WeberCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             pending["cloud_connection_status"] = None
             for number in range(1, MAX_PROBE_SLOTS + 1):
                 pending[f"probe_{number}_reading_status"] = reading_status
+                for target_key in PROBE_TARGET_FIELDS:
+                    pending[f"probe_{number}_{target_key}"] = None
             self.async_set_updated_data(pending)
         if self.consecutive_failures >= OFFLINE_FAILURE_THRESHOLD:
             offline_state = normalize_state(
