@@ -350,6 +350,33 @@ async def test_repeated_failed_poll_windows_escalate_until_a_healthy_window():
     assert delays == [1.0, 2.0, 5.0, 10.0, 30.0, 30.0, 1.0, 2.0]
 
 
+async def test_status_callback_failure_is_reported_and_updates_resume():
+    connection = FakeConnection([message(0x80, active_probe())])
+    replacement = FakeConnection([message(0x80, active_probe())])
+    session = socket.WeberCloudSession(
+        FakeHass(), FakeCloudClient(), APPLIANCE_ID, subscribe_delay=0
+    )
+    session._connection = connection
+    session._subscribed = True
+    statuses, errors = [], []
+
+    def publish(status):
+        statuses.append(status)
+        if len(statuses) == 1:
+            raise ValueError("status processing failed")
+        session._closed = True
+
+    with (
+        patch.object(socket, "connect", AsyncMock(return_value=replacement)) as connect,
+        patch.object(socket, "RECONNECT_DELAYS", (0.01,)),
+    ):
+        await asyncio.wait_for(session.async_run(publish, errors.append), timeout=2)
+    connect.assert_awaited_once()
+    assert len(statuses) == 2
+    assert errors == ["Weber Cloud connection failed (ValueError): status processing failed"]
+    assert connection.closed and replacement.closed
+
+
 @pytest.mark.parametrize("stop", ["closed", "wake"])
 async def test_between_poll_failure_during_stop_does_not_reconnect(stop):
     session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)

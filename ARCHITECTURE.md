@@ -52,11 +52,17 @@ Home Assistant retains no credential after the flow is discarded.
 ## Update policy
 
 - Retain one authenticated companion WebSocket and request fresh
-  status on a start-to-start 10-second cadence. This leaves the hub's Bluetooth
+  status on a start-to-start 10-second cadence while healthy. This leaves the hub's Bluetooth
   connection available to the official app. A serialized reader consumes incoming
   status and program replies between polls, so queued old sessions cannot be
   republished as fresh data. The next poll or manual wake cancels and awaits the
-  pending read before starting another; receive failures keep normal backoff.
+  pending read before starting another. The first between-poll transport failure
+  permits one immediate fresh-connection attempt within the request deadline,
+  which may extend the cadence. A repeated failure reaches escalating backoff;
+  only a healthy polling interval resets that delay. Status-processing callback
+  errors use the same error callback and retry path so one bad update cannot
+  silently end the background task. Their original exception type and message
+  remain in the reported failure for diagnosis.
 - Local Bluetooth is used only for physically confirmed setup. Null-session
   status frames are structurally checksummed but not peer-authenticated, so
   they are never published as Home Assistant telemetry.

@@ -10,7 +10,7 @@
     "scope": "Full minimum-HA native suite; fresh hosted and installed-runtime evidence accompanies the beta release.",
     "required_coverage_percent": 100,
     "combined_statement_branch_coverage_percent": 100,
-    "passed": 720,
+    "passed": 721,
     "subtests_passed": 5,
     "failed": 0
   },
@@ -28,7 +28,7 @@
       "pytest_homeassistant_custom_component": "0.13.346",
       "status": "passed",
       "scope": "full_native_suite",
-      "passed": 720,
+      "passed": 721,
       "subtests_passed": 5,
       "combined_statement_branch_coverage_percent": 100
     },
@@ -36,7 +36,7 @@
       "homeassistant": "2026.10.1",
       "pytest_homeassistant_custom_component": "0.13.372",
       "status": "pending_hosted_full_suite",
-      "scope": "The prior runtime passed 719 tests and 5 subtests. The final backoff-reset change requires fresh hosted current-HA validation.",
+      "scope": "The unchanged runtime passed 720 tests and 5 subtests on the previous head. Fresh hosted validation includes the added callback-failure regression.",
       "subtests_passed": 5,
       "combined_statement_branch_coverage_percent": 100
     },
