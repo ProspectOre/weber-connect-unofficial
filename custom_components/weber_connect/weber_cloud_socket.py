@@ -446,10 +446,14 @@ class WeberCloudSession:
                 # intentionally absent so it cannot stack another read window.
                 if previous_connection is None or self._connection is not previous_connection:
                     raise
-                await self._async_close_connection()
-                status = await self._async_request_status_once()
-                self.fast_recoveries += 1
-                return status
+                return await self._async_recover_status()
+
+    async def _async_recover_status(self) -> dict[str, Any]:
+        """Make one fresh-connection attempt after an established socket fails."""
+        await self._async_close_connection()
+        status = await self._async_request_status_once()
+        self.fast_recoveries += 1
+        return status
 
     async def _async_request_status_once(self) -> dict[str, Any]:
         """Send a status request and wait for a fresh cook-status frame."""
@@ -488,7 +492,7 @@ class WeberCloudSession:
                     status_callback(status)
                     delay_index = 0
                     await self._async_listen_until_poll(
-                        max(0.0, STATUS_INTERVAL - (asyncio.get_running_loop().time() - started)),
+                        max(1.0, STATUS_INTERVAL - (asyncio.get_running_loop().time() - started)),
                         status_callback,
                     )
                 except asyncio.CancelledError:
@@ -537,7 +541,16 @@ class WeberCloudSession:
                     (receiver, wake), timeout=remaining, return_when=asyncio.FIRST_COMPLETED
                 )
                 if receiver in done:
-                    status_callback(receiver.result())
+                    try:
+                        status = receiver.result()
+                    except ConnectionClosed, OSError, TimeoutError:
+                        if self._closed or self._wake.is_set():
+                            return
+                        # Preserve the same bounded one-shot recovery used by
+                        # polling when a persistent socket closes between polls.
+                        async with asyncio.timeout(self.request_timeout):
+                            status = await self._async_recover_status()
+                    status_callback(status)
                 if wake in done or not done:
                     return
             finally:

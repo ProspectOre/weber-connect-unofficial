@@ -214,9 +214,9 @@ def test_unsupported_version_duplicate_slots_reconnect_and_retired_replies():
     assert cache.sync([row, probe()], 10, 0) == [2]
     cache.requested(2, 0)
     row["session_id"] = 8
-    assert cache.sync([row], 10, 1) == [2]
-    cache.receive(program_frame(), 10, 2)  # No read yet for this session.
-    cache.sync([row], 10, 2)
+    assert cache.sync([row], 10, 1) == []
+    cache.receive(program_frame(), 10, 2)  # Retired owner; no new read overlaps it.
+    assert cache.sync([row], 10, 2) == [2]
     assert row["target_temperature_c"] is None
     cache.requested(2, 2)
     cache.receive(program_frame(11), 11, 3)
@@ -245,6 +245,7 @@ def test_ambiguous_error_suspends_optional_reads_across_reconnect():
     cache.requested(2, 1)
     cache.controller_error(31)
     assert not cache.requests_suspended
+    cache.receive(program_frame(), 10, 31)  # Drain the expired read before retrying.
     cache.requested(2, 31)
     cache.controller_error(32)
     assert cache.requests_suspended
@@ -312,3 +313,44 @@ def test_modern_zero_ids_override_legacy_fields_and_invalid_widths_do_not_fallba
     assert malformed_type["probe_type_value"] is None
     malformed_event = parse_probe_session_status_tlv(tlv(13, b"\x01"))
     assert malformed_event["active_events"] == [None]
+
+
+@pytest.mark.parametrize("transition", ["replace", "disappear", "reuse_all_ids"])
+def test_retired_session_reply_is_drained_before_requesting_replacement(transition):
+    cache = ProbeTargets()
+    row = probe()
+    cache.sync([row], 10, 0)
+    cache.requested(2, 0)
+    if transition != "replace":
+        cache.sync([], 10, 1)
+    replacement = probe(session_id=7 if transition == "reuse_all_ids" else 8)
+    assert cache.sync([replacement], 10, 2) == []
+    cache.receive(program_frame(), 10, 3)
+    assert cache.sync([replacement], 10, 4) == [2]
+    assert replacement["target_temperature_c"] is None
+    cache.requested(2, 4)
+    cache.receive(program_frame(steps=[(0, [(3, 600)], 2)]), 10, 5)
+    cache.sync([replacement], 10, 6)
+    assert replacement["target_temperature_c"] == 60
+
+
+def test_expired_pending_read_never_overlaps_a_retry():
+    cache = ProbeTargets()
+    row = probe()
+    cache.sync([row], 10, 0)
+    cache.requested(2, 0)
+    cache.receive(b"malformed unidentifiable reply", 10, 31)
+    assert cache.sync([row], 10, 31) == []
+    assert row["target_temperature_c"] is None
+    cache.receive(program_frame(), 10, 32)
+    assert cache.sync([row], 10, 33) == [2]
+    assert row["target_temperature_c"] is None
+
+
+def test_controller_error_recognizes_pending_read_for_disappeared_session():
+    cache = ProbeTargets()
+    cache.sync([probe()], 10, 0)
+    cache.requested(2, 0)
+    cache.sync([], 10, 1)
+    cache.controller_error(2)
+    assert cache.requests_suspended

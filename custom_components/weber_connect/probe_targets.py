@@ -41,10 +41,14 @@ class ProbeTargets:
 
     def __init__(self) -> None:
         self._records: dict[int, _Record] = {}
+        # The record object is a local session generation. Retain outstanding
+        # owners even when an active session disappears or reuses its wire IDs.
+        self._pending: dict[int, _Record] = {}
         self.requests_suspended = False
 
     def clear(self) -> None:
         self._records.clear()
+        self._pending.clear()
 
     def sync(self, probes: list[dict[str, Any]], version: int, now: float) -> list[int]:
         """Apply only current step targets and return bounded probe slots to read."""
@@ -86,7 +90,7 @@ class ProbeTargets:
                 target = record.program.targets.get(step_id)
                 if target is not None:
                     self._apply(probe, target)
-            if now >= record.request_after:
+            if now >= record.request_after and slot not in self._pending:
                 due.append(slot)
         self._records = active
         return due
@@ -103,6 +107,7 @@ class ProbeTargets:
         record = self._records[slot]
         record.request_after = now + PROGRAM_REFRESH_SECONDS
         record.pending_until = record.request_after
+        self._pending[slot] = record
 
     def controller_error(self, now: float) -> None:
         """Suspend optional reads after an ambiguous error, without swallowing it.
@@ -114,7 +119,7 @@ class ProbeTargets:
         """
         if any(
             record.pending_until is not None and now < record.pending_until
-            for record in self._records.values()
+            for record in self._pending.values()
         ):
             self.requests_suspended = True
             self.clear()
@@ -129,20 +134,19 @@ class ProbeTargets:
             program = parse_probe_program(payload, version)
         except ProgramDecodeError:
             # A malformed response cannot identify which pending read failed.
-            for pending_record in self._records.values():
+            for pending_record in self._pending.values():
                 if pending_record.pending_until is not None and now < pending_record.pending_until:
                     pending_record.program = None
                     pending_record.pending_until = None
             return
         record = self._records.get(program.slot)
-        if (
-            record is None
-            or record.pending_until is None
-            or now >= record.pending_until
-            or record.key.message_version != version
-        ):
+        pending = self._pending.get(program.slot)
+        if pending is None or pending.key.message_version != version:
             return
-        record.pending_until = None
+        del self._pending[program.slot]
+        pending_until, pending.pending_until = pending.pending_until, None
+        if record is not pending or pending_until is None or now >= pending_until:
+            return
         if program.program_id != record.key.program_id or program.plan_id != record.key.plan_id:
             record.program = None
             return

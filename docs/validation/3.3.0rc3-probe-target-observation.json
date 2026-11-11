@@ -1,10 +1,10 @@
 {
   "candidate": "3.3.0rc3",
-  "evidence_date": "2026-11-10",
+  "evidence_date": "2026-11-11",
   "timezone": "America/Los_Angeles",
   "identifiers": "redacted",
   "status": "targeted_checks_passed",
-  "runtime_sha256": "ae1e858e989d14f9f56d27f0369eeb3612dc7cc77360e7434b37dbdaa36a0840",
+  "runtime_sha256": "8b1f0b9191b60f6b1e25025403cd5c46a9aa7c9dae83ee13438ef2d6ac80c809",
   "hardware": {
     "controller": "Weber Connect Hub",
     "firmware": "2.0.3_7398",
@@ -17,14 +17,13 @@
     "single_target": {
       "oem_f": 120,
       "ha_f": 119.84,
-      "wire_c": 48.8,
-      "observed_after_seconds": 10.13
+      "wire_c": 48.8
     },
     "single_target_edit": {
       "from_oem_f": 120,
       "to_oem_f": 140,
       "ha_f": 140.0,
-      "observed_after_seconds": 2.21,
+      "observed_after_seconds": 2.1,
       "old_target_cleared_while_fetching": true
     },
     "initial_range": {
@@ -36,8 +35,7 @@
         69.98,
         99.86
       ],
-      "observed_after_ha_restart": true,
-      "unchanged_at_checks_over_115_seconds": true
+      "observed_after_seconds": 20.5
     },
     "range_edit": {
       "to_oem_f": [
@@ -48,32 +46,58 @@
         64.94,
         95.0
       ],
-      "observed_after_seconds": 9.28,
+      "observed_after_seconds": 3.07,
       "old_limits_cleared_while_fetching": true
     },
     "range_removal": {
       "limits_unknown": true,
       "cooking_off": true,
-      "observed_after_seconds": 1.08
+      "observed_after_seconds": 0.12
     },
     "active_entry_reload": {
       "target_recovered_f": 140.0,
       "require_core_restart": false,
-      "observed_after_reload_return_seconds": 11.34,
+      "observed_after_reload_return_seconds": 20.66,
       "fresh_socket_connections": 1,
       "failed_updates": 0
     },
     "single_target_removal": {
       "target_unknown": true,
       "cooking_off": true,
-      "observed_after_seconds": 0.08
+      "observed_after_seconds": 1.43
     },
     "entity_continuity": {
       "baseline_entities": 18,
       "retained": 18,
       "missing": 0
     },
-    "app_coexistence": "OEM edits remained available while HA received cloud temperatures and program details"
+    "app_coexistence": "OEM edits remained available while HA received cloud temperatures and program details",
+    "active_ha_restart": {
+      "oem_f": [
+        65,
+        95
+      ],
+      "ha_f": [
+        64.94,
+        95.0
+      ],
+      "observed_after_restart_request_seconds": 103.36,
+      "failed_updates": 0,
+      "fresh_updates": 4
+    },
+    "repeated_range_refresh": {
+      "duration_seconds": 66.97,
+      "samples": 14,
+      "ha_f": [
+        64.94,
+        95.0
+      ],
+      "successful_updates_from": 7,
+      "successful_updates_to": 17,
+      "failed_updates": 0,
+      "socket_connections": 1,
+      "optional_reads_suspended": false
+    }
   },
   "timing_method": "Approximate observation delays from a local one-second HA state poll started immediately after the OEM confirmation action; not a latency guarantee. Fahrenheit differences reflect the wire deci-C precision and OEM whole-degree rounding.",
   "defects_found_and_fixed": [
@@ -81,7 +105,9 @@
     "Controller reply sequences are independent of request sequences.",
     "Manual range thresholds are prompt triggers, combined with step exit criteria.",
     "Legacy plan tag 4 must not serve as a probe-type fallback; absent type defaults to wired.",
-    "One-status-then-sleep reception queued newer status and program replies. A serialized reader now consumes messages between polls."
+    "One-status-then-sleep reception queued newer status and program replies. A serialized reader now consumes messages between polls.",
+    "Late-reply ownership now survives session replacement and disappearance until the outstanding response is consumed or the connection resets.",
+    "Between-poll transport errors use the same bounded one-shot recovery as polling."
   ],
   "earlier_trial_limit": "Pre-fix targets stalled or arrived late; an OEM removal remained falsely active in HA for minutes. Those earlier builds do not qualify this runtime. Isolated cloud-read timeouts were also observed; no sequence-counter workaround was introduced.",
   "cleanup": {
@@ -90,5 +116,9 @@
     "temporary_fileeditor": "stopped",
     "original_3_2_2_rollback": "retained"
   },
-  "acceptance_limit": "Only this Connect Hub target lifecycle, restart/reload and brief app coexistence were exercised. No timed physical power-cycle result, pairing, endurance, cooking, other-controller qualification or full stable acceptance is established. Global physical gates remain pending."
+  "acceptance_limit": "Only this Connect Hub target lifecycle, restart/reload and brief app coexistence were exercised. No timed physical power-cycle result, pairing, endurance, cooking, other-controller qualification or full stable acceptance is established. Global physical gates remain pending.",
+  "trial_dates": [
+    "2026-11-10",
+    "2026-11-11"
+  ]
 }

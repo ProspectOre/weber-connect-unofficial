@@ -251,3 +251,82 @@ async def test_between_poll_listener_does_not_start_after_stop(stop):
     with patch.object(session, "_async_receive_status", AsyncMock()) as receive:
         await session._async_listen_until_poll(0 if stop == "deadline" else 10, lambda _: None)
     receive.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "failure", [socket.ConnectionClosed(None, None), OSError(), TimeoutError()]
+)
+async def test_between_poll_transport_failure_has_one_fast_recovery(failure):
+    connection = FakeConnection([message(0x80, active_probe()), failure])
+    replacement = FakeConnection([message(0x80, active_probe())])
+    session = socket.WeberCloudSession(
+        FakeHass(), FakeCloudClient(), APPLIANCE_ID, subscribe_delay=0
+    )
+    session._connection = connection
+    session._subscribed = True
+    statuses, errors = [], []
+
+    def publish(status):
+        statuses.append(status)
+        if len(statuses) == 2:
+            session._closed = True
+
+    with patch.object(socket, "connect", AsyncMock(return_value=replacement)) as connect:
+        await asyncio.wait_for(session.async_run(publish, errors.append), timeout=2)
+    connect.assert_awaited_once()
+    assert not errors
+    assert session.fast_recoveries == 1
+    assert connection.closed and replacement.closed
+
+
+async def test_between_poll_failed_fast_recovery_reports_failure():
+    connection = FakeConnection([message(0x80, active_probe()), OSError("closed")])
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    session._connection = connection
+    session._subscribed = True
+    errors = []
+
+    def error(message):
+        errors.append(message)
+        session._closed = True
+        session.async_wake()
+
+    with patch.object(socket, "connect", AsyncMock(side_effect=OSError("retry failed"))):
+        await asyncio.wait_for(session.async_run(lambda _: None, error), timeout=2)
+    assert len(errors) == 1
+    assert "retry failed" in errors[0]
+    assert session.fast_recoveries == 0
+
+
+@pytest.mark.parametrize("stop", ["closed", "wake"])
+async def test_between_poll_failure_during_stop_does_not_reconnect(stop):
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+
+    async def receive():
+        if stop == "closed":
+            session._closed = True
+        else:
+            session.async_wake()
+        raise OSError("closed during stop")
+
+    with (
+        patch.object(session, "_async_receive_status", receive),
+        patch.object(session, "_async_recover_status", AsyncMock()) as recover,
+    ):
+        await session._async_listen_until_poll(1, lambda _: None)
+    recover.assert_not_awaited()
+
+
+async def test_slow_poll_retains_one_second_floor():
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+
+    def publish(_):
+        session._closed = True
+
+    with (
+        patch.object(socket, "STATUS_INTERVAL", 0),
+        patch.object(session, "async_request_status", AsyncMock(return_value={})),
+        patch.object(session, "_async_listen_until_poll", AsyncMock()) as listen,
+    ):
+        await session.async_run(publish, lambda _: None)
+    listen.assert_awaited_once_with(1.0, publish)
