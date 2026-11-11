@@ -1,0 +1,60 @@
+{
+  "candidate": "3.3.0rc3",
+  "evidence_date": "2026-11-10",
+  "identifiers": "redacted",
+  "status": "partial_live_validation",
+  "runtime_sha256": "f0bcbadfdc1a7ee6b8531184a86a77696fc2e72e22cacd47cbda76bbefcf7dea",
+  "hardware": {
+    "controller": "Weber Connect Hub",
+    "firmware": "2.0.3_7398",
+    "probe": "wired probe in physical slot 3",
+    "oem_app": "Android 2.13.0.2704",
+    "tablet": "Samsung SM-X210",
+    "home_assistant": "2026.11.0"
+  },
+  "observations": [
+    {
+      "test": "single_target",
+      "runtime_sha256": "819b616854a908b66334307913d2c4495ba74e8f498ad64f2f1c87da4713c912",
+      "result": "observed",
+      "oem_f": 120,
+      "home_assistant_f": 119.84,
+      "wire_c": 48.8,
+      "note": "Observed after HA restart; OEM rounds to whole Fahrenheit degrees."
+    },
+    {
+      "test": "target_edit_120_to_140_f",
+      "runtime_sha256": "819b616854a908b66334307913d2c4495ba74e8f498ad64f2f1c87da4713c912",
+      "result": "failed_to_refresh",
+      "note": "Old target cleared on changed plan identity; replacement remained unknown while ordinary temperatures continued."
+    },
+    {
+      "test": "range_70_to_100_f_wire_capture",
+      "result": "observed_direct_read",
+      "wire_lower_c": 21.1,
+      "wire_upper_c": 37.7,
+      "note": "Two direct reads returned the same 65-byte program. Limits are prompt triggers. Both now covered by a sanitized fixture; this alone does not verify installed HA range entities."
+    },
+    {
+      "test": "program_read_reliability",
+      "result": "unresolved",
+      "note": "Subsequent exclusive reads, including after 65 seconds without program requests, timed out after 30 seconds while ordinary status frames continued. Relay reported online. A high sequence seed was not necessary for a successful read, and no workaround was added."
+    },
+    {
+      "test": "remove_temporary_range_alert",
+      "runtime_sha256": "335c3118066d7a6988cfc0eeb741dd9a477da60e7cf2800953b85836dac48ff7",
+      "result": "observed",
+      "note": "OEM alert removed at 22:27 PST. OEM shows no target; HA cooking is off and no numeric target remains. Range entities had never obtained values, so this does not prove clearing a previously populated range."
+    }
+  ],
+  "pending": [
+    "Final installed candidate startup and target/range comparison",
+    "Hub power-cycle retest requested from owner",
+    "Stop temporary Fileeditor after installation verification"
+  ],
+  "acceptance_limit": "This targeted Connect Hub trial is not full physical acceptance, endurance evidence, or qualification of other controllers. No new beta or stable release is authorized by this record.",
+  "cleanup": {
+    "temporary_oem_alerts": "removed",
+    "tablet_bluetooth": "restored_off"
+  }
+}

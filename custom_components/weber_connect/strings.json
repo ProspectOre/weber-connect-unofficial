@@ -286,6 +286,15 @@
           "no_reading": "No probe reading reported",
           "device_off": "Hub reports powered off"
         }
+      },
+      "probe_target_temperature": {
+        "name": "Probe {number} target temperature"
+      },
+      "probe_target_lower_temperature": {
+        "name": "Probe {number} target lower temperature"
+      },
+      "probe_target_upper_temperature": {
+        "name": "Probe {number} target upper temperature"
       }
     }
   }

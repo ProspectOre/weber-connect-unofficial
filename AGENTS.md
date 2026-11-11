@@ -14,3 +14,4 @@ Keep physical acceptance separate from source review and CI.
 - Public repository: `ubuntu-latest` only; `tests_native/test_claude_runner_trust.py` rejects any other runner label.
 - Test locally: `ruff check custom_components tests_native scripts && pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-fail-under=100`.
 - Release: no workflow; run `python scripts/validate_release.py`, then tag and publish the GitHub release for HACS by hand.
+- Retain stable release history and only the newest published beta. Retire that beta when its version becomes stable or a newer stable supersedes it. After each publication, prune superseded prerelease entries while preserving tags and referenced validation evidence.

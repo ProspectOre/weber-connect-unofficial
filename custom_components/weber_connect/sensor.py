@@ -24,7 +24,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import MAX_PROBE_SLOTS
+from .const import MAX_PROBE_SLOTS, PROBE_TARGET_FIELDS
 from .coordinator import WeberCoordinator
 from .entity import WeberEntity, known_probe_numbers
 from .models import WeberRuntimeData
@@ -308,6 +308,18 @@ def _probe_dynamic_descriptions(number: int) -> tuple[WeberSensorDescription, ..
     prefix = f"probe_{number}"
     placeholders = {"number": str(number)}
     return (
+        *(
+            WeberSensorDescription(
+                key=f"{prefix}_{target_key}",
+                translation_key=f"probe_{target_key}",
+                translation_placeholders=placeholders,
+                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                device_class=SensorDeviceClass.TEMPERATURE,
+                suggested_display_precision=1,
+                value_fn=_value(f"{prefix}_{target_key}"),
+            )
+            for target_key in PROBE_TARGET_FIELDS
+        ),
         WeberSensorDescription(
             key=f"{prefix}_battery",
             translation_key="probe_battery",

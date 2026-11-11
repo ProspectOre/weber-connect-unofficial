@@ -1,0 +1,62 @@
+{
+  "candidate": "3.3.0rc3",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-11-10",
+  "runtime_sha256": "f0bcbadfdc1a7ee6b8531184a86a77696fc2e72e22cacd47cbda76bbefcf7dea",
+  "publication_status": "unpublished",
+  "change": "Read-only active probe targets and ranges; correct modern zero-valued IDs.",
+  "tests": {
+    "status": "passed",
+    "scope": "Native suite, source-derived synthetic program fixtures; live trial recorded separately.",
+    "required_coverage_percent": 100,
+    "combined_statement_branch_coverage_percent": 100,
+    "passed": 693,
+    "subtests_passed": 5,
+    "failed": 0
+  },
+  "hosted_gates": {
+    "ci": "pending_pr_checks",
+    "hacs": "pending_pr_checks",
+    "hassfest": "pending_pr_checks",
+    "regular_review": "pending_pr_checks"
+  },
+  "python": "3.14.10",
+  "platform": "Darwin arm64",
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 693,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 693,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.2",
+      "status": "passed",
+      "scope": "import_and_protocol_smoke",
+      "passed": 44,
+      "warning": "Latest-smoke lane does not install pytest-timeout; pytest reports its unused timeout config option."
+    }
+  ],
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "support_registry_and_render": "passed",
+    "actionlint": "passed",
+    "delivery_contract": "passed",
+    "pip_audit": "passed"
+  }
+}

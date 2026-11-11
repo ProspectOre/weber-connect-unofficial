@@ -57,6 +57,16 @@ Home Assistant retains no credential after the flow is discarded.
 - Local Bluetooth is used only for physically confirmed setup. Null-session
   status frames are structurally checksummed but not peer-authenticated, so
   they are never published as Home Assistant telemetry.
+- Active probe programs use a narrowly scoped read (`0x0B`, probe type and slot)
+  on the same authenticated socket. Responses must come from the authenticated
+  controller and match the current in-flight probe, program, plan and version.
+  The controller assigns independent response sequences; it does not echo
+  request or session IDs. Session changes discard pending reads and targets. The current step selects a single
+  target or a range. Program data refreshes at most every 30 seconds per active
+  probe and expires after 60 seconds; session changes and reconnects discard it.
+  Controller errors retain normal failure/recovery behavior. An error while a
+  program read is pending suspends optional reads until the entry is reloaded,
+  preventing repeated optional-read failures from disrupting temperature updates.
 
 The coordinator normalizes cloud status into one stable state shape. Probe
 1 and Probe 2 form the baseline entity set. Probe 3, Probe 4, and other
@@ -89,8 +99,10 @@ operations have bounded timeouts. The integration is read-only.
 decoding. `weber_cloud.py` and
 `weber_cloud_socket.py` implement the minimal read-only companion
 REST/WebSocket surface for association and live appliance telemetry.
-Cook-history, recipe, instruction, and control APIs are outside the 3.0
-runtime. These interfaces are private and can change without notice.
+`programs.py` decodes bounded program details solely to derive probe targets;
+titles and prompt text are discarded. Cook-history, recipe-library, instruction,
+and control APIs remain outside the runtime. These interfaces are private and
+can change without notice.
 
 The pairing decoder accepts only a complete transport frame whose declared
 length, envelope CRC, terminal marker, and setup message type verify. Status
