@@ -1,8 +1,8 @@
 {
   "candidate": "3.3.0rc3",
   "release_channel": "prerelease",
-  "evidence_date": "2026-11-10",
-  "runtime_sha256": "8b1f0b9191b60f6b1e25025403cd5c46a9aa7c9dae83ee13438ef2d6ac80c809",
+  "evidence_date": "2026-11-11",
+  "runtime_sha256": "52c3f94b3883213eefb146784a25aca4449bd7fe3bc20dd734edef6e18796421",
   "identifiers": "redacted",
   "status": "pending_hardware_validation",
   "verified": {},

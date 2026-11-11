@@ -1,5 +1,6 @@
 """Exercise the PR-edit gate while the code workflow creates its aggregate check."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -18,16 +19,16 @@ SCRIPT = Path(__file__).resolve().parents[1] / ".github/scripts/last-code-run.sh
                 "in_progress null https://example.invalid/check",
                 "completed success https://example.invalid/check",
             ],
-            1,
+            "queued",
             0,
             3,
             "Last code run of 'ci': success",
         ),
-        ([""], 1, 1, 3, "did not appear or finish in time"),
-        ([""], 0, 1, 1, "No active code run"),
+        ([""], "in_progress", 1, 3, "did not appear or finish in time"),
+        ([""], None, 1, 1, "No active code run"),
         (
             ["completed failure https://example.invalid/check"],
-            0,
+            None,
             1,
             1,
             "Last code run of 'ci': failure",
@@ -37,7 +38,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / ".github/scripts/last-code-run.sh
 def test_recheck_waits_for_aggregate(
     tmp_path: Path,
     responses: list[str],
-    running: int,
+    running: str | None,
     expected_code: int,
     expected_reads: int,
     expected_message: str,
@@ -46,16 +47,77 @@ def test_recheck_waits_for_aggregate(
     response_dir = tmp_path / "responses"
     response_dir.mkdir()
     for index, response in enumerate(responses):
-        (response_dir / str(index)).write_text(response + "\n")
+        checks = [
+            {
+                "id": 1000,
+                "app": {"slug": "other-app"},
+                "check_suite": {"id": 100},
+                "status": "completed",
+                "conclusion": "success",
+            },
+            {
+                "id": 1001,
+                "app": {"slug": "github-actions"},
+                "check_suite": {"id": 200},
+                "status": "completed",
+                "conclusion": "success",
+            },
+            {
+                "id": 1002,
+                "app": {"slug": "github-actions"},
+                "check_suite": {"id": 201},
+                "status": "completed",
+                "conclusion": "success",
+            },
+            *(
+                {
+                    "id": 1003,
+                    "app": {"slug": "github-actions"},
+                    "check_suite": {"id": 100},
+                    "status": "completed",
+                    "conclusion": conclusion,
+                }
+                for conclusion in ("cancelled", "skipped")
+            ),
+        ]
+        if response:
+            status, conclusion, url = response.split()
+            checks.append(
+                {
+                    "id": 1,
+                    "app": {"slug": "github-actions"},
+                    "check_suite": {"id": 100},
+                    "status": status,
+                    "conclusion": None if conclusion == "null" else conclusion,
+                    "html_url": url,
+                }
+            )
+        (response_dir / str(index)).write_text(json.dumps({"check_runs": checks}))
+    (response_dir / "own").write_text(json.dumps({"check_suite_id": 200, "workflow_id": 17}))
+    runs = [
+        {"check_suite_id": suite, "status": status}
+        for suite, status in [
+            (200, "queued"),
+            (201, "in_progress"),
+            (100, "completed"),
+            (100, "action_required"),
+        ]
+    ]
+    if running:
+        runs.append({"check_suite_id": 100, "status": running})
+    (response_dir / "runs").write_text(json.dumps({"workflow_runs": runs}))
     fake_gh = tmp_path / "gh"
     fake_gh.write_text(
-        '#!/bin/sh\ncase "$*" in\n'
-        '*/actions/runs/*) printf "200 17\\n" ;;\n'
-        '*/actions/workflows/*) printf "%s\\n" "$RECHECK_RUNNING" ;;\n'
-        '*) n=0; if [ -f "$RECHECK_COUNTER" ]; then read -r n < "$RECHECK_COUNTER"; fi\n'
+        '#!/bin/sh\nset -eu\nargs="$*"\n'
+        'while [ "$1" != --jq ]; do shift; done\nshift\nfilter="$1"\n'
+        'case "$args" in\n'
+        "*/actions/runs/2*) file=own ;;\n"
+        "*/actions/workflows/17/runs*) file=runs ;;\n"
+        '*/check-runs*) n=0; if [ -f "$RECHECK_COUNTER" ]; then read -r n < "$RECHECK_COUNTER"; fi\n'
         '   printf "%s\\n" "$((n + 1))" > "$RECHECK_COUNTER"\n'
         '   if [ "$n" -gt "$RECHECK_LAST_RESPONSE" ]; then n="$RECHECK_LAST_RESPONSE"; fi\n'
-        '   cat "$RECHECK_RESPONSES_DIR/$n" ;;\nesac\n'
+        '   file="$n" ;;\n*) exit 2 ;;\nesac\n'
+        'exec jq -r "$filter" "$RECHECK_RESPONSES_DIR/$file"\n'
     )
     fake_gh.chmod(0o755)
     fake_sleep = tmp_path / "sleep"
@@ -77,7 +139,6 @@ def test_recheck_waits_for_aggregate(
             "RECHECK_COUNTER": str(counter),
             "RECHECK_RESPONSES_DIR": str(response_dir),
             "RECHECK_LAST_RESPONSE": str(len(responses) - 1),
-            "RECHECK_RUNNING": str(running),
         },
         capture_output=True,
         text=True,

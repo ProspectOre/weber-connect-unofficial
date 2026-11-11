@@ -298,6 +298,30 @@ async def test_between_poll_failed_fast_recovery_reports_failure():
     assert session.fast_recoveries == 0
 
 
+async def test_between_poll_repeated_failure_uses_normal_error_path():
+    connection = FakeConnection([message(0x80, active_probe()), OSError("first close")])
+    replacement = FakeConnection([message(0x80, active_probe()), OSError("second close")])
+    session = socket.WeberCloudSession(
+        FakeHass(), FakeCloudClient(), APPLIANCE_ID, subscribe_delay=0
+    )
+    session._connection = connection
+    session._subscribed = True
+    errors = []
+
+    def error(message):
+        errors.append(message)
+        session._closed = True
+        session.async_wake()
+
+    with patch.object(socket, "connect", AsyncMock(return_value=replacement)) as connect:
+        await asyncio.wait_for(session.async_run(lambda _: None, error), timeout=2)
+    connect.assert_awaited_once()
+    assert len(errors) == 1
+    assert "second close" in errors[0]
+    assert session.fast_recoveries == 1
+    assert connection.closed and replacement.closed
+
+
 @pytest.mark.parametrize("stop", ["closed", "wake"])
 async def test_between_poll_failure_during_stop_does_not_reconnect(stop):
     session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)

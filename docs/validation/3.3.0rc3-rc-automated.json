@@ -1,16 +1,16 @@
 {
   "candidate": "3.3.0rc3",
   "release_channel": "prerelease",
-  "evidence_date": "2026-11-10",
-  "runtime_sha256": "8b1f0b9191b60f6b1e25025403cd5c46a9aa7c9dae83ee13438ef2d6ac80c809",
+  "evidence_date": "2026-11-11",
+  "runtime_sha256": "52c3f94b3883213eefb146784a25aca4449bd7fe3bc20dd734edef6e18796421",
   "publication_status": "unpublished",
   "change": "Read-only active probe targets and ranges; correct modern zero-valued IDs.",
   "tests": {
     "status": "passed",
-    "scope": "Full minimum-HA native suite and focused current-HA regressions; live trial recorded separately.",
+    "scope": "Full current-HA native suite and minimum-HA suite plus focused receipt-check rerun; fresh installed-runtime evidence accompanies the beta release.",
     "required_coverage_percent": 100,
     "combined_statement_branch_coverage_percent": 100,
-    "passed": 718,
+    "passed": 719,
     "subtests_passed": 5,
     "failed": 0
   },
@@ -26,18 +26,18 @@
     {
       "homeassistant": "2026.7.2",
       "pytest_homeassistant_custom_component": "0.13.346",
-      "status": "passed",
-      "scope": "full_native_suite",
-      "passed": 718,
+      "status": "full_suite_plus_focused_rerun_passed",
+      "scope": "716 tests and 5 subtests passed at 100% coverage while three support-registry checks encountered stale runtime receipts. After refreshing the receipts, all nine support-workflow tests passed.",
+      "passed": 719,
       "subtests_passed": 5,
       "combined_statement_branch_coverage_percent": 100
     },
     {
       "homeassistant": "2026.10.1",
       "pytest_homeassistant_custom_component": "0.13.372",
-      "status": "full_suite_plus_focused_rerun_passed",
-      "scope": "717 tests and 5 subtests passed in the full run at 100% coverage; one CI-helper fixture timed out. Its process-heavy stub was simplified, and all four CI-helper cases then passed. Fresh hosted full-suite validation remains required.",
-      "passed": 718,
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 719,
       "subtests_passed": 5,
       "combined_statement_branch_coverage_percent": 100
     },

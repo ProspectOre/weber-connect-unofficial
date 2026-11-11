@@ -530,6 +530,7 @@ class WeberCloudSession:
         let a valid program reply outlive its request window before we read it.
         """
         deadline = asyncio.get_running_loop().time() + delay
+        recovered = False
         while not self._closed and not self._wake.is_set():
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
@@ -546,6 +547,11 @@ class WeberCloudSession:
                     except ConnectionClosed, OSError, TimeoutError:
                         if self._closed or self._wake.is_set():
                             return
+                        if recovered:
+                            # A flapping replacement must use normal backoff,
+                            # not start another handshake in this poll window.
+                            raise
+                        recovered = True
                         # Preserve the same bounded one-shot recovery used by
                         # polling when a persistent socket closes between polls.
                         async with asyncio.timeout(self.request_timeout):
