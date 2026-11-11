@@ -17,8 +17,10 @@ for _ in $(seq 110); do
       and .conclusion != \"cancelled\" and .conclusion != \"skipped\")]
     | max_by(.id) | select(.) | \"\(.status) \(.conclusion) \(.html_url)\"")
   if [ -z "$prior" ]; then
-    echo "No code run of '$check' for this head; push or reopen the PR to run CI."
-    exit 1
+    # The aggregate check is created only after its prerequisite jobs finish.
+    # An edit can arrive before that check exists, so use the same bounded wait.
+    sleep 30
+    continue
   fi
   read -r status conclusion url <<<"$prior"
   if [ "$status" = completed ]; then
@@ -28,5 +30,5 @@ for _ in $(seq 110); do
   fi
   sleep 30
 done
-echo "The last code run of '$check' did not finish in time."
+echo "The last code run of '$check' did not appear or finish in time."
 exit 1
