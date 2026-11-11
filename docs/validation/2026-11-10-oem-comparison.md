@@ -47,8 +47,9 @@ Message version 11 changes plan IDs to 32 bits and step/prompt counts to 16 bits
 Targets may be a single threshold or a range, and may change with the step.
 
 RC3 binds responses to the authenticated controller, pending read window and
-embedded probe/program/plan, then selects the active step. Session changes
-invalidate the pending read. Session changes, expiry and
+embedded probe/program/plan, then selects the active step. Session changes retire
+the response's target destination but retain its outstanding owner until the
+reply is consumed or the connection resets. Session changes, expiry and
 connection failures clear targets. Ranges have separate lower/upper sensors.
 The cloud allowlist adds only the validated two-byte `0x0B` probe-program read
 to empty status/capability reads (`0x05`, `0x07`, `0x0E`). It permits no target

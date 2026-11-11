@@ -64,7 +64,11 @@ Home Assistant retains no credential after the flow is discarded.
   on the same authenticated socket. Responses must come from the authenticated
   controller and match the current in-flight probe, program, plan and version.
   The controller assigns independent response sequences; it does not echo
-  request or session IDs. Session changes discard pending reads and targets. The current step selects a single
+  request or session IDs. Session changes discard targets but retain the original
+  outstanding read owner until its reply is consumed or the connection resets.
+  Undecodable replies retain that owner because their slot cannot be trusted;
+  optional targets remain unknown until an attributable reply or reconnect.
+  The current step selects a single
   target or a range. Program data refreshes at most every 30 seconds per active
   probe and expires after 60 seconds; session changes and reconnects discard it.
   Controller errors retain normal failure/recovery behavior. An error while a
