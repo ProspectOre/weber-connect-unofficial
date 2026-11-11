@@ -2,6 +2,8 @@
 
 ## 3.3.0rc3 — probe-target beta candidate
 
+- Consume incoming cloud frames between status polls so target changes and removals do not wait behind queued old sessions.
+
 - Stop interpreting legacy plan IDs as probe types; preserve the OEM wired default when type is absent.
 
 - Read active probe-program targets, including separate lower and upper sensors

@@ -1,5 +1,6 @@
 """Program reads must remain optional, narrowly scoped, and read-only."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -165,3 +166,88 @@ async def test_observed_manual_target_response_has_independent_controller_sequen
     connection.responses.extend([message(0x86, payload, sequence=869), message(0x80, status)])
     result = await session._async_receive_status()
     assert result["probes"][0]["target_temperature_c"] == 48.8
+
+
+async def test_run_consumes_program_and_session_changes_between_polls():
+    connection = FakeConnection(
+        [
+            message(0x80, active_probe()),
+            message(0x86, program_frame(), sequence=869),
+            message(0x80, active_probe()),
+            message(0x80, active_probe(step=1)),
+            message(0x80, active_probe(state=0)),
+        ]
+    )
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    session._connection = connection
+    session._subscribed = True
+    statuses, errors = [], []
+
+    def publish(status):
+        statuses.append(status["probes"][0])
+        if len(statuses) == 4:
+            session._closed = True
+
+    # All queued transitions must arrive well before the next ten-second poll.
+    await asyncio.wait_for(session.async_run(publish, errors.append), timeout=1)
+    assert not errors
+    assert [row["target_temperature_c"] for row in statuses] == [None, 50, None, None]
+    assert statuses[2]["target_lower_temperature_c"] == 40
+    assert statuses[3]["target_lower_temperature_c"] is None
+    assert [socket.decode_routed_message(raw).type_value for raw in connection.sent] == [
+        0x07,
+        0x05,
+        0x0B,
+    ]
+
+
+async def test_program_error_between_polls_keeps_existing_recovery_behavior():
+    connection = FakeConnection([message(0x80, active_probe()), message(0x87)])
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    session._connection = connection
+    session._subscribed = True
+    errors = []
+
+    def error(message):
+        errors.append(message)
+        session._closed = True
+        session.async_wake()
+
+    await asyncio.wait_for(session.async_run(lambda _: None, error), timeout=1)
+    assert len(errors) == 1
+    assert "rejected" in errors[0]
+    assert session.program_reads_suspended
+    assert connection.closed
+
+
+@pytest.mark.parametrize("wake", [False, True])
+async def test_between_poll_timeout_or_wake_awaits_reader_cancellation(wake):
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def receive():
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    with patch.object(session, "_async_receive_status", receive):
+        listener = asyncio.create_task(session._async_listen_until_poll(0.05, lambda _: None))
+        await started.wait()
+        if wake:
+            session.async_wake()
+        await listener
+    assert cancelled.is_set()
+
+
+@pytest.mark.parametrize("stop", ["closed", "wake", "deadline"])
+async def test_between_poll_listener_does_not_start_after_stop(stop):
+    session = socket.WeberCloudSession(FakeHass(), FakeCloudClient(), APPLIANCE_ID)
+    if stop == "closed":
+        session._closed = True
+    elif stop == "wake":
+        session.async_wake()
+    with patch.object(session, "_async_receive_status", AsyncMock()) as receive:
+        await session._async_listen_until_poll(0 if stop == "deadline" else 10, lambda _: None)
+    receive.assert_not_awaited()

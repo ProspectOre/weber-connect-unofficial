@@ -484,6 +484,13 @@ class WeberCloudSession:
                 started = asyncio.get_running_loop().time()
                 try:
                     status = await self.async_request_status()
+                    self.error_kind = "connection"
+                    status_callback(status)
+                    delay_index = 0
+                    await self._async_listen_until_poll(
+                        max(0.0, STATUS_INTERVAL - (asyncio.get_running_loop().time() - started)),
+                        status_callback,
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -503,19 +510,42 @@ class WeberCloudSession:
                     delay = RECONNECT_DELAYS[min(delay_index, len(RECONNECT_DELAYS) - 1)]
                     delay_index += 1
                 else:
-                    self.error_kind = "connection"
-                    status_callback(status)
-                    delay_index = 0
-                    delay = max(
-                        1.0,
-                        STATUS_INTERVAL - (asyncio.get_running_loop().time() - started),
-                    )
+                    continue
                 try:
                     await asyncio.wait_for(self._wake.wait(), timeout=delay)
                 except TimeoutError:
                     pass
         finally:
             await self.async_close()
+
+    async def _async_listen_until_poll(self, delay: float, status_callback: StatusCallback) -> None:
+        """Consume unsolicited frames between polls without overlapping readers.
+
+        Status changes and optional program replies can arrive at any time.
+        Sleeping with those frames queued makes old sessions look fresh and can
+        let a valid program reply outlive its request window before we read it.
+        """
+        deadline = asyncio.get_running_loop().time() + delay
+        while not self._closed and not self._wake.is_set():
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return
+            receiver = asyncio.create_task(self._async_receive_status())
+            wake = asyncio.create_task(self._wake.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    (receiver, wake), timeout=remaining, return_when=asyncio.FIRST_COMPLETED
+                )
+                if receiver in done:
+                    status_callback(receiver.result())
+                if wake in done or not done:
+                    return
+            finally:
+                # websockets recv cancellation preserves the next message.
+                # Finish cancellation before the next poll can start a reader.
+                receiver.cancel()
+                wake.cancel()
+                await asyncio.gather(receiver, wake, return_exceptions=True)
 
     def async_wake(self) -> None:
         """Request an immediate cloud retry."""

@@ -53,7 +53,10 @@ Home Assistant retains no credential after the flow is discarded.
 
 - Retain one authenticated companion WebSocket and request fresh
   status on a start-to-start 10-second cadence. This leaves the hub's Bluetooth
-  connection available to the official app.
+  connection available to the official app. A serialized reader consumes incoming
+  status and program replies between polls, so queued old sessions cannot be
+  republished as fresh data. The next poll or manual wake cancels and awaits the
+  pending read before starting another; receive failures keep normal backoff.
 - Local Bluetooth is used only for physically confirmed setup. Null-session
   status frames are structurally checksummed but not peer-authenticated, so
   they are never published as Home Assistant telemetry.
