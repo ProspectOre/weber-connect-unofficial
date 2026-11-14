@@ -10,7 +10,7 @@ phone secret, MQTT broker or packet capture is required.
 
 The 3.3.0rc3 candidate adds read-only probe targets to the controller-family
 work. It reads active program details to distinguish single targets from ranges.
-It is not yet published; the current stable release is 3.2.2.
+The 3.3.0rc3 prerelease is published; the current stable release is 3.2.2.
 Use the latest stable HACS release for the established feature set; enable
 prereleases only when participating in the [hardware trials](docs/support/hardware-trials.md).
 
