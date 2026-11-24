@@ -282,7 +282,7 @@
       "id": "ep435-issue-59-approval",
       "summary": "Issue 59 reports an EP-435-style thermometer with no visible approval prompt.",
       "status": "unresolved",
-      "product_families": ["spirit_smart"],
+      "product_families": ["portable_probes"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/issues/59", "docs/support/hardware-trials.md", "docs/validation/3.3.0rc12-readiness.md"],
       "disposition": "A second EP-series report on 3.3.0rc3 sent the SiLabs pairing request, then failed 0.1 seconds later on both an ESPHome proxy and a local adapter. The most likely cause, consistent with that report, is that rc3 read the response characteristic while approval was pending and aborted on a failed read; RC12 waits for notified approval instead and reports an appliance disconnect separately. No successful pairing is recorded; the exact controller, firmware and an RC12 approval result remain needed."
     },

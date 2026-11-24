@@ -344,8 +344,11 @@ class GattResponseChannel:
         try:
             async with asyncio.timeout(CONNECTION_TIMEOUT):
                 return bytes(await self.client.read_gatt_char(self.response_uuid))
+        except BleakCharacteristicNotFoundError:
+            raise
         except BleakError, TimeoutError:
             self._raise_if_link_lost()
+            _LOGGER.debug("Weber response read gave no answer yet", exc_info=True)
             return b""
 
     def _raise_if_link_lost(self) -> None:

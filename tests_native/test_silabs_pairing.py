@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from bleak.exc import BleakError
+from bleak.exc import BleakCharacteristicNotFoundError, BleakError
 
 from custom_components.weber_connect import bluetooth as ble
 from custom_components.weber_connect import silabs_pairing as pairing
@@ -519,3 +519,15 @@ async def test_polling_treats_failed_reads_as_no_answer_until_link_loss() -> Non
     link_lost.set()
     with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
         await channel.async_receive()
+
+
+async def test_polling_fails_fast_when_the_response_characteristic_is_gone() -> None:
+    client = GattClient(Peer(), {"read"})
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
+    await channel.async_open()
+    client.read_gatt_char = AsyncMock(
+        side_effect=BleakCharacteristicNotFoundError(ble.RESPONSE_UUID)
+    )
+    with pytest.raises(BleakCharacteristicNotFoundError):
+        await channel.async_receive()
+    assert client.read_gatt_char.await_count == 1

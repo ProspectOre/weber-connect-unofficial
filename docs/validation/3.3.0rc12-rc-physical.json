@@ -2,7 +2,7 @@
   "candidate": "3.3.0rc12",
   "release_channel": "prerelease",
   "evidence_date": "2026-11-24",
-  "runtime_sha256": "bae54808b6474feddc9f62f308b36ea1c8a4b069dc04375afa7be50976399d16",
+  "runtime_sha256": "d1dd5099714213078a7c62cf75a6a89ed7077995da08a2374a356f8ce14ddf83",
   "identifiers": "redacted",
   "status": "pending_hardware_validation",
   "verified": {},
