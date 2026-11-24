@@ -341,6 +341,11 @@ class GattResponseChannel:
                 await asyncio.sleep(0.25)
 
     async def _poll(self) -> bytes:
+        # A subscription that reported an error may still have taken effect.
+        try:
+            return self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
         try:
             async with asyncio.timeout(CONNECTION_TIMEOUT):
                 return bytes(await self.client.read_gatt_char(self.response_uuid))

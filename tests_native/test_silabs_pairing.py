@@ -531,3 +531,20 @@ async def test_polling_fails_fast_when_the_response_characteristic_is_gone() -> 
     with pytest.raises(BleakCharacteristicNotFoundError):
         await channel.async_receive()
     assert client.read_gatt_char.await_count == 1
+
+
+async def test_polling_still_takes_a_notification_from_a_failed_subscribe() -> None:
+    client = GattClient(Peer(), {"read", "notify"})
+    callbacks = []
+
+    async def start_notify(_uuid: str, callback: object) -> None:
+        callbacks.append(callback)
+        raise TimeoutError
+
+    client.start_notify = start_notify
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
+    await channel.async_open()
+    client.read_gatt_char = AsyncMock(side_effect=BleakError("pending"))
+    callbacks[0](None, bytearray(b"notified"))
+    assert await channel.async_receive() == b"notified"
+    assert client.read_gatt_char.await_count == 0
