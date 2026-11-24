@@ -489,3 +489,33 @@ async def test_appliance_disconnect_while_waiting_is_reported(operation: str) ->
             with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
                 await ble.async_reconnect_silabs(object(), "address", "ref", APPLIANCE_ID.hex())
     client.disconnect.assert_awaited_once()
+
+
+async def test_abandoned_connection_attempt_does_not_mark_the_live_link_lost() -> None:
+    keys = SiLabsSigningKeys.generate()
+    client = LateApprovalClient(Peer())
+    identity = CompanionIdentity(COMPANION_ID.hex(), keys.public_key.hex())
+
+    async def connect(*_args: object, **kwargs: object) -> GattClient:
+        callback = kwargs["disconnected_callback"]
+        assert callable(callback)
+        callback(object())  # The connector disconnecting a failed attempt.
+        return client
+
+    with patch.object(ble, "_connect", new=connect):
+        result = await ble.async_pair_silabs(object(), "address", identity, keys)
+    assert result.capabilities["probe_count"] == 4
+
+
+async def test_polling_treats_failed_reads_as_no_answer_until_link_loss() -> None:
+    client = GattClient(Peer(), {"read"})
+    link_lost = asyncio.Event()
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID, link_lost)
+    await channel.async_open()
+    client.read_gatt_char = AsyncMock(side_effect=[BleakError("pending"), TimeoutError(), b"late"])
+    with patch.object(ble.asyncio, "sleep", new=AsyncMock()):
+        assert await channel.async_receive() == b"late"
+    client.read_gatt_char = AsyncMock(side_effect=BleakError("gone"))
+    link_lost.set()
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await channel.async_receive()

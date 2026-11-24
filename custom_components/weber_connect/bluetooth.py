@@ -256,14 +256,36 @@ async def async_qualify_gatt(
             await _safe_disconnect(client)
 
 
+class _LinkWatch:
+    """Report a drop of the returned connection only.
+
+    The connector reuses one disconnect callback for every attempt and
+    disconnects abandoned attempts itself, so a callback from any client other
+    than the one finally returned says nothing about the live link.
+    """
+
+    def __init__(self) -> None:
+        self.lost = asyncio.Event()
+        self._client: BleakClient | None = None
+
+    def bind(self, client: BleakClientWithServiceCache) -> BleakClientWithServiceCache:
+        self._client = client
+        return client
+
+    def __call__(self, client: BleakClient) -> None:
+        if client is self._client:
+            self.lost.set()
+
+
 class GattResponseChannel:
     """Bounded response stream using properties on the selected GATT table.
 
     A subscribed notification stream is the only response source: a SiLabs
     appliance answers a pairing request by notification after physical
-    approval, and reading the same characteristic meanwhile fails at once,
-    which used to abandon the request before anyone could approve it. Reads
-    are a fallback only for a characteristic that cannot notify.
+    approval, and reading the same characteristic meanwhile can fail, which
+    used to abandon the request before anyone could approve it. Reads are a
+    fallback only for a characteristic that cannot notify; a failed poll then
+    counts as no answer yet, and only a dropped link ends the wait early.
     """
 
     def __init__(
@@ -309,8 +331,7 @@ class GattResponseChannel:
     async def async_receive(self) -> bytes:
         while True:
             if self._polling:
-                async with asyncio.timeout(CONNECTION_TIMEOUT):
-                    data = bytes(await self.client.read_gatt_char(self.response_uuid))
+                data = await self._poll()
             else:
                 data = await self._next_notification()
             if data and data != self._last_read:
@@ -318,6 +339,20 @@ class GattResponseChannel:
                 return data
             if self._polling:
                 await asyncio.sleep(0.25)
+
+    async def _poll(self) -> bytes:
+        try:
+            async with asyncio.timeout(CONNECTION_TIMEOUT):
+                return bytes(await self.client.read_gatt_char(self.response_uuid))
+        except BleakError, TimeoutError:
+            self._raise_if_link_lost()
+            return b""
+
+    def _raise_if_link_lost(self) -> None:
+        if self._link_lost.is_set():
+            raise WeberBluetoothError(
+                "The appliance closed the Bluetooth connection before it answered."
+            )
 
     async def _next_notification(self) -> bytes:
         """Wait for a notification, ending at once if the link drops first."""
@@ -327,10 +362,7 @@ class GattResponseChannel:
                 return self._queue.get_nowait()
             except asyncio.QueueEmpty:
                 pass
-            if self._link_lost.is_set():
-                raise WeberBluetoothError(
-                    "The appliance closed the Bluetooth connection before it answered."
-                )
+            self._raise_if_link_lost()
             getter = asyncio.ensure_future(self._queue.get())
             lost = asyncio.ensure_future(self._link_lost.wait())
             try:
@@ -360,15 +392,17 @@ async def async_pair_silabs(
         exchange = SiLabsExchange(bytes.fromhex(identity.companion_id), NAME, keys)
         if keys.public_key.hex() != identity.public_key:
             raise SiLabsSecurityError("The SiLabs companion public key does not match.")
-        link_lost = asyncio.Event()
-        client = await _connect(
-            hass,
-            address,
-            max_attempts=3,
-            use_services_cache=False,
-            disconnected_callback=lambda _client: link_lost.set(),
+        watch = _LinkWatch()
+        client = watch.bind(
+            await _connect(
+                hass,
+                address,
+                max_attempts=3,
+                use_services_cache=False,
+                disconnected_callback=watch,
+            )
         )
-        channel = GattResponseChannel(client, RESPONSE_UUID, link_lost)
+        channel = GattResponseChannel(client, RESPONSE_UUID, watch.lost)
         await channel.async_open()
         if progress_callback is not None:
             progress_callback(SupportEvent.SERVICES)
@@ -395,14 +429,16 @@ async def async_reconnect_silabs(
     client: BleakClientWithServiceCache | None = None
     try:
         credentials = await PairingKeyStore(hass, reference).async_load(appliance_id)
-        link_lost = asyncio.Event()
-        client = await _connect(
-            hass,
-            address,
-            use_services_cache=False,
-            disconnected_callback=lambda _client: link_lost.set(),
+        watch = _LinkWatch()
+        client = watch.bind(
+            await _connect(
+                hass,
+                address,
+                use_services_cache=False,
+                disconnected_callback=watch,
+            )
         )
-        channel = GattResponseChannel(client, RESPONSE_UUID, link_lost)
+        channel = GattResponseChannel(client, RESPONSE_UUID, watch.lost)
         await channel.async_open()
         return await async_resume_exchange(channel, credentials)
     except ValueError as exc:
