@@ -40,6 +40,7 @@ SECRET = "secret-token-with-private-address@example.com"
         ("Every connection slot is busy", "bluetooth_slots_busy"),
         ("Bluetooth connection could not be established", "bluetooth_connection_failed"),
         ("Bluetooth services changed", "bluetooth_services_unavailable"),
+        ("The appliance closed the Bluetooth connection", "appliance_disconnected"),
         ("unsupported encrypted response", "unsupported_encrypted_response"),
         ("invalid transport frame", "invalid_transport_frame"),
         ("corrupted protocol envelope", "invalid_protocol_envelope"),

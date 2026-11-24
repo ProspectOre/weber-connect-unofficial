@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.3.0rc12 — SiLabs pairing wait candidate
+
+- Wait for a SiLabs controller's notified pairing approval instead of reading
+  its response characteristic. The read failed at once while approval was
+  pending, so 3.3.0rc3 abandoned the request about 0.1 seconds after sending it.
+  Reads remain a fallback only when the characteristic cannot notify.
+- End a pairing or reconnect wait as soon as the controller drops the link, and
+  report it as `appliance_disconnected` instead of a generic transport timeout.
+- Candidate numbers 4 to 11 belonged to unpublished builds and are not reused.
+
 ## 3.3.0rc3 — probe-target beta candidate
 
 - Consume incoming cloud frames between status polls so target changes and removals do not wait behind queued old sessions.
