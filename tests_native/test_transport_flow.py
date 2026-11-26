@@ -290,6 +290,7 @@ async def test_silabs_pairing_error_stops_before_cloud_association(hass: Any, ro
     assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "pairing_failed"
     pair_silabs.assert_awaited_once()
+    assert callable(pair_silabs.await_args.kwargs["connection_callback"])
     assert FakeCloudClient.calls.count("authenticate") == 1
     assert "associated_appliances" not in FakeCloudClient.calls
     assert MemoryStore.records == {}

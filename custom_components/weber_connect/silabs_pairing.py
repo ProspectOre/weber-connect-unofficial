@@ -13,7 +13,7 @@ from .models import PairingResult
 from .pairing_storage import SiLabsCredentials
 from .saber_frames import parse_tlv
 from .silabs_frames import parse_incoming_frame
-from .silabs_secure import ExchangeState, SiLabsExchange, SiLabsSecurityError
+from .silabs_secure import HANDSHAKE_SUCCESS, ExchangeState, SiLabsExchange, SiLabsSecurityError
 from .support import SupportEvent
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,7 +21,6 @@ _LOGGER = logging.getLogger(__name__)
 MAX_RESPONSES = 128
 HANDSHAKE_TIMEOUT = 10.0
 CAPABILITIES_TIMEOUT = 10.0
-FETCH_CAPABILITIES = 0x0E
 INCOMING_CAPABILITIES = 0x88
 
 
@@ -49,29 +48,45 @@ async def _receive(
 
 
 async def async_negotiate(
-    channel: SiLabsChannel, exchange: SiLabsExchange, sequence: int
+    channel: SiLabsChannel,
+    exchange: SiLabsExchange,
+    sequence: int,
+    *,
+    fresh_pairing: bool = False,
+    progress_callback: Callable[[SupportEvent], None] | None = None,
 ) -> dict[str, int]:
     """Prove possession of paired keys before decoding capability responses."""
 
     _LOGGER.debug("Waiting for SiLabs authenticated handshake")
     async with asyncio.timeout(HANDSHAKE_TIMEOUT):
         await channel.async_write(exchange.handshake_greeting(sequence))
+        if progress_callback is not None:
+            progress_callback(SupportEvent.HANDSHAKE)
 
-        # Handshake success is accepted only after GCM authentication; unrelated
-        # plaintext cannot advance the session or become application telemetry.
+        # A short EP acknowledgement can prompt the encrypted capabilities read.
+        # It cannot authenticate the peer or supply a negotiated version.
         def handshake(raw: bytes) -> bool:
-            if not parse_incoming_frame(raw).encrypted:
-                return False
+            if raw == bytes((HANDSHAKE_SUCCESS,)):
+                return fresh_pairing
+            frame = parse_incoming_frame(raw)
+            if not frame.encrypted:
+                return fresh_pairing and frame.body == bytes(
+                    (exchange.message_version, HANDSHAKE_SUCCESS)
+                )
             return exchange.accept_handshake(raw, ignore_unrelated=True) is not None
 
         await _receive(channel, handshake, HANDSHAKE_TIMEOUT)
-    _LOGGER.debug("SiLabs handshake verified, requesting capabilities")
+    _LOGGER.debug("SiLabs greeting answered, requesting authenticated capabilities")
     async with asyncio.timeout(CAPABILITIES_TIMEOUT):
-        await channel.async_write(exchange.encrypted_request(sequence + 1, FETCH_CAPABILITIES))
+        await channel.async_write(exchange.capabilities_request(sequence + 1))
+        if progress_callback is not None:
+            progress_callback(SupportEvent.CAPABILITIES)
         capabilities: dict[str, int] = {}
 
         def accept(raw: bytes) -> bool:
             nonlocal capabilities
+            if raw == bytes((HANDSHAKE_SUCCESS,)):
+                return False
             frame = parse_incoming_frame(raw)
             if not frame.encrypted:
                 return False
@@ -83,6 +98,7 @@ async def async_negotiate(
             if not 5 <= body[0] <= exchange.message_version:
                 raise SiLabsSecurityError("SiLabs capabilities use an unsupported message version.")
             capabilities = parse_capabilities(body[2:])
+            exchange.state = ExchangeState.ACTIVE
             return True
 
         await _receive(channel, accept, CAPABILITIES_TIMEOUT)
@@ -136,7 +152,9 @@ async def async_pair_exchange(
             raise SiLabsSecurityError(f"SiLabs pairing was {exchange.state.value}.")
         if progress_callback is not None:
             progress_callback(SupportEvent.CONFIRMED)
-        capabilities = await async_negotiate(channel, exchange, sequence + 1)
+        capabilities = await async_negotiate(
+            channel, exchange, sequence + 1, fresh_pairing=True, progress_callback=progress_callback
+        )
         appliance_id = cast(bytes, exchange.appliance_id)
         peer_key = cast(bytes, exchange.appliance_public_key)
         credentials = SiLabsCredentials(

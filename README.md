@@ -8,9 +8,10 @@ authenticated Weber Cloud companion for ongoing temperatures and status. The
 Weber app can continue using Bluetooth after setup. No Weber account password,
 phone secret, MQTT broker or packet capture is required.
 
-The 3.3.0rc13 beta handles the reply counters seen after physical approval
-on an EP-series thermometer and keeps valid fuel readings between reports
-during a SmokeFire cook. Both fixes have automated regression tests. Hardware trials are pending.
+On the EP-series WiFi Thermometer, the published 3.3.0rc13 beta reached physical
+approval over USB and ESPHome but timed out during the greeting.
+Version 3.3.0rc14 handles the reported acknowledgement and records the scanner
+that connected. Pairing and fresh readings on this controller still need verification.
 The stable release is 3.2.2. [Available HACS releases](https://github.com/ProspectOre/weber-connect-unofficial/releases)
 Use the latest stable HACS release for the established feature set; enable
 prereleases only when participating in the [hardware trials](docs/support/hardware-trials.md).
@@ -82,7 +83,7 @@ other product families are not qualified merely by being discovered.
 For a failure, choose **Get help / report a problem**, review the generated report,
 and share it in the existing issue. Please exclude credentials, QR codes, private
 identifiers and raw packets. See [architecture](ARCHITECTURE.md), [security](SECURITY.md), and the
-[3.3.0rc13 validation record](docs/validation/3.3.0rc13-readiness.md).
+[3.3.0rc14 validation record](docs/validation/3.3.0rc14-readiness.md).
 
 Published historical installation and hardware evidence remains available in the
 [3.2.1 documentation](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.1/README.md).

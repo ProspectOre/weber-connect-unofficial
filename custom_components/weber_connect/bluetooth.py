@@ -35,7 +35,13 @@ from .saber_frames import (
 )
 from .silabs_frames import SiLabsFrameError, parse_incoming_frame
 from .silabs_pairing import SiLabsPairingResult, async_pair_exchange, async_resume_exchange
-from .silabs_secure import PAIRING_REQUEST, SiLabsExchange, SiLabsSecurityError, SiLabsSigningKeys
+from .silabs_secure import (
+    HANDSHAKE_GREETING,
+    PAIRING_REQUEST,
+    SiLabsExchange,
+    SiLabsSecurityError,
+    SiLabsSigningKeys,
+)
 from .support import SupportEvent
 from .transport_family import TransportEvidence, classify_service_shapes
 
@@ -185,6 +191,7 @@ async def _connect(
     max_attempts: int = 1,
     use_services_cache: bool = True,
     disconnected_callback: Callable[[BleakClient], None] | None = None,
+    connection_callback: Callable[[str | None], None] | None = None,
 ) -> BleakClientWithServiceCache:
     device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
     if device is None:
@@ -198,7 +205,7 @@ async def _connect(
             f"{reason}"
         )
     try:
-        return await establish_connection(
+        client = await establish_connection(
             BleakClientWithServiceCache,
             device,
             NAME,
@@ -216,6 +223,14 @@ async def _connect(
                 bluetooth.async_ble_device_from_address(hass, address, connectable=True) or device
             ),
         )
+        if connection_callback is not None:
+            scanner = getattr(client, "_connected_scanner", None)
+            source = getattr(scanner, "source", None)
+            try:
+                connection_callback(source if isinstance(source, str) else None)
+            except Exception:
+                _LOGGER.debug("Could not record the connected Bluetooth route", exc_info=True)
+        return client
     except BleakOutOfConnectionSlotsError as exc:
         raise WeberBluetoothError(
             "Every Bluetooth proxy connection slot is currently busy. Home Assistant will retry automatically."
@@ -301,6 +316,7 @@ class GattResponseChannel:
         self._pre_request_value = b""
         self._needs_approval_prefix = False
         self._can_read = False
+        self._listen_to_status = False
 
     async def async_open(self) -> None:
         characteristic = self.client.services.get_characteristic(self.response_uuid)
@@ -322,16 +338,32 @@ class GattResponseChannel:
                     raise
                 self._polling = True
 
+        # SiLabs delivers messages on RESPONSE and optionally STATUS. Subscribe
+        # before the timed exchange, but ignore STATUS until the secure greeting.
+        status = self.client.services.get_characteristic(STATUS_UUID)
+        if status is not None and {"notify", "indicate"}.intersection(status.properties):
+            enqueue = _notification_callback(self._queue)
+
+            def on_status(sender: Any, data: bytearray) -> None:
+                if self._listen_to_status:
+                    enqueue(sender, data)
+
+            try:
+                async with asyncio.timeout(CONNECTION_TIMEOUT):
+                    await self.client.start_notify(STATUS_UUID, on_status)
+            except BleakError, TimeoutError:
+                _LOGGER.debug("Optional SiLabs status subscription unavailable")
+
     async def async_write(self, data: bytes) -> None:
         command = self.client.services.get_characteristic(COMMAND_UUID)
         if command is None or "write" not in command.properties:
             raise WeberBluetoothError("The controller has no usable command channel.")
-        is_pairing_request = (
-            len(data) >= 9
-            and data[6] == 0
-            and len(data) == 7 + int.from_bytes(data[4:6], "little")
-            and data[8] == PAIRING_REQUEST
+        is_plain_message = (
+            len(data) >= 9 and data[6] == 0 and len(data) == 7 + int.from_bytes(data[4:6], "little")
         )
+        is_pairing_request = is_plain_message and data[8] == PAIRING_REQUEST
+        if is_plain_message:
+            self._listen_to_status = data[8] == HANDSHAKE_GREETING
         self._pre_request_value = b""
         # A subscribed route has no pre-write read. An empty notification
         # cannot identify the current plaintext approval on that route.
@@ -497,6 +529,7 @@ async def async_pair_silabs(
     *,
     confirmation_timeout: float = 60.0,
     progress_callback: Callable[[SupportEvent], None] | None = None,
+    connection_callback: Callable[[str | None], None] | None = None,
 ) -> SiLabsPairingResult:
     """Pair a SiLabs appliance through the same HA adapter/proxy routing."""
 
@@ -513,6 +546,7 @@ async def async_pair_silabs(
                 max_attempts=3,
                 use_services_cache=False,
                 disconnected_callback=watch,
+                connection_callback=connection_callback,
             )
         )
         channel = GattResponseChannel(client, RESPONSE_UUID, watch.lost)
@@ -572,6 +606,7 @@ async def async_pair(
     initial_version: int = 11,
     confirmation_timeout: float = 60.0,
     progress_callback: Callable[[SupportEvent], None] | None = None,
+    connection_callback: Callable[[str | None], None] | None = None,
 ) -> PairingResult:
     """Pair Home Assistant after the user confirms on the physical hub."""
 
@@ -592,6 +627,7 @@ async def async_pair(
                 address,
                 max_attempts=3,
                 use_services_cache=False,
+                connection_callback=connection_callback,
             )
             try:
                 # COMMAND and RESPONSE carry the pairing exchange. A built-in

@@ -26,8 +26,13 @@ does not write to a device or register a cloud companion.
 
 The SiLabs adapter uses a seven-byte header and a source-backed authenticated
 setup flow: P-256 pairing request, physical confirmation response, ECDH plus
-SHA-256 to derive AES-256-GCM, plaintext companion greeting, authenticated
-handshake success, then encrypted capability negotiation. Reads, writes and
+SHA-256 to derive AES-256-GCM, a plaintext companion greeting, and an encrypted
+capabilities exchange. After a fresh physical approval, a one-byte greeting
+acknowledgement (`0xF2`) or a plaintext frame with the confirmed version and
+that type can prompt the encrypted capabilities read. Only an authenticated
+capabilities reply can complete setup. Stored-key reconnect also requires an
+authenticated greeting. Both the response and optional status characteristic
+can deliver replies to the greeting. Reads, writes and
 response counts are bounded. Invalid tags, keys, framing and duplicate
 nonces/sequences within one connection are rejected. The transport header is
 not GCM authenticated by the app protocol, and session freshness across separate

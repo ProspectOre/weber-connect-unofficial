@@ -1,0 +1,58 @@
+{
+  "candidate": "3.3.0rc14",
+  "release_channel": "prerelease",
+  "evidence_date": "2026-11-26",
+  "runtime_sha256": "ff87ebb2b243327711eaf4c93e43dbf438095e85761608170029327564706285",
+  "change": "Handle the newly approved EP greeting acknowledgement, receive the greeting response on the optional STATUS route, require authenticated capabilities before completing setup, and report the selected Bluetooth scanner.",
+  "tests": {
+    "status": "passed",
+    "scope": "Full native suite on both pinned Home Assistant lanes. Counts are per lane.",
+    "required_coverage_percent": 100,
+    "combined_statement_branch_coverage_percent": 100,
+    "passed": 763,
+    "subtests_passed": 5,
+    "failed": 0
+  },
+  "python": "3.14.10",
+  "platform": "macOS arm64",
+  "home_assistant_lanes": [
+    {
+      "homeassistant": "2026.7.2",
+      "pytest_homeassistant_custom_component": "0.13.346",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 763,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.1",
+      "pytest_homeassistant_custom_component": "0.13.372",
+      "status": "passed",
+      "scope": "full_native_suite",
+      "passed": 763,
+      "subtests_passed": 5,
+      "combined_statement_branch_coverage_percent": 100
+    },
+    {
+      "homeassistant": "2026.10.2",
+      "status": "passed",
+      "scope": "integration_import_and_pure_protocol_smoke",
+      "modules_imported": 26,
+      "passed": 44
+    }
+  ],
+  "local_gates": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "strict_mypy": "passed",
+    "bandit": "passed",
+    "support_registry_and_render": "passed",
+    "actionlint": "passed",
+    "delivery_contract": "passed",
+    "pip_audit": "passed"
+  },
+  "runtime_dependencies": {
+    "websockets": "17.3"
+  }
+}

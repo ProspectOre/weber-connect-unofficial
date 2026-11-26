@@ -23,6 +23,7 @@ PAIRING_REQUEST = 0x0A
 PAIRING_RESPONSE = 0x85
 HANDSHAKE_GREETING = 0x70
 HANDSHAKE_SUCCESS = 0xF2
+FETCH_CAPABILITIES = 0x0E
 MAX_DISPLAY_NAME_BYTES = 32
 ENCRYPTED_OVERHEAD = 28  # Twelve-byte nonce and sixteen-byte GCM tag.
 
@@ -212,10 +213,14 @@ class SiLabsExchange:
         self.message_version = version
         self.state = ExchangeState.PAIRED
 
-    def encrypted_request(self, sequence: int, message_type: int, payload: bytes = b"") -> bytes:
-        if self.state is not ExchangeState.ACTIVE or self.cipher is None:
-            raise SiLabsSecurityError("A successful SiLabs handshake is required.")
-        sealed = self.cipher.seal(bytes((self.message_version, message_type)) + payload)
+    def capabilities_request(self, sequence: int) -> bytes:
+        """The only request allowed while the peer still has to prove possession."""
+        if (
+            self.state not in (ExchangeState.HANDSHAKING, ExchangeState.ACTIVE)
+            or self.cipher is None
+        ):
+            raise SiLabsSecurityError("A paired SiLabs greeting is required.")
+        sealed = self.cipher.seal(bytes((self.message_version, FETCH_CAPABILITIES)))
         return build_outgoing_frame(sequence, sealed, encrypted=True)
 
     def authenticated_body(self, raw_frame: bytes) -> bytes:

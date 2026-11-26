@@ -313,7 +313,7 @@ async def test_connect_re_resolves_best_adapter_or_proxy_for_retries() -> None:
     first_device = SimpleNamespace(address=ADDRESS, name="Hub")
     second_device = SimpleNamespace(address=ADDRESS, name="Hub via proxy")
     client = FakeClient()
-    resolver = AsyncMock()
+    disconnected = Mock()
     establish = AsyncMock(return_value=client)
     with (
         patch.object(
@@ -323,14 +323,58 @@ async def test_connect_re_resolves_best_adapter_or_proxy_for_retries() -> None:
         ) as resolve,
         patch.object(transport, "establish_connection", establish),
     ):
-        assert await transport._connect(SimpleNamespace(), ADDRESS) is client
+        assert (
+            await transport._connect(SimpleNamespace(), ADDRESS, disconnected_callback=disconnected)
+            is client
+        )
         callback = establish.await_args.kwargs["ble_device_callback"]
         assert callback() is second_device
     assert resolve.call_count == 2
-    resolver.assert_not_awaited()
+    assert establish.await_args.kwargs["disconnected_callback"] is disconnected
     assert establish.await_args.kwargs["use_services_cache"] is True
     assert establish.await_args.kwargs["max_attempts"] == 1
     assert establish.await_args.kwargs["timeout"] == transport.CONNECTION_TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_connect_reports_the_scanner_that_established_the_link() -> None:
+    client = FakeClient()
+    client._connected_scanner = SimpleNamespace(source="proxy-source")
+    observed_sources: list[str | None] = []
+    with (
+        patch.object(
+            transport.bluetooth,
+            "async_ble_device_from_address",
+            return_value=SimpleNamespace(address=ADDRESS),
+        ),
+        patch.object(transport, "establish_connection", AsyncMock(return_value=client)),
+    ):
+        result = await transport._connect(
+            SimpleNamespace(), ADDRESS, connection_callback=observed_sources.append
+        )
+    assert result is client
+    assert observed_sources == ["proxy-source"]
+
+
+@pytest.mark.asyncio
+async def test_route_reporting_failure_does_not_abort_connected_client() -> None:
+    client = FakeClient()
+    client._connected_scanner = SimpleNamespace(source="proxy-source")
+    with (
+        patch.object(
+            transport.bluetooth,
+            "async_ble_device_from_address",
+            return_value=SimpleNamespace(address=ADDRESS),
+        ),
+        patch.object(transport, "establish_connection", AsyncMock(return_value=client)),
+    ):
+        result = await transport._connect(
+            SimpleNamespace(),
+            ADDRESS,
+            connection_callback=Mock(side_effect=RuntimeError("diagnostics unavailable")),
+        )
+    assert result is client
+    assert client.disconnected is False
 
 
 @pytest.mark.asyncio
@@ -350,6 +394,7 @@ async def test_pairing_allows_additional_connection_attempts() -> None:
         ADDRESS,
         max_attempts=3,
         use_services_cache=False,
+        connection_callback=None,
     )
 
 
