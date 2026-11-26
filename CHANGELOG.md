@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.3.0rc14 — EP thermometer greeting and Bluetooth diagnostics
+
+- After physical approval, handle the thermometer's short greeting acknowledgement
+  and request authenticated capabilities. Listen for replies on the optional
+  status characteristic as well as the response characteristic.
+- Record which adapter established pairing and its observed signal strength when
+  available. The support report now shows when setup sent the greeting and
+  requested capabilities. [RC14 validation record](docs/validation/3.3.0rc14-readiness.md)
+
 ## 3.3.0rc13 — EP-series pairing and SmokeFire fuel reporting
 
 - Accept a SiLabs approval reply when the controller uses its own message

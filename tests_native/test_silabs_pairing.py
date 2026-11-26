@@ -98,7 +98,12 @@ async def test_pair_store_reload_and_authenticated_resume_without_pairing_reques
     assert result.appliance_id == APPLIANCE_ID.hex()
     assert result.capabilities == {"probe_count": 4, "max_wireless_probes": 2}
     assert exchange.state is ExchangeState.ACTIVE
-    assert progress.call_count == 2
+    assert [args.args[0].value for args in progress.call_args_list] == [
+        "pairing_request_sent",
+        "pairing_confirmed",
+        "handshake_sent",
+        "capabilities_requested",
+    ]
     saved = result.credentials
     restored_keys = SiLabsSigningKeys.from_private_scalar(saved.keys.private_scalar)
     restored = type(saved)(
@@ -114,7 +119,7 @@ async def test_pair_store_reload_and_authenticated_resume_without_pairing_reques
     assert len(peer.writes) == 2
     assert parse_incoming_frame(peer.writes[0]).body[1] == 0x70
     with pytest.raises(SiLabsSecurityError):
-        SiLabsExchange(COMPANION_ID, "HA", keys).encrypted_request(1, 14)
+        SiLabsExchange(COMPANION_ID, "HA", keys).capabilities_request(1)
     with pytest.raises(SiLabsSecurityError):
         exchange.restore(APPLIANCE_ID, peer.keys.public_key, 11)
     for appliance, version in ((b"short", 11), (APPLIANCE_ID, 4)):
@@ -279,7 +284,7 @@ class GattClient:
         self.start_notify = AsyncMock(side_effect=self.subscribe)
 
     def characteristic(self, uuid: str) -> object:
-        return self.command if uuid == ble.COMMAND_UUID else self.response
+        return {ble.COMMAND_UUID: self.command, ble.RESPONSE_UUID: self.response}.get(uuid)
 
     async def subscribe(self, _uuid: str, callback: object) -> None:
         self.callback = callback
@@ -293,6 +298,127 @@ class GattClient:
 
     async def read_gatt_char(self, _uuid: str) -> bytes:
         return self.peer.replies.get_nowait() if not self.peer.replies.empty() else b""
+
+
+@pytest.mark.parametrize(
+    ("ack", "status_route"),
+    [
+        (b"\xf2", True),
+        (build_outgoing_frame(29, b"\x0b\xf2"), False),
+    ],
+)
+async def test_ep_ack_only_prompts_an_authenticated_capability_read(
+    ack: bytes, status_route: bool
+) -> None:
+    peer = Peer(first_response_counter=28)
+    client = GattClient(peer, {"notify"})
+    status = SimpleNamespace(properties={"notify"})
+    previous = client.services.get_characteristic
+    client.services.get_characteristic = lambda uuid: (
+        status if uuid == ble.STATUS_UUID else previous(uuid)
+    )
+    callbacks = {}
+
+    async def subscribe(uuid, callback):
+        if uuid == ble.STATUS_UUID and not status_route:
+            raise BleakError("status unavailable")
+        callbacks[uuid] = callback
+        if uuid == ble.STATUS_UUID:
+            callback(None, bytearray(b"before approval"))
+
+    async def write(_uuid, raw, *, response):
+        assert response
+        await peer.async_write(raw)
+        reply = peer.replies.get_nowait()
+        frame = parse_incoming_frame(raw)
+        if not frame.encrypted and frame.body[1] == 0x70:
+            reply = ack
+        route = ble.STATUS_UUID if status_route and len(peer.writes) > 1 else ble.RESPONSE_UUID
+        if route in callbacks:
+            callbacks[route](None, bytearray(reply))
+
+    keys = SiLabsSigningKeys.generate()
+    identity = CompanionIdentity(COMPANION_ID.hex(), keys.public_key.hex())
+    with (
+        patch.object(client, "start_notify", side_effect=subscribe),
+        patch.object(client, "write_gatt_char", side_effect=write),
+        patch.object(ble, "_connect", new=AsyncMock(return_value=client)),
+    ):
+        async with asyncio.timeout(1):
+            result = await ble.async_pair_silabs(object(), "address", identity, keys)
+    assert result.capabilities == {"probe_count": 4, "max_wireless_probes": 2}
+    assert len(peer.writes) == 3
+    client.disconnect.assert_awaited_once()
+
+
+async def test_short_ack_persists_version_from_authenticated_capabilities_for_resume() -> None:
+    peer = Peer(first_response_counter=28)
+    exchange = SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+    write = peer.async_write
+
+    async def initial_pairing(raw: bytes) -> None:
+        await write(raw)
+        frame = parse_incoming_frame(raw)
+        if frame.encrypted:
+            old_reply = parse_incoming_frame(peer.replies.get_nowait())
+            assert peer.cipher is not None
+            peer.version = 10
+            body = bytes((peer.version, 0x88)) + peer.capabilities
+            await peer.replies.put(
+                build_outgoing_frame(old_reply.sequence, peer.cipher.seal(body), encrypted=True)
+            )
+        elif frame.body[1] == 0x70:
+            peer.replies.get_nowait()
+            await peer.replies.put(b"\xf2")
+
+    with patch.object(peer, "async_write", side_effect=initial_pairing):
+        result = await pairing.async_pair_exchange(peer, exchange)
+    assert result.message_version == result.credentials.message_version == 10
+    assert await pairing.async_resume_exchange(peer, result.credentials) == result.capabilities
+
+
+async def test_stored_pairing_requires_authenticated_greeting() -> None:
+    peer = Peer()
+    result = await pairing.async_pair_exchange(
+        peer, SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+    )
+    peer.writes.clear()
+    peer.silent = True
+    await peer.replies.put(build_outgoing_frame(5, b"\x0b\xf2"))
+    await peer.replies.put(b"\xf2")
+    with patch.object(pairing, "HANDSHAKE_TIMEOUT", 0.05), pytest.raises(TimeoutError):
+        await pairing.async_resume_exchange(peer, result.credentials)
+    assert len(peer.writes) == 1
+
+
+@pytest.mark.parametrize("tampered", [False, True])
+async def test_ep_ack_without_authenticated_capabilities_cannot_pair(tampered: bool) -> None:
+    peer = Peer()
+    exchange = SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+    original = peer.async_write
+
+    async def write(raw: bytes) -> None:
+        frame = parse_incoming_frame(raw)
+        await original(raw)
+        if frame.encrypted:
+            assert exchange.state is ExchangeState.HANDSHAKING
+            reply = peer.replies.get_nowait()
+            await peer.replies.put(b"\xf2")
+            if tampered:
+                await peer.replies.put(reply[:-1] + bytes((reply[-1] ^ 1,)))
+            else:
+                await peer.replies.put(build_outgoing_frame(33, b"\x0b\x88"))
+        elif frame.body[1] == 0x70:
+            peer.replies.get_nowait()
+            await peer.replies.put(b"\xf2")
+
+    with (
+        patch.object(peer, "async_write", side_effect=write),
+        patch.object(pairing, "CAPABILITIES_TIMEOUT", 0.05),
+        pytest.raises(SiLabsSecurityError if tampered else TimeoutError),
+    ):
+        await pairing.async_pair_exchange(peer, exchange)
+    assert exchange.state is ExchangeState.CANCELLED and exchange.cipher is None
 
 
 @pytest.mark.parametrize("properties", [{"read"}, {"notify"}, {"read", "notify"}])

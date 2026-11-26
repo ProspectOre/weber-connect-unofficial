@@ -131,29 +131,39 @@ def test_report_ignores_arbitrary_protocol_metadata() -> None:
 
 @pytest.mark.parametrize("path", ["local", "remote", "unknown"])
 def test_bluetooth_summary_excludes_names_addresses_and_payloads(hass: object, path: str) -> None:
+    source = None if path == "unknown" else SECRET
     info = SimpleNamespace(address=SECRET, source=SECRET, name=SECRET, rssi=-62)
-    scanner = None if path == "unknown" else SimpleNamespace(connector=path == "remote")
+    device = SimpleNamespace(
+        scanner=SimpleNamespace(source=SECRET, connector=path == "remote"),
+        advertisement=SimpleNamespace(rssi=-62),
+    )
     with (
         patch(
             "custom_components.weber_connect.support.bluetooth.async_discovered_service_info",
             return_value=[info],
         ),
         patch(
-            "custom_components.weber_connect.support.bluetooth.async_scanner_by_source",
-            return_value=scanner,
+            "custom_components.weber_connect.support.bluetooth.async_scanner_devices_by_address",
+            return_value=[device],
         ),
     ):
-        summary = bluetooth_summary(hass, SECRET)
+        summary = bluetooth_summary(hass, SECRET, source)
     assert summary["selected_connectable"] is True
     assert summary["path_kind"] == path
-    assert summary["selected_rssi"] == -62
+    assert summary["selected_rssi"] == (-62 if path != "unknown" else None)
     assert SECRET not in str(summary)
 
 
 def test_bluetooth_advertisement_only_and_unavailable(hass: object) -> None:
-    with patch(
-        "custom_components.weber_connect.support.bluetooth.async_discovered_service_info",
-        side_effect=[[SimpleNamespace(address=SECRET)], []],
+    with (
+        patch(
+            "custom_components.weber_connect.support.bluetooth.async_discovered_service_info",
+            side_effect=[[SimpleNamespace(address=SECRET)], []],
+        ),
+        patch(
+            "custom_components.weber_connect.support.bluetooth.async_scanner_devices_by_address",
+            return_value=[],
+        ),
     ):
         summary = bluetooth_summary(hass, SECRET)
     assert summary["selected_advertisement_visible"] is True
@@ -164,6 +174,60 @@ def test_bluetooth_advertisement_only_and_unavailable(hass: object) -> None:
         side_effect=KeyError,
     ):
         assert bluetooth_summary(hass, None) == {"available": False}
+
+
+def test_bluetooth_summary_matches_actual_connected_source(hass: object) -> None:
+    local = SimpleNamespace(address=SECRET, source="local", rssi=-88)
+    proxy = SimpleNamespace(address=SECRET, source="proxy", rssi=-46)
+    with (
+        patch(
+            "custom_components.weber_connect.support.bluetooth.async_discovered_service_info",
+            return_value=[local, proxy],
+        ),
+        patch(
+            "custom_components.weber_connect.support.bluetooth.async_scanner_devices_by_address",
+            return_value=[
+                SimpleNamespace(
+                    scanner=SimpleNamespace(source="local", connector=False),
+                    advertisement=SimpleNamespace(rssi=-88),
+                ),
+                SimpleNamespace(
+                    scanner=SimpleNamespace(source="proxy", connector=True),
+                    advertisement=SimpleNamespace(rssi=-46),
+                ),
+            ],
+        ),
+    ):
+        summary = bluetooth_summary(hass, SECRET, "local")
+    assert summary["selected_rssi"] == -88
+    assert summary["path_kind"] == "local"
+
+
+def test_bluetooth_summary_marks_missing_actual_source_unknown(hass: object) -> None:
+    local = SimpleNamespace(address=SECRET, source="local", rssi=-88)
+    proxy = SimpleNamespace(address=SECRET, source="proxy", rssi=-46)
+    with (
+        patch(
+            "custom_components.weber_connect.support.bluetooth.async_discovered_service_info",
+            return_value=[local, proxy],
+        ),
+        patch(
+            "custom_components.weber_connect.support.bluetooth.async_scanner_devices_by_address",
+            return_value=[
+                SimpleNamespace(
+                    scanner=SimpleNamespace(source="local", connector=False),
+                    advertisement=SimpleNamespace(rssi=-88),
+                ),
+                SimpleNamespace(
+                    scanner=SimpleNamespace(source="proxy", connector=True),
+                    advertisement=SimpleNamespace(rssi=-46),
+                ),
+            ],
+        ),
+    ):
+        summary = bluetooth_summary(hass, SECRET, "retired-source")
+    assert summary["selected_rssi"] is None
+    assert summary["path_kind"] == "unknown"
 
 
 @pytest.mark.parametrize(
@@ -291,14 +355,41 @@ async def test_pairing_report_keeps_visibility_before_cleanup(hass: object) -> N
     flow._transport_evidence = TransportEvidence(
         TransportFamily.SABER, Qualification.PAIRING_READY, company_id=0x07C5, model_id=1
     )
-    visible = {"selected_connectable": True, "selected_advertisement_visible": True}
+
+    def bluetooth_summary_for_source(
+        _hass: object, _address: str | None, source: str | None = None
+    ) -> dict[str, object]:
+        if source == "proxy-source":
+            return {
+                "available": True,
+                "device_selected": True,
+                "selected_advertisement_visible": True,
+                "selected_connectable": True,
+                "selected_rssi": -46,
+                "path_kind": "remote",
+            }
+        return {
+            "available": True,
+            "device_selected": True,
+            "selected_advertisement_visible": True,
+            "selected_connectable": True,
+            "selected_rssi": None,
+            "path_kind": "unknown",
+        }
+
+    async def fail_after_connection(*args: object, **kwargs: object) -> None:
+        callback = kwargs["connection_callback"]
+        callback("proxy-source")  # type: ignore[operator]
+        raise WeberBluetoothError("The hub did not confirm pairing")
+
     with (
         patch(
-            "custom_components.weber_connect.config_flow.bluetooth_summary", return_value=visible
+            "custom_components.weber_connect.config_flow.bluetooth_summary",
+            side_effect=bluetooth_summary_for_source,
         ),
         patch(
             "custom_components.weber_connect.config_flow.async_pair",
-            new=AsyncMock(side_effect=WeberBluetoothError("The hub did not confirm pairing")),
+            new=AsyncMock(side_effect=fail_after_connection),
         ),
     ):
         await flow.async_step_pairing()
@@ -307,7 +398,15 @@ async def test_pairing_report_keeps_visibility_before_cleanup(hass: object) -> N
     with patch("custom_components.weber_connect.config_flow.bluetooth_summary", return_value={}):
         await flow.async_step_pairing_failed()
     report = json.loads((await flow.async_step_support())["description_placeholders"]["report"])
-    assert report["bluetooth"] == {**visible, "captured_at": "pairing_attempt_start"}
+    assert report["bluetooth"] == {
+        "available": True,
+        "device_selected": True,
+        "selected_advertisement_visible": True,
+        "selected_connectable": True,
+        "selected_rssi": -46,
+        "path_kind": "remote",
+        "captured_at": "pairing_attempt_connected",
+    }
     flow._reset_setup()
     assert flow._pairing_bluetooth is None
 

@@ -39,6 +39,7 @@ class SupportEvent(StrEnum):
     HANDSHAKE = "handshake_sent"
     REQUESTED = "pairing_request_sent"
     CONFIRMED = "pairing_confirmed"
+    CAPABILITIES = "capabilities_requested"
     CLOUD = "checking_cloud_association"
     FAILED = "failed"
     CONNECTED = "receiving_updates"
@@ -120,23 +121,37 @@ class SupportJournal:
         return [dict(item) for item in self._events]
 
 
-def bluetooth_summary(hass: HomeAssistant, address: str | None) -> dict[str, Any]:
+def bluetooth_summary(
+    hass: HomeAssistant, address: str | None, source: str | None = None
+) -> dict[str, Any]:
     """Describe reachability without exporting scanner names or identifiers."""
 
     try:
         visible = bluetooth.async_discovered_service_info(hass, connectable=False)
-        connectable = bluetooth.async_discovered_service_info(hass, connectable=True)
+        connectable = (
+            bluetooth.async_scanner_devices_by_address(hass, address, connectable=True)
+            if address is not None
+            else []
+        )
     except KeyError, RuntimeError:
         return {"available": False}
-    selected = next((info for info in connectable if info.address == address), None)
-    source = getattr(selected, "source", None)
-    scanner = bluetooth.async_scanner_by_source(hass, source) if source else None
+    selected = next(
+        (device for device in connectable if source and device.scanner.source == source), None
+    )
+    scanner = selected.scanner if selected is not None else None
+    if scanner is None and source:
+        try:
+            scanner = bluetooth.async_scanner_by_source(hass, source)
+        except KeyError, RuntimeError:
+            scanner = None
     return {
         "available": True,
         "device_selected": address is not None,
         "selected_advertisement_visible": any(info.address == address for info in visible),
-        "selected_connectable": selected is not None,
-        "selected_rssi": getattr(selected, "rssi", None),
+        "selected_connectable": bool(connectable),
+        "selected_rssi": (
+            getattr(selected.advertisement, "rssi", None) if selected is not None else None
+        ),
         "path_kind": ("unknown" if scanner is None else "remote" if scanner.connector else "local"),
     }
 

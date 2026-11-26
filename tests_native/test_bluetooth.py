@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import weakref
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock, call, patch
 
 import pytest
+from bleak.backends.device import BLEDevice
 from bleak.exc import BleakCharacteristicNotFoundError, BleakError
 from bleak_retry_connector import BleakOutOfConnectionSlotsError
+from habluetooth.wrappers import HaBleakClientWrapper
 
 from custom_components.weber_connect import bluetooth as transport
 from custom_components.weber_connect.models import CompanionIdentity
@@ -254,14 +257,23 @@ async def test_pairing_confirms_and_releases_proxy_connection(
     clear_advertisement_history: object,
 ) -> None:
     events = []
+    connected_sources: list[str | None] = []
     client = FakeClient([_pairing_required(), _pairing_confirmed()])
-    with patch.object(transport, "_connect", AsyncMock(return_value=client)):
+
+    async def connect(*_args: object, **kwargs: object) -> FakeClient:
+        callback = kwargs.get("connection_callback")
+        assert callable(callback)
+        callback("legacy-source")
+        return client
+
+    with patch.object(transport, "_connect", AsyncMock(side_effect=connect)):
         result = await transport.async_pair(
             SimpleNamespace(),
             ADDRESS,
             IDENTITY,
             confirmation_timeout=0.5,
             progress_callback=events.append,
+            connection_callback=connected_sources.append,
         )
     assert events == [
         SupportEvent.SERVICES,
@@ -271,10 +283,42 @@ async def test_pairing_confirms_and_releases_proxy_connection(
     ]
     assert result.message_version == 11
     assert result.appliance_id == bytes(range(16)).hex()
+    assert connected_sources == ["legacy-source"]
     assert client.disconnected
     assert any(uuid == transport.COMMAND_UUID for uuid, _data, _response in client.writes)
     clear_advertisement_history.assert_not_called()  # type: ignore[attr-defined]
     client.clear_cache.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_silabs_pairing_forwards_connected_source_callback() -> None:
+    keys = transport.SiLabsSigningKeys.generate()
+    identity = CompanionIdentity(IDENTITY.companion_id, keys.public_key.hex())
+    client = FakeClient()
+    result = SimpleNamespace(capabilities={"probe_count": 4})
+    connected_sources: list[str | None] = []
+
+    async def connect(*_args: object, **kwargs: object) -> FakeClient:
+        callback = kwargs.get("connection_callback")
+        assert callable(callback)
+        callback("silabs-source")
+        return client
+
+    with (
+        patch.object(transport, "_connect", AsyncMock(side_effect=connect)),
+        patch.object(transport, "async_pair_exchange", AsyncMock(return_value=result)),
+    ):
+        pairing_result = await transport.async_pair_silabs(
+            SimpleNamespace(),
+            ADDRESS,
+            identity,
+            keys,
+            connection_callback=connected_sources.append,
+        )
+
+    assert pairing_result is result
+    assert connected_sources == ["silabs-source"]
+    assert client.disconnected
 
 
 @pytest.mark.asyncio
@@ -313,7 +357,7 @@ async def test_connect_re_resolves_best_adapter_or_proxy_for_retries() -> None:
     first_device = SimpleNamespace(address=ADDRESS, name="Hub")
     second_device = SimpleNamespace(address=ADDRESS, name="Hub via proxy")
     client = FakeClient()
-    resolver = AsyncMock()
+    disconnected = Mock()
     establish = AsyncMock(return_value=client)
     with (
         patch.object(
@@ -323,14 +367,77 @@ async def test_connect_re_resolves_best_adapter_or_proxy_for_retries() -> None:
         ) as resolve,
         patch.object(transport, "establish_connection", establish),
     ):
-        assert await transport._connect(SimpleNamespace(), ADDRESS) is client
+        assert (
+            await transport._connect(SimpleNamespace(), ADDRESS, disconnected_callback=disconnected)
+            is client
+        )
         callback = establish.await_args.kwargs["ble_device_callback"]
         assert callback() is second_device
     assert resolve.call_count == 2
-    resolver.assert_not_awaited()
+    assert establish.await_args.kwargs["disconnected_callback"] is disconnected
     assert establish.await_args.kwargs["use_services_cache"] is True
     assert establish.await_args.kwargs["max_attempts"] == 1
     assert establish.await_args.kwargs["timeout"] == transport.CONNECTION_TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_connect_reports_the_scanner_that_established_the_link() -> None:
+    device = BLEDevice(ADDRESS, "Weber thermometer", {})
+    scanner = Mock(source="proxy-source", adapter_idx=None, _clients=weakref.WeakSet())
+    scanner.get_discovered_device_advertisement_data.return_value = (
+        device,
+        SimpleNamespace(rssi=-46),
+    )
+    manager = Mock(shutdown=False)
+    manager.async_scanner_by_source.return_value = scanner
+    radio = Mock(return_value=SimpleNamespace(connect=AsyncMock(), is_connected=True))
+    route = SimpleNamespace(
+        device=device, scanner=scanner, client=radio, backend_name="proxy", source=scanner.source
+    )
+    watch = transport._LinkWatch()
+    observed_sources: list[str | None] = []
+    with (
+        patch.object(transport.bluetooth, "async_ble_device_from_address", return_value=device),
+        patch.object(transport, "BleakClientWithServiceCache", HaBleakClientWrapper),
+        patch("habluetooth.wrappers.get_manager", return_value=manager),
+        patch("bleak_retry_connector.get_connected_devices", new=AsyncMock(return_value=[])),
+        patch.object(
+            HaBleakClientWrapper, "_async_get_best_available_backend_and_device", return_value=route
+        ),
+    ):
+        client = await transport._connect(
+            SimpleNamespace(),
+            ADDRESS,
+            disconnected_callback=watch,
+            connection_callback=observed_sources.append,
+            use_services_cache=False,
+        )
+    assert observed_sources == ["proxy-source"]
+    watch.bind(client)
+    assert not watch.lost.is_set()
+    radio.call_args.kwargs["disconnected_callback"]()
+    assert watch.lost.is_set()
+
+
+@pytest.mark.asyncio
+async def test_route_reporting_failure_does_not_abort_connected_client() -> None:
+    client = FakeClient()
+    client._connected_scanner = SimpleNamespace(source="proxy-source")
+    with (
+        patch.object(
+            transport.bluetooth,
+            "async_ble_device_from_address",
+            return_value=SimpleNamespace(address=ADDRESS),
+        ),
+        patch.object(transport, "establish_connection", AsyncMock(return_value=client)),
+    ):
+        result = await transport._connect(
+            SimpleNamespace(),
+            ADDRESS,
+            connection_callback=Mock(side_effect=RuntimeError("diagnostics unavailable")),
+        )
+    assert result is client
+    assert client.disconnected is False
 
 
 @pytest.mark.asyncio
@@ -350,6 +457,7 @@ async def test_pairing_allows_additional_connection_attempts() -> None:
         ADDRESS,
         max_attempts=3,
         use_services_cache=False,
+        connection_callback=None,
     )
 
 

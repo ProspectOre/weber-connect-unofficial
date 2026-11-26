@@ -406,9 +406,18 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except ProtocolQualificationRequired as err:
             raise WeberBluetoothError(str(err)) from err
         self._pairing_bluetooth = {
-            **bluetooth_summary(self.hass, self._address),
+            **bluetooth_summary(self.hass, self._address, source=None),
             "captured_at": "pairing_attempt_start",
         }
+
+        def record_connected_path(source: str | None) -> None:
+            """Refresh diagnostics from the scanner that established GATT."""
+
+            self._pairing_bluetooth = {
+                **bluetooth_summary(self.hass, self._address, source),
+                "captured_at": "pairing_attempt_connected",
+            }
+
         self._support_journal.record(SupportEvent.CONNECTING)
         pairing: Coroutine[Any, Any, PairingResult]
         if evidence.family is TransportFamily.SILABS_APPLIANCE:
@@ -420,6 +429,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._identity,
                 self._silabs_signing_keys,
                 progress_callback=self._support_journal.record,
+                connection_callback=record_connected_path,
             )
         else:
             pairing = async_pair(
@@ -427,6 +437,7 @@ class WeberConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._address,
                 self._identity,
                 progress_callback=self._support_journal.record,
+                connection_callback=record_connected_path,
             )
         self._pairing_task = self.hass.async_create_task(pairing)
 
