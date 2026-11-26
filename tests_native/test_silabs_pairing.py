@@ -28,7 +28,8 @@ APPLIANCE_ID = bytes(range(16, 32))
 class Peer:
     """An offline peer checks actual frame and GCM bytes in both directions."""
 
-    def __init__(self, status: int = 0) -> None:
+    def __init__(self, status: int = 0, *, first_response_counter: int | None = None) -> None:
+        self.next_counter = first_response_counter
         self.keys = SiLabsSigningKeys.generate()
         self.replies: asyncio.Queue[bytes] = asyncio.Queue()
         self.writes: list[bytes] = []
@@ -43,12 +44,16 @@ class Peer:
         if self.silent:
             return
         frame = parse_incoming_frame(raw)
+        counter = frame.sequence
+        if self.next_counter is not None:
+            counter = (2 << 28) | self.next_counter
+            self.next_counter += 1
         if frame.encrypted:
             assert self.cipher is not None
             assert self.cipher.open(frame.body) == bytes((self.version, 0x0E))
             body = bytes((self.version, 0x88)) + self.capabilities
             await self.replies.put(
-                build_outgoing_frame(frame.sequence, self.cipher.seal(body), encrypted=True)
+                build_outgoing_frame(counter, self.cipher.seal(body), encrypted=True)
             )
         elif frame.body[1] == 0x0A:
             assert frame.body[2:18] == COMPANION_ID
@@ -59,18 +64,29 @@ class Peer:
                 + self.keys.public_key
                 + bytes((self.status,))
             )
-            await self.replies.put(build_outgoing_frame(frame.sequence, body))
+            await self.replies.put(build_outgoing_frame(counter, body))
         else:
             assert frame.body == bytes((self.version, 0x70)) + COMPANION_ID
             assert self.cipher is not None
             await self.replies.put(
                 build_outgoing_frame(
-                    frame.sequence, self.cipher.seal(bytes((self.version, 0xF2))), encrypted=True
+                    counter, self.cipher.seal(bytes((self.version, 0xF2))), encrypted=True
                 )
             )
 
     async def async_receive(self) -> bytes:
         return await self.replies.get()
+
+
+async def test_ep_thermometer_uses_its_own_notification_counter() -> None:
+    # The RC12 USB report shows request 1 answered by counter 28 on boot 2.
+    peer = Peer(first_response_counter=28)
+    exchange = SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+    async with asyncio.timeout(1):
+        result = await pairing.async_pair_exchange(peer, exchange)
+        capabilities = await pairing.async_resume_exchange(peer, result.credentials)
+    assert result.capabilities == capabilities == {"probe_count": 4, "max_wireless_probes": 2}
+    assert [parse_incoming_frame(raw).sequence for raw in peer.writes] == [1, 2, 3, 1, 2]
 
 
 async def test_pair_store_reload_and_authenticated_resume_without_pairing_request() -> None:

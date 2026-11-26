@@ -66,7 +66,7 @@ async def test_fast_reconnect_keeps_recent_fuel_without_synthetic_unknowns(hass,
 @pytest.mark.parametrize(
     "intervening", [b"", tlv(1, b"\x40"), tlv(20, b"\x00\x01"), tlv(27, b"\x65")]
 )
-async def test_missing_partial_or_invalid_fuel_does_not_extend_freshness(intervening):
+async def test_missing_partial_or_invalid_fuel_does_not_change_cached_reading(intervening):
     clock = SimpleNamespace(now=100.0)
     connection = FakeConnection(
         [
@@ -90,12 +90,12 @@ async def test_missing_partial_or_invalid_fuel_does_not_extend_freshness(interve
         clock.now = 159.0
         assert (await session.async_request_status())["fuel_level"] == "full"
         clock.now = 160.0
-        expired = await session.async_request_status()
-        assert "fuel_level" not in expired
-        assert "fuel_percent" not in expired
+        cached = await session.async_request_status()
+        assert cached["fuel_level"] == "full"
+        assert cached["fuel_percent"] == 100
         recovered = await session.async_request_status()
         assert recovered["fuel_level"] == "low"
-        assert "fuel_percent" not in recovered
+        assert recovered["fuel_percent"] == 100
     await session.async_close()
 
 
@@ -120,7 +120,51 @@ async def test_long_reconnect_does_not_restore_old_fuel_or_cloud_status():
     await session.async_close()
 
 
-async def test_fuel_fields_expire_independently_and_explicit_unknown_is_immediate():
+async def test_fuel_expires_while_socket_stays_closed():
+    clock = SimpleNamespace(now=100.0)
+    first = FakeConnection([routed(0x83, tlv(20, b"\x01")), routed(0x80)])
+    second = FakeConnection([routed(0x80)])
+    session = socket.WeberCloudSession(
+        FakeHass(), FakeCloudClient(), APPLIANCE_ID, timeout=0.1, subscribe_delay=0
+    )
+    with (
+        patch.object(socket, "time", SimpleNamespace(time=time.time, monotonic=lambda: clock.now)),
+        patch.object(socket, "connect", AsyncMock(side_effect=[first, second])),
+    ):
+        initial = await session.async_request_status()
+        assert initial["fuel_level"] == "full"
+        clock.now = 110.0
+        await session._async_close_connection()
+        clock.now = 171.0
+        resumed = await session.async_request_status()
+        assert "fuel_level" not in resumed
+    await session.async_close()
+
+
+async def test_carried_fuel_expires_after_reconnect_if_not_reported_again():
+    clock = SimpleNamespace(now=100.0)
+    first = FakeConnection([routed(0x83, tlv(20, b"\x01")), routed(0x80)])
+    second = FakeConnection([routed(0x80), routed(0x80)])
+    session = socket.WeberCloudSession(
+        FakeHass(), FakeCloudClient(), APPLIANCE_ID, timeout=0.1, subscribe_delay=0
+    )
+    with (
+        patch.object(socket, "time", SimpleNamespace(time=time.time, monotonic=lambda: clock.now)),
+        patch.object(socket, "connect", AsyncMock(side_effect=[first, second])),
+    ):
+        await session.async_request_status()
+        clock.now = 110.0
+        await session._async_close_connection()
+        clock.now = 159.0
+        recent = await session.async_request_status()
+        assert recent["fuel_level"] == "full"
+        clock.now = 161.0
+        expired = await session.async_request_status()
+        assert "fuel_level" not in expired
+    await session.async_close()
+
+
+async def test_fuel_fields_are_retained_until_reported_change_or_socket_loss():
     clock = SimpleNamespace(now=100.0)
     connection = FakeConnection(
         [
@@ -145,9 +189,9 @@ async def test_fuel_fields_expire_independently_and_explicit_unknown_is_immediat
         clock.now = 140.0
         await session.async_request_status()
         clock.now = 160.0
-        expired_level = await session.async_request_status()
-        assert "fuel_level" not in expired_level
-        assert expired_level["fuel_percent"] == 50
+        cached_level = await session.async_request_status()
+        assert cached_level["fuel_level"] == "full"
+        assert cached_level["fuel_percent"] == 50
         explicit_unknown = await session.async_request_status()
         assert explicit_unknown["fuel_level"] == "unknown"
         assert session.fuel_level_unknown_reports == 1

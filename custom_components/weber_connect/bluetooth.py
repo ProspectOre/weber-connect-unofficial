@@ -33,6 +33,7 @@ from .saber_frames import (
     crc8,
     decode_hex_frame,
 )
+from .silabs_frames import SiLabsFrameError, parse_incoming_frame
 from .silabs_pairing import SiLabsPairingResult, async_pair_exchange, async_resume_exchange
 from .silabs_secure import SiLabsExchange, SiLabsSecurityError, SiLabsSigningKeys
 from .support import SupportEvent
@@ -280,13 +281,9 @@ class _LinkWatch:
 class GattResponseChannel:
     """Bounded response stream using properties on the selected GATT table.
 
-    A subscribed notification stream is the only response source: a SiLabs
-    appliance answers a pairing request by notification after physical
-    approval, and reading the same characteristic meanwhile can fail, which
-    used to abandon the request before anyone could approve it. Reads are a
-    fallback for a characteristic that cannot notify or whose subscription
-    fails; a failed poll then counts as no answer yet, and only a dropped link,
-    even mid-read, ends the wait early.
+    Wait for notified approval without polling a subscribed characteristic.
+    The controller can signal a long read with an empty or truncated
+    notification. A failed subscription falls back to bounded polling.
     """
 
     def __init__(
@@ -301,14 +298,15 @@ class GattResponseChannel:
         self._link_lost = link_lost or asyncio.Event()
         self._polling = False
         self._last_read = b""
+        self._can_read = False
 
     async def async_open(self) -> None:
         characteristic = self.client.services.get_characteristic(self.response_uuid)
         if characteristic is None:
             raise WeberBluetoothError("The controller's response characteristic is missing.")
-        can_read = "read" in characteristic.properties
+        self._can_read = "read" in characteristic.properties
         can_notify = bool({"notify", "indicate"}.intersection(characteristic.properties))
-        if not can_read and not can_notify:
+        if not self._can_read and not can_notify:
             raise WeberBluetoothError("The controller has no usable response channel.")
         self._polling = not can_notify
         if can_notify:
@@ -318,7 +316,7 @@ class GattResponseChannel:
                         self.response_uuid, _notification_callback(self._queue)
                     )
             except BleakError, TimeoutError:
-                if not can_read:
+                if not self._can_read:
                     raise
                 self._polling = True
 
@@ -331,24 +329,44 @@ class GattResponseChannel:
 
     async def async_receive(self) -> bytes:
         while True:
-            if self._polling:
-                data = await self._poll()
+            # Even a subscription that reported an error may deliver replies.
+            if self._polling and self._queue.empty():
+                data = await self._read_before_link_loss()
             else:
-                data = await self._next_notification()
+                notification = await self._next_notification()
+                data = await self._notification_data(notification)
             if data and data != self._last_read:
                 self._last_read = data
                 return data
             if self._polling:
                 await asyncio.sleep(0.25)
 
-    async def _poll(self) -> bytes:
-        """Read once, ending at once if the link drops before the read returns."""
+    async def _notification_data(self, notification: bytes) -> bytes:
+        """Read the full value only when the controller signals a long response."""
 
-        # A subscription that reported an error may still have taken effect.
+        if notification and not (
+            len(notification) >= 7
+            and notification[6] in (0, 1)
+            and int.from_bytes(notification[4:6], "little") > len(notification) - 7
+        ):
+            return notification
+        if not self._can_read:
+            return b""
+
+        response = await self._read_before_link_loss()
+        if not response.startswith(notification):
+            _LOGGER.debug("SiLabs long read did not match the notified prefix")
+            return b""
         try:
-            return self._queue.get_nowait()
-        except asyncio.QueueEmpty:
-            pass
+            parse_incoming_frame(response)
+        except SiLabsFrameError:
+            _LOGGER.debug("SiLabs long read did not return a complete frame")
+            return b""
+        return response
+
+    async def _read_before_link_loss(self) -> bytes:
+        """Perform one GATT read while keeping disconnect handling prompt."""
+
         self._raise_if_link_lost()
         read = asyncio.ensure_future(self._read())
         lost = asyncio.ensure_future(self._link_lost.wait())

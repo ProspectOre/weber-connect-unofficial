@@ -154,6 +154,7 @@ class WeberCloudSession:
         self._appliance_status: dict[str, Any] = {}
         self._probe_targets = ProbeTargets()
         self._fuel_sample_times: dict[str, float] = {}
+        self._fuel_inherited_fields: set[str] = set()
         self.fuel_level_reports = 0
         self.fuel_level_unknown_reports = 0
         self.fuel_level_changes = 0
@@ -246,11 +247,10 @@ class WeberCloudSession:
         connection, self._connection = self._connection, None
         self._subscribed = False
         self._probe_targets.clear()
-        # Cook status may arrive before appliance status after a reconnect.
-        # Bridge brief interruptions with fuel sampled within the last minute;
-        # expiry is also checked on every publication, never extended by reuse.
-        # Device cloud status must be reported again on the new connection.
-        self._expire_fuel_status()
+        # Only fuel carried across a socket change has a 60-second lifetime.
+        # Current cloud status must be reported again on the new connection.
+        self._fuel_inherited_fields.update(self._fuel_sample_times)
+        self._expire_inherited_fuel()
         self._appliance_status = {
             key: self._appliance_status[key]
             for key in (*CLOUD_OFFLINE_RETAINED_KEYS, *self._fuel_sample_times)
@@ -262,13 +262,14 @@ class WeberCloudSession:
             except Exception:
                 LOGGER.debug("Could not close cloud socket cleanly", exc_info=True)
 
-    def _expire_fuel_status(self) -> None:
-        """Do not let cook-only or partial frames perpetuate stale fuel."""
+    def _expire_inherited_fuel(self) -> None:
+        """Check each inherited sample against its original reporting time."""
 
-        for key, sampled_at in tuple(self._fuel_sample_times.items()):
-            if time.monotonic() - sampled_at >= FUEL_STATUS_MAX_AGE:
+        for key in self._fuel_inherited_fields.copy():
+            if time.monotonic() - self._fuel_sample_times[key] >= FUEL_STATUS_MAX_AGE:
                 self._appliance_status.pop(key, None)
                 del self._fuel_sample_times[key]
+                self._fuel_inherited_fields.remove(key)
 
     async def _async_send(
         self,
@@ -389,6 +390,7 @@ class WeberCloudSession:
                             and (key != "fuel_percent" or 0 <= value <= 100)
                         ):
                             self._fuel_sample_times[key] = time.monotonic()
+                            self._fuel_inherited_fields.discard(key)
                         else:
                             appliance_status[key] = None
                     # Weber can send partial appliance-status frames between full
@@ -405,7 +407,7 @@ class WeberCloudSession:
                     )
                     continue
                 if message.type_value == 0x80:
-                    self._expire_fuel_status()
+                    self._expire_inherited_fuel()
                     cook_status = parse_cook_session_status_payload(message.payload)
                     received_at = time.monotonic()
                     for slot in self._probe_targets.sync(
