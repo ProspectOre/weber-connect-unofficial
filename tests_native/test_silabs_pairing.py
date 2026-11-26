@@ -351,6 +351,32 @@ async def test_ep_ack_only_prompts_an_authenticated_capability_read(
     client.disconnect.assert_awaited_once()
 
 
+async def test_short_ack_persists_version_from_authenticated_capabilities_for_resume() -> None:
+    peer = Peer(first_response_counter=28)
+    exchange = SiLabsExchange(COMPANION_ID, "HA", SiLabsSigningKeys.generate())
+    write = peer.async_write
+
+    async def initial_pairing(raw: bytes) -> None:
+        await write(raw)
+        frame = parse_incoming_frame(raw)
+        if frame.encrypted:
+            old_reply = parse_incoming_frame(peer.replies.get_nowait())
+            assert peer.cipher is not None
+            peer.version = 10
+            body = bytes((peer.version, 0x88)) + peer.capabilities
+            await peer.replies.put(
+                build_outgoing_frame(old_reply.sequence, peer.cipher.seal(body), encrypted=True)
+            )
+        elif frame.body[1] == 0x70:
+            peer.replies.get_nowait()
+            await peer.replies.put(b"\xf2")
+
+    with patch.object(peer, "async_write", side_effect=initial_pairing):
+        result = await pairing.async_pair_exchange(peer, exchange)
+    assert result.message_version == result.credentials.message_version == 10
+    assert await pairing.async_resume_exchange(peer, result.credentials) == result.capabilities
+
+
 async def test_stored_pairing_requires_authenticated_greeting() -> None:
     peer = Peer()
     result = await pairing.async_pair_exchange(

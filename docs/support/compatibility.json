@@ -236,7 +236,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["smokefire", "connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71", "docs/product-compatibility.md"],
-      "disposition": "RC4 uses observed model evidence or a recognized SmokeFire title. Its community trial confirms the SmokeFire label; 3.3.0rc13 hardware regression remains pending."
+      "disposition": "RC4 uses observed model evidence or a recognized SmokeFire title. Its community trial confirms the SmokeFire label; 3.3.0rc14 hardware regression remains pending."
     },
     {
       "id": "blocking-certificate-setup",
@@ -244,7 +244,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/73", "docs/validation/3.2.2rc4-readiness.md"],
-      "disposition": "HTTPS opener creation is deferred into the executor request path. The RC4 reporter confirms the blocking-SSL warning disappeared; 3.3.0rc13 physical regression is pending."
+      "disposition": "HTTPS opener creation is deferred into the executor request path. The RC4 reporter confirms the blocking-SSL warning disappeared; 3.3.0rc14 physical regression is pending."
     },
     {
       "id": "deprecated-unscoped-device-lookup",
@@ -252,7 +252,7 @@
       "status": "fixed_in_candidate",
       "product_families": ["connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/73", "docs/validation/3.2.2rc4-readiness.md"],
-      "disposition": "Firmware updates use a config-entry-scoped lookup compatible with the HA baseline. The RC4 reporter confirms the deprecated-registry warning disappeared; 3.3.0rc13 physical regression is pending."
+      "disposition": "Firmware updates use a config-entry-scoped lookup compatible with the HA baseline. The RC4 reporter confirms the deprecated-registry warning disappeared; 3.3.0rc14 physical regression is pending."
     },
     {
       "id": "smokefire-fuel-unknown-churn",

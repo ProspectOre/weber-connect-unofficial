@@ -98,6 +98,7 @@ async def async_negotiate(
             if not 5 <= body[0] <= exchange.message_version:
                 raise SiLabsSecurityError("SiLabs capabilities use an unsupported message version.")
             capabilities = parse_capabilities(body[2:])
+            exchange.message_version = body[0]
             exchange.state = ExchangeState.ACTIVE
             return True
 

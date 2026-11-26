@@ -37,6 +37,7 @@ from .silabs_frames import SiLabsFrameError, parse_incoming_frame
 from .silabs_pairing import SiLabsPairingResult, async_pair_exchange, async_resume_exchange
 from .silabs_secure import (
     HANDSHAKE_GREETING,
+    HANDSHAKE_SUCCESS,
     PAIRING_REQUEST,
     SiLabsExchange,
     SiLabsSecurityError,
@@ -345,8 +346,21 @@ class GattResponseChannel:
             enqueue = _notification_callback(self._queue)
 
             def on_status(sender: Any, data: bytearray) -> None:
-                if self._listen_to_status:
-                    enqueue(sender, data)
+                if not self._listen_to_status:
+                    return
+                frame = bytes(data)
+                # Empty and truncated notifications ask for a long read of RESPONSE.
+                if (
+                    frame
+                    and frame != bytes((HANDSHAKE_SUCCESS,))
+                    and not self._is_long_read_signal(frame)
+                ):
+                    try:
+                        parse_incoming_frame(frame)
+                    except SiLabsFrameError:
+                        _LOGGER.debug("Ignoring malformed SiLabs status notification")
+                        return
+                enqueue(sender, data)
 
             try:
                 async with asyncio.timeout(CONNECTION_TIMEOUT):
