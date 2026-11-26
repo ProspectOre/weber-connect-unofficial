@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol, cast
@@ -14,6 +15,8 @@ from .saber_frames import parse_tlv
 from .silabs_frames import parse_incoming_frame
 from .silabs_secure import ExchangeState, SiLabsExchange, SiLabsSecurityError
 from .support import SupportEvent
+
+_LOGGER = logging.getLogger(__name__)
 
 MAX_RESPONSES = 128
 HANDSHAKE_TIMEOUT = 10.0
@@ -50,6 +53,7 @@ async def async_negotiate(
 ) -> dict[str, int]:
     """Prove possession of paired keys before decoding capability responses."""
 
+    _LOGGER.debug("Waiting for SiLabs authenticated handshake")
     async with asyncio.timeout(HANDSHAKE_TIMEOUT):
         await channel.async_write(exchange.handshake_greeting(sequence))
 
@@ -61,9 +65,9 @@ async def async_negotiate(
             return exchange.accept_handshake(raw, ignore_unrelated=True) is not None
 
         await _receive(channel, handshake, HANDSHAKE_TIMEOUT)
-    request_sequence = sequence + 1
+    _LOGGER.debug("SiLabs handshake verified, requesting capabilities")
     async with asyncio.timeout(CAPABILITIES_TIMEOUT):
-        await channel.async_write(exchange.encrypted_request(request_sequence, FETCH_CAPABILITIES))
+        await channel.async_write(exchange.encrypted_request(sequence + 1, FETCH_CAPABILITIES))
         capabilities: dict[str, int] = {}
 
         def accept(raw: bytes) -> bool:
@@ -74,7 +78,7 @@ async def async_negotiate(
             body = exchange.authenticated_body(raw)
             if len(body) < 2:
                 raise SiLabsSecurityError("Authenticated SiLabs message is incomplete.")
-            if frame.sequence != request_sequence or body[1] != INCOMING_CAPABILITIES:
+            if body[1] != INCOMING_CAPABILITIES:
                 return False
             if not 5 <= body[0] <= exchange.message_version:
                 raise SiLabsSecurityError("SiLabs capabilities use an unsupported message version.")
@@ -104,15 +108,17 @@ async def async_pair_exchange(
                 if progress_callback is not None:
                     progress_callback(SupportEvent.REQUESTED)
 
-                def accept(raw: bytes, expected_sequence: int = sequence) -> bool:
+                # The controller owns the incoming counter. Match the message
+                # type to the one outstanding request on this connection.
+                def accept(raw: bytes) -> bool:
                     frame = parse_incoming_frame(raw)
                     return (
                         not frame.encrypted
-                        and frame.sequence == expected_sequence
                         and len(frame.body) >= 2
                         and frame.body[1] in (0x85, 0x87)
                     )
 
+                _LOGGER.debug("Waiting for SiLabs physical pairing response")
                 raw = await _receive(channel, accept, confirmation_timeout)
                 body = parse_incoming_frame(raw).body
                 if body[1] == 0x87:
@@ -124,6 +130,7 @@ async def async_pair_exchange(
                     request = exchange.retry_lower_version(sequence)
                     continue
                 exchange.pairing_response(raw)
+                _LOGGER.debug("SiLabs pairing response decoded: %s", exchange.state.value)
                 break
         if exchange.state is not ExchangeState.PAIRED:
             raise SiLabsSecurityError(f"SiLabs pairing was {exchange.state.value}.")

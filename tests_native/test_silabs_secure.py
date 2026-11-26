@@ -109,9 +109,9 @@ def test_pairing_response_rejects_unmatched_or_malformed_frames() -> None:
     bad_point = bytearray(valid)
     bad_point[25:89] = bytes(64)
     for invalid in (
-        _response(peer, sequence=8),
         build_outgoing_frame(7, valid[7:], encrypted=True),
         valid[:-1],
+        build_outgoing_frame(8, b"\x0b\x85"),
         bytes(bad_body),
         bytes(bad_status),
         bytes(bad_point),

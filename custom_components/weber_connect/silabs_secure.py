@@ -131,7 +131,6 @@ class SiLabsExchange:
         self.appliance_public_key: bytes | None = None
         self.cipher: SiLabsCipher | None = None
         self.message_version = MESSAGE_VERSION
-        self._request_sequence: int | None = None
         self._seen_incoming: set[tuple[int | None, int]] = set()
         self._seen_nonces: set[bytes] = set()
 
@@ -148,7 +147,6 @@ class SiLabsExchange:
         )
         body += bytes((len(name),)) + name
         result = build_outgoing_frame(sequence, body)
-        self._request_sequence = sequence
         self.state = ExchangeState.AWAITING_CONFIRMATION
         return result
 
@@ -163,8 +161,6 @@ class SiLabsExchange:
         if self.state is not ExchangeState.AWAITING_CONFIRMATION:
             raise SiLabsSecurityError("No SiLabs pairing request is awaiting a response.")
         frame = parse_incoming_frame(raw_frame)
-        if frame.encrypted or frame.sequence != (self._request_sequence or 0) & 0x0FFFFFFF:
-            raise SiLabsSecurityError("SiLabs pairing response has the wrong trust context.")
         body = frame.plaintext_body()
         if len(body) != 83 or body[1] != PAIRING_RESPONSE or not 5 <= body[0] <= MESSAGE_VERSION:
             raise SiLabsSecurityError("SiLabs pairing response has an invalid envelope.")

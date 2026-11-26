@@ -149,7 +149,9 @@ def validate_registry(registry: dict[str, Any], root: Path = ROOT) -> None:
     if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+(?:rc\d+)?", version):
         raise SupportError("current_candidate.version must be an exact version")
     if candidate["publication_status"] != "unpublished":
-        raise SupportError("This registry requires an explicitly unpublished candidate")
+        raise SupportError(
+            "The prepublication validation snapshot requires an unpublished candidate"
+        )
     if candidate["hardware_status"] != "pending_hardware_validation":
         raise SupportError("Current candidate hardware status must remain pending")
     receipts = candidate["receipts"]
@@ -362,7 +364,9 @@ def render_markdown(registry: dict[str, Any], root: Path = ROOT) -> str:
         "",
         "This generated inventory separates implementation status from version-bound hardware evidence. Product applicability is not a compatibility claim. See the [hardware trial procedure](support/hardware-trials.md) and [read-only support triage](support/triage.md).",
         "",
-        f"Current candidate: **{candidate['version']}** ({candidate['publication_status']}; hardware: {candidate['hardware_status']}).",
+        f"Validation snapshot for **{candidate['version']}** ({candidate['publication_status']} at validation; hardware: {candidate['hardware_status']}).",
+        "",
+        "Published versions: [https://github.com/ProspectOre/weber-connect-unofficial/releases](https://github.com/ProspectOre/weber-connect-unofficial/releases).",
         "",
         "| Candidate receipt | Record |",
         "| --- | --- |",

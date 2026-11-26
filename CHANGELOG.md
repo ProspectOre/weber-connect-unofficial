@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.3.0rc13 — EP-series pairing and SmokeFire fuel reporting
+
+- Accept a SiLabs approval reply when the controller uses its own message
+  counter. Read the full response when the controller signals a long read.
+  Pairing still requires a verified handshake and matching cloud association.
+- Keep the last reported fuel value while the same socket receives telemetry.
+  An invalid field clears that gauge. A grill reporting off or disconnected
+  clears both. After a reconnect, each fuel value expires 60 seconds after its original
+  report unless the controller reports that field again.
+- The SmokeFire false idle, cloud-status flicker and cooking-time connection
+  gaps remain open. See the [RC13 validation record](docs/validation/3.3.0rc13-readiness.md).
+
 ## 3.3.0rc12 — SiLabs pairing wait candidate
 
 - Wait for a SiLabs controller's notified pairing approval instead of reading
