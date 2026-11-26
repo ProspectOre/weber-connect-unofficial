@@ -2,7 +2,7 @@
   "schema_version": 1,
   "current_candidate": {
     "version": "3.3.0rc13",
-    "publication_status": "published prerelease",
+    "publication_status": "unpublished",
     "hardware_status": "pending_hardware_validation",
     "receipts": {
       "readiness": "docs/validation/3.3.0rc13-readiness.md",
@@ -284,7 +284,7 @@
       "status": "unresolved",
       "product_families": ["portable_probes"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/issues/59#issuecomment-7190444970", "docs/validation/3.3.0rc13-readiness.md", "https://github.com/ProspectOre/weber-connect-unofficial/issues/59", "docs/support/hardware-trials.md", "docs/validation/3.3.0rc12-readiness.md"],
-      "disposition": "On RC12, the reporter saw the approval prompt and captured the pairing-response notification after confirming it. Its appliance counter (28, boot count 2) differed from request counter 1. The reported 83-byte notification length is ambiguous because the header declares 83 payload bytes, which imply 90 bytes including the header. RC12 incorrectly required matching counters. RC13 accepts by outstanding message type and performs a solicited GATT read for an empty or truncated notification, while preserving frame validation, status/key checks and authenticated handshake. Exact-device pairing, cloud association and telemetry still need hardware confirmation."
+      "disposition": "On RC12, the reporter saw the approval prompt and captured the pairing-response notification after confirming it. Its appliance counter (28, boot count 2) differed from request counter 1. The reported 83-byte notification length is ambiguous because the header declares 83 payload bytes, which imply 90 bytes including the header. RC12 incorrectly required matching counters. RC13 accepts by outstanding message type and performs a solicited GATT read for a truncated approval notification, while preserving frame validation, status/key checks and authenticated handshake. Exact-device pairing, cloud association and telemetry still need hardware confirmation."
     },
     {
       "id": "stale-cloud-status",

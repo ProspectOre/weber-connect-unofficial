@@ -29,14 +29,13 @@ def test_registry_and_generated_matrix_are_current() -> None:
     assert len(registry["product_families"]) == 13
 
 
-@pytest.mark.parametrize("publication_status", ["unpublished", "published prerelease", "stable"])
-def test_prerelease_publication_status(publication_status: str) -> None:
+def test_registry_distinguishes_build_validation_from_live_release_availability() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
-    registry["current_candidate"]["publication_status"] = publication_status
-    if publication_status == "stable":
-        with pytest.raises(SupportError, match="publication status"):
-            validate_registry(registry, ROOT)
-    else:
+    markdown = render_markdown(registry, ROOT)
+    assert "unpublished at validation" in markdown
+    assert "https://github.com/ProspectOre/weber-connect-unofficial/releases" in markdown
+    registry["current_candidate"]["publication_status"] = "stable"
+    with pytest.raises(SupportError, match="prepublication validation"):
         validate_registry(registry, ROOT)
 
 

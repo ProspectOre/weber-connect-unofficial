@@ -298,6 +298,8 @@ class GattResponseChannel:
         self._link_lost = link_lost or asyncio.Event()
         self._polling = False
         self._last_read = b""
+        self._pre_request_value = b""
+        self._needs_approval_prefix = False
         self._can_read = False
 
     async def async_open(self) -> None:
@@ -330,6 +332,10 @@ class GattResponseChannel:
             and len(data) == 7 + int.from_bytes(data[4:6], "little")
             and data[8] == PAIRING_REQUEST
         )
+        self._pre_request_value = b""
+        # A subscribed route has no pre-write read. An empty notification
+        # cannot identify the current plaintext approval on that route.
+        self._needs_approval_prefix = is_pairing_request and not self._polling
         if is_pairing_request:
             if self._polling:
                 baseline = await self._read_before_link_loss()
@@ -340,7 +346,7 @@ class GattResponseChannel:
                     raise WeberBluetoothError(
                         "The controller's pairing response could not be checked before requesting approval."
                     )
-                self._last_read = baseline
+                self._pre_request_value = baseline
             self._discard_queued_responses()
         async with asyncio.timeout(CONNECTION_TIMEOUT):
             await self.client.write_gatt_char(COMMAND_UUID, data, response=True)
@@ -355,7 +361,7 @@ class GattResponseChannel:
             else:
                 notification = await self._next_notification()
                 data = await self._notification_data(notification)
-            if data and data != self._last_read:
+            if self._is_new_response(data):
                 self._last_read = data
                 return data
             if self._polling:
@@ -364,41 +370,38 @@ class GattResponseChannel:
     async def _notification_data(self, notification: bytes) -> bytes:
         """Read the full value only when the controller signals a long response."""
 
-        if notification and not self._is_long_read_signal(notification):
-            return notification
-        if not self._can_read:
-            _LOGGER.debug(
-                "Controller signaled a long response but the characteristic cannot be read"
-            )
-            return b""
+        while not notification or self._is_long_read_signal(notification):
+            if not self._can_read or (not notification and self._needs_approval_prefix):
+                _LOGGER.debug("SiLabs long response needs a readable, identifiable notification")
+                return b""
 
-        expected_prefix = notification
-        while True:
-            read = asyncio.create_task(self._retry_long_read(expected_prefix))
-            notified = asyncio.create_task(self._next_notification())
+            read = asyncio.create_task(self._retry_long_read(notification))
+            # Queue.get consumes its item when the task finishes. Racing it
+            # directly avoids losing an item inside a cancelled nested waiter.
+            notified = asyncio.create_task(self._queue.get())
             try:
-                done, _pending = await asyncio.wait(
-                    (read, notified), return_when=asyncio.FIRST_COMPLETED
-                )
-                if notified in done:
-                    newer = notified.result()
-                    if newer and not self._is_long_read_signal(newer):
-                        return newer
-                    expected_prefix = newer
-                    continue
-                return read.result()
+                await asyncio.wait((read, notified), return_when=asyncio.FIRST_COMPLETED)
+                if not notified.done():
+                    return read.result()
+                newer = notified.result()
+                if newer or not self._needs_approval_prefix:
+                    notification = newer
             finally:
                 for task in (read, notified):
-                    if not task.done():
-                        task.cancel()
+                    task.cancel()
                 await asyncio.gather(read, notified, return_exceptions=True)
+        return notification
+
+    def _is_new_response(self, data: bytes) -> bool:
+        # Keep the pre-write value excluded even after unrelated frames arrive.
+        return bool(data) and data not in (self._pre_request_value, self._last_read)
 
     async def _retry_long_read(self, expected_prefix: bytes) -> bytes:
         while True:
             response = await self._read_before_link_loss()
             if (
                 response is not None
-                and response != self._last_read
+                and self._is_new_response(response)
                 and response.startswith(expected_prefix)
             ):
                 try:

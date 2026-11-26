@@ -249,3 +249,28 @@ async def test_polling_pairing_accepts_empty_baseline_but_fails_on_read_error() 
     with pytest.raises(WeberBluetoothError, match="checked before requesting approval"):
         await channel.async_write(build_outgoing_frame(1, b"\x0b\x0a"))
     client.write_gatt_char.assert_not_awaited()
+
+
+async def test_empty_notification_cannot_authorize_pairing_on_subscribed_route() -> None:
+    old = build_outgoing_frame(28, b"\x0b\x85" + bytes(81))
+    current = build_outgoing_frame(29, b"\x0b\x85" + bytes(81))
+    client = ReadClient({"read", "notify"}, old)
+    channel = GattResponseChannel(client, "response")
+    await channel.async_open()
+    await channel.async_write(build_outgoing_frame(1, b"\x0b\x0a"))
+    channel._queue.put_nowait(b"")
+    channel._queue.put_nowait(current)
+
+    assert await asyncio.wait_for(channel.async_receive(), 1) == current
+    client.read_gatt_char.assert_not_awaited()
+
+
+async def test_empty_signal_during_approval_long_read_keeps_the_identified_prefix() -> None:
+    current = build_outgoing_frame(29, b"\x0b\x85" + bytes(81))
+    client = ReadClient({"read", "notify"}, current)
+    channel = GattResponseChannel(client, "response")
+    await channel.async_open()
+    await channel.async_write(build_outgoing_frame(1, b"\x0b\x0a"))
+    channel._queue.put_nowait(current[:83])
+    channel._queue.put_nowait(b"")
+    assert await asyncio.wait_for(channel.async_receive(), 1) == current
