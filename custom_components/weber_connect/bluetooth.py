@@ -334,6 +334,9 @@ class GattResponseChannel:
             if self._polling:
                 baseline = await self._read_before_link_loss()
                 if baseline is None:
+                    await asyncio.sleep(0.25)
+                    baseline = await self._read_before_link_loss()
+                if baseline is None:
                     raise WeberBluetoothError(
                         "The controller's pairing response could not be checked before requesting approval."
                     )
@@ -393,7 +396,11 @@ class GattResponseChannel:
     async def _retry_long_read(self, expected_prefix: bytes) -> bytes:
         while True:
             response = await self._read_before_link_loss()
-            if response is not None and response.startswith(expected_prefix):
+            if (
+                response is not None
+                and response != self._last_read
+                and response.startswith(expected_prefix)
+            ):
                 try:
                     parse_incoming_frame(response)
                 except SiLabsFrameError:
@@ -401,7 +408,7 @@ class GattResponseChannel:
                 else:
                     return response
             else:
-                _LOGGER.debug("SiLabs long read did not match the notified prefix")
+                _LOGGER.debug("SiLabs long read has not returned a new matching frame")
             await asyncio.sleep(0.25)
 
     @staticmethod

@@ -50,15 +50,20 @@ async def test_truncated_notification_reads_matching_complete_response() -> None
     client.read_gatt_char.assert_awaited_once_with("response")
 
 
-async def test_empty_long_read_notification_reads_one_complete_response() -> None:
+async def test_empty_long_read_notification_skips_the_previous_complete_response() -> None:
     frame = build_outgoing_frame(7, b"\x0b\x85" + bytes(81))
     client = ReadClient({"read", "notify"}, frame)
+    previous = build_outgoing_frame(6, b"\x0b\x81")
+    client.read_gatt_char = AsyncMock(side_effect=[previous, frame])
     channel = GattResponseChannel(client, "response")
     await channel.async_open()
+    channel._queue.put_nowait(previous)
+    assert await channel.async_receive() == previous
     channel._queue.put_nowait(b"")
 
-    assert await channel.async_receive() == frame
-    client.read_gatt_char.assert_awaited_once_with("response")
+    async with asyncio.timeout(2):
+        assert await channel.async_receive() == frame
+    assert client.read_gatt_char.await_count == 2
 
 
 async def test_long_read_retries_after_a_mismatched_frame() -> None:
@@ -230,10 +235,12 @@ async def test_pairing_drains_pre_request_notifications_on_notified_route() -> N
 
 async def test_polling_pairing_accepts_empty_baseline_but_fails_on_read_error() -> None:
     client = ReadClient({"read"}, b"")
+    client.read_gatt_char = AsyncMock(side_effect=[BleakError("busy"), b""])
     channel = GattResponseChannel(client, "response")
     await channel.async_open()
     await channel.async_write(build_outgoing_frame(1, b"\x0b\x0a"))
     client.write_gatt_char.assert_awaited_once()
+    assert client.read_gatt_char.await_count == 2
 
     client = ReadClient({"read"}, b"")
     client.read_gatt_char = AsyncMock(side_effect=BleakError("unavailable"))
