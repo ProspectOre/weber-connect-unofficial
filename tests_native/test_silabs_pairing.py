@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from bleak.exc import BleakError
+from bleak.exc import BleakCharacteristicNotFoundError, BleakError
 
 from custom_components.weber_connect import bluetooth as ble
 from custom_components.weber_connect import silabs_pairing as pairing
@@ -337,6 +337,7 @@ async def test_channel_drops_duplicate_frames_and_bounds_queue() -> None:
     client = GattClient(Peer())
     channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
     await channel.async_open()
+    assert client.start_notify.await_count == 0
     await client.peer.replies.put(b"a")
     assert await channel.async_receive() == b"a"
     await client.peer.replies.put(b"a")
@@ -389,3 +390,196 @@ async def test_bluetooth_wrappers_wrap_errors_and_cleanup(
             await ble.async_pair_silabs(
                 object(), "address", CompanionIdentity(COMPANION_ID.hex(), "mismatch"), keys
             )
+
+
+class LateApprovalClient(GattClient):
+    """A read+notify appliance that answers only by notification, after approval.
+
+    Reading the response characteristic while approval is pending fails, as the
+    EP-series thermometer did in issue 59; the old receive path read at once and
+    abandoned the request about 0.1 seconds after sending it.
+    """
+
+    def __init__(self, peer: Peer) -> None:
+        super().__init__(peer, {"read", "notify"})
+        self.read_gatt_char = AsyncMock(side_effect=BleakError("read not permitted"))
+
+    async def write_gatt_char(self, _uuid: str, raw: bytes, *, response: bool) -> None:
+        assert response
+        await self.peer.async_write(raw)
+        asyncio.get_running_loop().call_later(0.01, self.deliver)
+
+    def deliver(self) -> None:
+        assert self.callback is not None
+        while not self.peer.replies.empty():
+            self.callback(None, bytearray(self.peer.replies.get_nowait()))
+
+
+async def test_pairing_waits_for_notified_approval_without_reading() -> None:
+    keys = SiLabsSigningKeys.generate()
+    client = LateApprovalClient(Peer())
+    identity = CompanionIdentity(COMPANION_ID.hex(), keys.public_key.hex())
+    connect = AsyncMock(return_value=client)
+    with patch.object(ble, "_connect", new=connect):
+        result = await ble.async_pair_silabs(object(), "address", identity, keys)
+    assert result.capabilities["probe_count"] == 4
+    client.read_gatt_char.assert_not_awaited()
+    client.disconnect.assert_awaited_once()
+    # The link-loss signal is wired to the connection, not only to the channel.
+    connect.await_args.kwargs["disconnected_callback"](client)
+
+
+async def test_notification_channel_falls_back_to_reads_only_without_notify() -> None:
+    client = GattClient(Peer(), {"read", "notify"})
+    client.start_notify.side_effect = BleakError("no notifications")
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
+    await channel.async_open()
+    await client.peer.replies.put(b"polled")
+    assert await channel.async_receive() == b"polled"
+
+
+async def test_link_loss_ends_the_wait_but_keeps_queued_replies() -> None:
+    client = GattClient(Peer(), {"notify"})
+    link_lost = asyncio.Event()
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID, link_lost)
+    await channel.async_open()
+    assert client.callback is not None
+    receive = asyncio.create_task(channel.async_receive())
+    await asyncio.sleep(0)
+    link_lost.set()
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await asyncio.wait_for(receive, timeout=1)
+    client.callback(None, bytearray(b"before the drop"))
+    assert await channel.async_receive() == b"before the drop"
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await channel.async_receive()
+
+
+@pytest.mark.parametrize("operation", ["pair", "resume"])
+async def test_appliance_disconnect_while_waiting_is_reported(operation: str) -> None:
+    keys = SiLabsSigningKeys.generate()
+    peer = Peer()
+    peer.silent = True
+    client = GattClient(peer, {"notify"})
+    identity = CompanionIdentity(COMPANION_ID.hex(), keys.public_key.hex())
+
+    async def connect(*_args: object, **kwargs: object) -> GattClient:
+        callback = kwargs["disconnected_callback"]
+        assert callable(callback)
+        asyncio.get_running_loop().call_later(0.01, callback, client)
+        return client
+
+    with (
+        patch.object(ble, "_connect", new=connect),
+        patch.object(ble, "PairingKeyStore") as storage,
+    ):
+        if operation == "pair":
+            with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+                await ble.async_pair_silabs(object(), "address", identity, keys)
+        else:
+            peer_keys = SiLabsSigningKeys.generate()
+            credentials = Mock(
+                companion_id=COMPANION_ID,
+                appliance_id=APPLIANCE_ID,
+                keys=keys,
+                peer_public_key=peer_keys.public_key,
+                message_version=11,
+            )
+            storage.return_value.async_load = AsyncMock(return_value=credentials)
+            with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+                await ble.async_reconnect_silabs(object(), "address", "ref", APPLIANCE_ID.hex())
+    client.disconnect.assert_awaited_once()
+
+
+async def test_abandoned_connection_attempt_does_not_mark_the_live_link_lost() -> None:
+    keys = SiLabsSigningKeys.generate()
+    client = LateApprovalClient(Peer())
+    identity = CompanionIdentity(COMPANION_ID.hex(), keys.public_key.hex())
+
+    async def connect(*_args: object, **kwargs: object) -> GattClient:
+        callback = kwargs["disconnected_callback"]
+        assert callable(callback)
+        callback(object())  # The connector disconnecting a failed attempt.
+        return client
+
+    with patch.object(ble, "_connect", new=connect):
+        result = await ble.async_pair_silabs(object(), "address", identity, keys)
+    assert result.capabilities["probe_count"] == 4
+
+
+async def test_polling_treats_failed_reads_as_no_answer_until_link_loss() -> None:
+    client = GattClient(Peer(), {"read"})
+    link_lost = asyncio.Event()
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID, link_lost)
+    await channel.async_open()
+    client.read_gatt_char = AsyncMock(side_effect=[BleakError("pending"), TimeoutError(), b"late"])
+    with patch.object(ble.asyncio, "sleep", new=AsyncMock()):
+        assert await channel.async_receive() == b"late"
+    client.read_gatt_char = AsyncMock(side_effect=BleakError("gone"))
+    link_lost.set()
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await channel.async_receive()
+
+
+async def test_link_loss_during_an_outstanding_read_ends_the_wait_at_once() -> None:
+    client = GattClient(Peer(), {"read"})
+    link_lost = asyncio.Event()
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID, link_lost)
+    await channel.async_open()
+    started = asyncio.Event()
+
+    async def hung_read(_uuid: str) -> bytes:
+        started.set()
+        await asyncio.Event().wait()
+        return b"never"
+
+    client.read_gatt_char = hung_read
+    receive = asyncio.ensure_future(channel.async_receive())
+    await started.wait()
+    link_lost.set()
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await asyncio.wait_for(receive, 1)
+
+
+async def test_a_read_failing_as_the_link_drops_reports_the_disconnect() -> None:
+    client = GattClient(Peer(), {"read"})
+    link_lost = asyncio.Event()
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID, link_lost)
+    await channel.async_open()
+
+    async def failing_read(_uuid: str) -> bytes:
+        link_lost.set()
+        raise BleakError("gone")
+
+    client.read_gatt_char = failing_read
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await channel.async_receive()
+
+
+async def test_polling_fails_fast_when_the_response_characteristic_is_gone() -> None:
+    client = GattClient(Peer(), {"read"})
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
+    await channel.async_open()
+    client.read_gatt_char = AsyncMock(
+        side_effect=BleakCharacteristicNotFoundError(ble.RESPONSE_UUID)
+    )
+    with pytest.raises(BleakCharacteristicNotFoundError):
+        await channel.async_receive()
+    assert client.read_gatt_char.await_count == 1
+
+
+async def test_polling_still_takes_a_notification_from_a_failed_subscribe() -> None:
+    client = GattClient(Peer(), {"read", "notify"})
+    callbacks = []
+
+    async def start_notify(_uuid: str, callback: object) -> None:
+        callbacks.append(callback)
+        raise TimeoutError
+
+    client.start_notify = start_notify
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)
+    await channel.async_open()
+    client.read_gatt_char = AsyncMock(side_effect=BleakError("pending"))
+    callbacks[0](None, bytearray(b"notified"))
+    assert await channel.async_receive() == b"notified"
+    assert client.read_gatt_char.await_count == 0

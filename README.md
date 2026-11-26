@@ -8,9 +8,11 @@ authenticated Weber Cloud companion for ongoing temperatures and status. The
 Weber app can continue using Bluetooth after setup. No Weber account password,
 phone secret, MQTT broker or packet capture is required.
 
-The 3.3.0rc3 candidate adds read-only probe targets to the controller-family
-work. It reads active program details to distinguish single targets from ranges.
-The 3.3.0rc3 prerelease is published; the current stable release is 3.2.2.
+The 3.3.0rc12 candidate is meant to keep SiLabs controller pairing waiting for
+physical approval instead of abandoning the request a moment after sending it;
+hardware has not confirmed it yet. The
+published 3.3.0rc3 prerelease adds read-only probe targets; the current stable
+release is 3.2.2.
 Use the latest stable HACS release for the established feature set; enable
 prereleases only when participating in the [hardware trials](docs/support/hardware-trials.md).
 
@@ -81,7 +83,7 @@ other product families are not qualified merely by being discovered.
 For a failure, choose **Get help / report a problem**, review the generated report,
 and share it in the existing issue. Please exclude credentials, QR codes, private
 identifiers and raw packets. See [architecture](ARCHITECTURE.md), [security](SECURITY.md), and the
-[3.3.0rc3 validation record](docs/validation/3.3.0rc3-readiness.md).
+[3.3.0rc12 validation record](docs/validation/3.3.0rc12-readiness.md).
 
 Published historical installation and hardware evidence remains available in the
 [3.2.1 documentation](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.1/README.md).

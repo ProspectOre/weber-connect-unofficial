@@ -256,24 +256,61 @@ async def async_qualify_gatt(
             await _safe_disconnect(client)
 
 
-class GattResponseChannel:
-    """Bounded response stream using properties on the selected GATT table."""
+class _LinkWatch:
+    """Report a drop of the returned connection only.
 
-    def __init__(self, client: BleakClientWithServiceCache, response_uuid: str) -> None:
+    The connector reuses one disconnect callback for every attempt and
+    disconnects abandoned attempts itself, so a callback from any client other
+    than the one finally returned says nothing about the live link.
+    """
+
+    def __init__(self) -> None:
+        self.lost = asyncio.Event()
+        self._client: BleakClient | None = None
+
+    def bind(self, client: BleakClientWithServiceCache) -> BleakClientWithServiceCache:
+        self._client = client
+        return client
+
+    def __call__(self, client: BleakClient) -> None:
+        if client is self._client:
+            self.lost.set()
+
+
+class GattResponseChannel:
+    """Bounded response stream using properties on the selected GATT table.
+
+    A subscribed notification stream is the only response source: a SiLabs
+    appliance answers a pairing request by notification after physical
+    approval, and reading the same characteristic meanwhile can fail, which
+    used to abandon the request before anyone could approve it. Reads are a
+    fallback for a characteristic that cannot notify or whose subscription
+    fails; a failed poll then counts as no answer yet, and only a dropped link,
+    even mid-read, ends the wait early.
+    """
+
+    def __init__(
+        self,
+        client: BleakClientWithServiceCache,
+        response_uuid: str,
+        link_lost: asyncio.Event | None = None,
+    ) -> None:
         self.client = client
         self.response_uuid = response_uuid
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_PAIRING_NOTIFICATIONS)
-        self._can_read = False
+        self._link_lost = link_lost or asyncio.Event()
+        self._polling = False
         self._last_read = b""
 
     async def async_open(self) -> None:
         characteristic = self.client.services.get_characteristic(self.response_uuid)
         if characteristic is None:
             raise WeberBluetoothError("The controller's response characteristic is missing.")
-        self._can_read = "read" in characteristic.properties
+        can_read = "read" in characteristic.properties
         can_notify = bool({"notify", "indicate"}.intersection(characteristic.properties))
-        if not self._can_read and not can_notify:
+        if not can_read and not can_notify:
             raise WeberBluetoothError("The controller has no usable response channel.")
+        self._polling = not can_notify
         if can_notify:
             try:
                 async with asyncio.timeout(CONNECTION_TIMEOUT):
@@ -281,8 +318,9 @@ class GattResponseChannel:
                         self.response_uuid, _notification_callback(self._queue)
                     )
             except BleakError, TimeoutError:
-                if not self._can_read:
+                if not can_read:
                     raise
+                self._polling = True
 
     async def async_write(self, data: bytes) -> None:
         command = self.client.services.get_characteristic(COMMAND_UUID)
@@ -293,19 +331,77 @@ class GattResponseChannel:
 
     async def async_receive(self) -> bytes:
         while True:
-            try:
-                data = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                if self._can_read:
-                    async with asyncio.timeout(CONNECTION_TIMEOUT):
-                        data = bytes(await self.client.read_gatt_char(self.response_uuid))
-                else:
-                    data = await self._queue.get()
+            if self._polling:
+                data = await self._poll()
+            else:
+                data = await self._next_notification()
             if data and data != self._last_read:
                 self._last_read = data
                 return data
-            if self._can_read:
+            if self._polling:
                 await asyncio.sleep(0.25)
+
+    async def _poll(self) -> bytes:
+        """Read once, ending at once if the link drops before the read returns."""
+
+        # A subscription that reported an error may still have taken effect.
+        try:
+            return self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        self._raise_if_link_lost()
+        read = asyncio.ensure_future(self._read())
+        lost = asyncio.ensure_future(self._link_lost.wait())
+        try:
+            done, _pending = await asyncio.wait((read, lost), return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            read.cancel()
+            lost.cancel()
+        if read in done:
+            return read.result()
+        raise self._link_lost_error()
+
+    async def _read(self) -> bytes:
+        try:
+            async with asyncio.timeout(CONNECTION_TIMEOUT):
+                return bytes(await self.client.read_gatt_char(self.response_uuid))
+        except BleakCharacteristicNotFoundError:
+            raise
+        except BleakError, TimeoutError:
+            self._raise_if_link_lost()
+            _LOGGER.debug("Weber response read gave no answer yet", exc_info=True)
+            return b""
+
+    @staticmethod
+    def _link_lost_error() -> WeberBluetoothError:
+        return WeberBluetoothError(
+            "The appliance closed the Bluetooth connection before it answered."
+        )
+
+    def _raise_if_link_lost(self) -> None:
+        if self._link_lost.is_set():
+            raise self._link_lost_error()
+
+    async def _next_notification(self) -> bytes:
+        """Wait for a notification, ending at once if the link drops first."""
+
+        while True:
+            try:
+                return self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            self._raise_if_link_lost()
+            getter = asyncio.ensure_future(self._queue.get())
+            lost = asyncio.ensure_future(self._link_lost.wait())
+            try:
+                done, _pending = await asyncio.wait(
+                    (getter, lost), return_when=asyncio.FIRST_COMPLETED
+                )
+            finally:
+                getter.cancel()
+                lost.cancel()
+            if getter in done:
+                return getter.result()
 
 
 async def async_pair_silabs(
@@ -324,8 +420,17 @@ async def async_pair_silabs(
         exchange = SiLabsExchange(bytes.fromhex(identity.companion_id), NAME, keys)
         if keys.public_key.hex() != identity.public_key:
             raise SiLabsSecurityError("The SiLabs companion public key does not match.")
-        client = await _connect(hass, address, max_attempts=3, use_services_cache=False)
-        channel = GattResponseChannel(client, RESPONSE_UUID)
+        watch = _LinkWatch()
+        client = watch.bind(
+            await _connect(
+                hass,
+                address,
+                max_attempts=3,
+                use_services_cache=False,
+                disconnected_callback=watch,
+            )
+        )
+        channel = GattResponseChannel(client, RESPONSE_UUID, watch.lost)
         await channel.async_open()
         if progress_callback is not None:
             progress_callback(SupportEvent.SERVICES)
@@ -352,8 +457,16 @@ async def async_reconnect_silabs(
     client: BleakClientWithServiceCache | None = None
     try:
         credentials = await PairingKeyStore(hass, reference).async_load(appliance_id)
-        client = await _connect(hass, address, use_services_cache=False)
-        channel = GattResponseChannel(client, RESPONSE_UUID)
+        watch = _LinkWatch()
+        client = watch.bind(
+            await _connect(
+                hass,
+                address,
+                use_services_cache=False,
+                disconnected_callback=watch,
+            )
+        )
+        channel = GattResponseChannel(client, RESPONSE_UUID, watch.lost)
         await channel.async_open()
         return await async_resume_exchange(channel, credentials)
     except ValueError as exc:

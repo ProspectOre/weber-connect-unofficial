@@ -56,6 +56,7 @@ def error_category(error: Exception | str | None) -> str:
         ("connection slot", "bluetooth_slots_busy"),
         ("connection could not be established", "bluetooth_connection_failed"),
         ("bluetooth services", "bluetooth_services_unavailable"),
+        ("closed the bluetooth connection", "appliance_disconnected"),
         ("unsupported encrypted", "unsupported_encrypted_response"),
         ("invalid transport frame", "invalid_transport_frame"),
         ("corrupted protocol", "invalid_protocol_envelope"),
