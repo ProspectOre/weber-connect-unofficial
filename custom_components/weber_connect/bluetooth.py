@@ -284,8 +284,9 @@ class GattResponseChannel:
     appliance answers a pairing request by notification after physical
     approval, and reading the same characteristic meanwhile can fail, which
     used to abandon the request before anyone could approve it. Reads are a
-    fallback only for a characteristic that cannot notify; a failed poll then
-    counts as no answer yet, and only a dropped link ends the wait early.
+    fallback for a characteristic that cannot notify or whose subscription
+    fails; a failed poll then counts as no answer yet, and only a dropped link,
+    even mid-read, ends the wait early.
     """
 
     def __init__(
@@ -341,11 +342,26 @@ class GattResponseChannel:
                 await asyncio.sleep(0.25)
 
     async def _poll(self) -> bytes:
+        """Read once, ending at once if the link drops before the read returns."""
+
         # A subscription that reported an error may still have taken effect.
         try:
             return self._queue.get_nowait()
         except asyncio.QueueEmpty:
             pass
+        self._raise_if_link_lost()
+        read = asyncio.ensure_future(self._read())
+        lost = asyncio.ensure_future(self._link_lost.wait())
+        try:
+            done, _pending = await asyncio.wait((read, lost), return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            read.cancel()
+            lost.cancel()
+        if read in done:
+            return read.result()
+        raise self._link_lost_error()
+
+    async def _read(self) -> bytes:
         try:
             async with asyncio.timeout(CONNECTION_TIMEOUT):
                 return bytes(await self.client.read_gatt_char(self.response_uuid))
@@ -356,11 +372,15 @@ class GattResponseChannel:
             _LOGGER.debug("Weber response read gave no answer yet", exc_info=True)
             return b""
 
+    @staticmethod
+    def _link_lost_error() -> WeberBluetoothError:
+        return WeberBluetoothError(
+            "The appliance closed the Bluetooth connection before it answered."
+        )
+
     def _raise_if_link_lost(self) -> None:
         if self._link_lost.is_set():
-            raise WeberBluetoothError(
-                "The appliance closed the Bluetooth connection before it answered."
-            )
+            raise self._link_lost_error()
 
     async def _next_notification(self) -> bytes:
         """Wait for a notification, ending at once if the link drops first."""

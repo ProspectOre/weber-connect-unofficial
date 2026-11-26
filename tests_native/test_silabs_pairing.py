@@ -521,6 +521,41 @@ async def test_polling_treats_failed_reads_as_no_answer_until_link_loss() -> Non
         await channel.async_receive()
 
 
+async def test_link_loss_during_an_outstanding_read_ends_the_wait_at_once() -> None:
+    client = GattClient(Peer(), {"read"})
+    link_lost = asyncio.Event()
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID, link_lost)
+    await channel.async_open()
+    started = asyncio.Event()
+
+    async def hung_read(_uuid: str) -> bytes:
+        started.set()
+        await asyncio.Event().wait()
+        return b"never"
+
+    client.read_gatt_char = hung_read
+    receive = asyncio.ensure_future(channel.async_receive())
+    await started.wait()
+    link_lost.set()
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await asyncio.wait_for(receive, 1)
+
+
+async def test_a_read_failing_as_the_link_drops_reports_the_disconnect() -> None:
+    client = GattClient(Peer(), {"read"})
+    link_lost = asyncio.Event()
+    channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID, link_lost)
+    await channel.async_open()
+
+    async def failing_read(_uuid: str) -> bytes:
+        link_lost.set()
+        raise BleakError("gone")
+
+    client.read_gatt_char = failing_read
+    with pytest.raises(ble.WeberBluetoothError, match="closed the Bluetooth connection"):
+        await channel.async_receive()
+
+
 async def test_polling_fails_fast_when_the_response_characteristic_is_gone() -> None:
     client = GattClient(Peer(), {"read"})
     channel = ble.GattResponseChannel(client, ble.RESPONSE_UUID)

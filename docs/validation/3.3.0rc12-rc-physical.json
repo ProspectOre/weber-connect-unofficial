@@ -1,13 +1,13 @@
 {
   "candidate": "3.3.0rc12",
   "release_channel": "prerelease",
-  "evidence_date": "2026-11-24",
-  "runtime_sha256": "768a481ee30a36c6c49141d34e922a32dd3ed2d9fbe953f2abc5c1b3b5734c99",
+  "evidence_date": "2026-11-26",
+  "runtime_sha256": "1d931b7ed5ef7dcec35ffcacc57a5446365db3e914e09460d2824affcd766e26",
   "identifiers": "redacted",
   "status": "pending_hardware_validation",
   "verified": {},
   "pending": [
-    "Original Connect Hub exact-candidate pairing, fresh cloud association and endurance; targeted readings, app coexistence, restart and stable IDs are recorded separately",
+    "Original Connect Hub exact-candidate pairing, fresh cloud association and endurance; targeted readings, app coexistence, restart and stable IDs (none recorded for this candidate)",
     "SmokeFire EX4 Gen2 exact-RC12 fuel freshness, stale cloud status, cook/endurance, recovery gaps and stable entities",
     "Genesis issue 65 actual transport evidence, physical approval, cloud association and live readings",
     "EP-series thermometer issue 59 exact controller, firmware and RC12 approval result after the notified-approval fix",

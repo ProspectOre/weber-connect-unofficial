@@ -6,10 +6,11 @@
   its response characteristic. The most likely cause of the 3.3.0rc3 abort about
   0.1 seconds after the request is that read failing while approval was pending;
   an RC12 hardware result is still needed to confirm it. Reads remain a
-  fallback only when the characteristic cannot notify, and a failed poll counts
-  as no answer yet.
-- End a pairing or reconnect wait as soon as the controller drops the link, and
-  report it as `appliance_disconnected` instead of a generic transport timeout.
+  fallback when the characteristic cannot notify or the subscription fails, and
+  a failed poll counts as no answer yet.
+- End a pairing or reconnect wait as soon as the controller drops the link,
+  including during an outstanding read, and report it as
+  `appliance_disconnected` instead of a generic transport timeout.
 - Candidate numbers 4 to 11 belonged to unpublished builds and are not reused.
 
 ## 3.3.0rc3 — probe-target beta candidate

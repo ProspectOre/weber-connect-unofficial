@@ -8,8 +8,9 @@ authenticated Weber Cloud companion for ongoing temperatures and status. The
 Weber app can continue using Bluetooth after setup. No Weber account password,
 phone secret, MQTT broker or packet capture is required.
 
-The 3.3.0rc12 candidate keeps SiLabs controller pairing waiting for physical
-approval instead of abandoning the request a moment after sending it. The
+The 3.3.0rc12 candidate is meant to keep SiLabs controller pairing waiting for
+physical approval instead of abandoning the request a moment after sending it;
+hardware has not confirmed it yet. The
 published 3.3.0rc3 prerelease adds read-only probe targets; the current stable
 release is 3.2.2.
 Use the latest stable HACS release for the established feature set; enable
