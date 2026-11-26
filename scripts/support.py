@@ -149,7 +149,9 @@ def validate_registry(registry: dict[str, Any], root: Path = ROOT) -> None:
     if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+(?:rc\d+)?", version):
         raise SupportError("current_candidate.version must be an exact version")
     if candidate["publication_status"] not in ("unpublished", "published prerelease"):
-        raise SupportError("Candidate publication status must be unpublished or published prerelease")
+        raise SupportError(
+            "Candidate publication status must be unpublished or published prerelease"
+        )
     if candidate["hardware_status"] != "pending_hardware_validation":
         raise SupportError("Current candidate hardware status must remain pending")
     receipts = candidate["receipts"]
