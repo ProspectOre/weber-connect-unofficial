@@ -29,6 +29,17 @@ def test_registry_and_generated_matrix_are_current() -> None:
     assert len(registry["product_families"]) == 13
 
 
+@pytest.mark.parametrize("publication_status", ["unpublished", "published prerelease", "stable"])
+def test_prerelease_publication_status(publication_status: str) -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    registry["current_candidate"]["publication_status"] = publication_status
+    if publication_status == "stable":
+        with pytest.raises(SupportError, match="publication status"):
+            validate_registry(registry, ROOT)
+    else:
+        validate_registry(registry, ROOT)
+
+
 def test_rendered_evidence_links_resolve_from_matrix_directory() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     markdown = render_markdown(registry, ROOT)

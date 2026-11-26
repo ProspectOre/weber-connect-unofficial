@@ -35,7 +35,7 @@ from .saber_frames import (
 )
 from .silabs_frames import SiLabsFrameError, parse_incoming_frame
 from .silabs_pairing import SiLabsPairingResult, async_pair_exchange, async_resume_exchange
-from .silabs_secure import SiLabsExchange, SiLabsSecurityError, SiLabsSigningKeys
+from .silabs_secure import PAIRING_REQUEST, SiLabsExchange, SiLabsSecurityError, SiLabsSigningKeys
 from .support import SupportEvent
 from .transport_family import TransportEvidence, classify_service_shapes
 
@@ -324,6 +324,21 @@ class GattResponseChannel:
         command = self.client.services.get_characteristic(COMMAND_UUID)
         if command is None or "write" not in command.properties:
             raise WeberBluetoothError("The controller has no usable command channel.")
+        is_pairing_request = (
+            len(data) >= 9
+            and data[6] == 0
+            and len(data) == 7 + int.from_bytes(data[4:6], "little")
+            and data[8] == PAIRING_REQUEST
+        )
+        if is_pairing_request:
+            if self._polling:
+                baseline = await self._read_before_link_loss()
+                if baseline is None:
+                    raise WeberBluetoothError(
+                        "The controller's pairing response could not be checked before requesting approval."
+                    )
+                self._last_read = baseline
+            self._discard_queued_responses()
         async with asyncio.timeout(CONNECTION_TIMEOUT):
             await self.client.write_gatt_char(COMMAND_UUID, data, response=True)
 
@@ -332,6 +347,8 @@ class GattResponseChannel:
             # Even a subscription that reported an error may deliver replies.
             if self._polling and self._queue.empty():
                 data = await self._read_before_link_loss()
+                if data is None:
+                    data = b""
             else:
                 notification = await self._next_notification()
                 data = await self._notification_data(notification)
@@ -344,27 +361,65 @@ class GattResponseChannel:
     async def _notification_data(self, notification: bytes) -> bytes:
         """Read the full value only when the controller signals a long response."""
 
-        if notification and not (
+        if notification and not self._is_long_read_signal(notification):
+            return notification
+        if not self._can_read:
+            _LOGGER.debug(
+                "Controller signaled a long response but the characteristic cannot be read"
+            )
+            return b""
+
+        expected_prefix = notification
+        while True:
+            read = asyncio.create_task(self._retry_long_read(expected_prefix))
+            notified = asyncio.create_task(self._next_notification())
+            try:
+                done, _pending = await asyncio.wait(
+                    (read, notified), return_when=asyncio.FIRST_COMPLETED
+                )
+                if notified in done:
+                    newer = notified.result()
+                    if newer and not self._is_long_read_signal(newer):
+                        return newer
+                    expected_prefix = newer
+                    continue
+                return read.result()
+            finally:
+                for task in (read, notified):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(read, notified, return_exceptions=True)
+
+    async def _retry_long_read(self, expected_prefix: bytes) -> bytes:
+        while True:
+            response = await self._read_before_link_loss()
+            if response is not None and response.startswith(expected_prefix):
+                try:
+                    parse_incoming_frame(response)
+                except SiLabsFrameError:
+                    _LOGGER.debug("SiLabs long read did not return a complete frame")
+                else:
+                    return response
+            else:
+                _LOGGER.debug("SiLabs long read did not match the notified prefix")
+            await asyncio.sleep(0.25)
+
+    @staticmethod
+    def _is_long_read_signal(notification: bytes) -> bool:
+        return (
             len(notification) >= 7
             and notification[6] in (0, 1)
             and int.from_bytes(notification[4:6], "little") > len(notification) - 7
-        ):
-            return notification
-        if not self._can_read:
-            return b""
+        )
 
-        response = await self._read_before_link_loss()
-        if not response.startswith(notification):
-            _LOGGER.debug("SiLabs long read did not match the notified prefix")
-            return b""
-        try:
-            parse_incoming_frame(response)
-        except SiLabsFrameError:
-            _LOGGER.debug("SiLabs long read did not return a complete frame")
-            return b""
-        return response
+    def _discard_queued_responses(self) -> None:
+        while True:
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
 
-    async def _read_before_link_loss(self) -> bytes:
+    async def _read_before_link_loss(self) -> bytes | None:
         """Perform one GATT read while keeping disconnect handling prompt."""
 
         self._raise_if_link_lost()
@@ -373,13 +428,15 @@ class GattResponseChannel:
         try:
             done, _pending = await asyncio.wait((read, lost), return_when=asyncio.FIRST_COMPLETED)
         finally:
-            read.cancel()
-            lost.cancel()
+            for task in (read, lost):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(read, lost, return_exceptions=True)
         if read in done:
             return read.result()
         raise self._link_lost_error()
 
-    async def _read(self) -> bytes:
+    async def _read(self) -> bytes | None:
         try:
             async with asyncio.timeout(CONNECTION_TIMEOUT):
                 return bytes(await self.client.read_gatt_char(self.response_uuid))
@@ -388,7 +445,7 @@ class GattResponseChannel:
         except BleakError, TimeoutError:
             self._raise_if_link_lost()
             _LOGGER.debug("Weber response read gave no answer yet", exc_info=True)
-            return b""
+            return None
 
     @staticmethod
     def _link_lost_error() -> WeberBluetoothError:

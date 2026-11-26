@@ -292,7 +292,15 @@
       "status": "fixed_in_candidate",
       "product_families": ["smokefire", "connect_smart_grilling_hub"],
       "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-7201246573", "https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-6257147619"],
-      "disposition": "The November 26 RC1 report confirms cloud status cleared during observed connection loss, but also changed to unknown repeatedly while the connection remained healthy. The reported pattern tracks fuel drops, with a median interval near 31 seconds. The healthy-connection flicker remains unresolved. On failed transport the current status clears and must be reported again after socket recovery."
+      "disposition": "The November 26 RC1 diagnostics confirm current cloud status cleared during connection loss. The last device-reported status remained available as historical context. A new socket requires a fresh device report before publishing current cloud status."
+    },
+    {
+      "id": "smokefire-healthy-cloud-status",
+      "summary": "Cloud status repeatedly went unknown while cook telemetry continued.",
+      "status": "unresolved",
+      "product_families": ["smokefire"],
+      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/pull/71#issuecomment-7201246573"],
+      "disposition": "The November 26 RC1 cook recorded 112 transitions to unknown, often around a fuel drop. A timestamped example during healthy telemetry is needed to distinguish socket replacement from a device report."
     },
     {
       "id": "candidate-evidence-fingerprint",

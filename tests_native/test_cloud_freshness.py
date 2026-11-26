@@ -88,14 +88,15 @@ async def test_missing_partial_or_invalid_fuel_does_not_change_cached_reading(in
     ):
         assert (await session.async_request_status())["fuel_level"] == "full"
         clock.now = 159.0
-        assert (await session.async_request_status())["fuel_level"] == "full"
+        recent = await session.async_request_status()
+        assert recent.get("fuel_level") == (None if intervening == tlv(20, b"\x00\x01") else "full")
         clock.now = 160.0
         cached = await session.async_request_status()
-        assert cached["fuel_level"] == "full"
-        assert cached["fuel_percent"] == 100
+        assert cached.get("fuel_level") == (None if intervening == tlv(20, b"\x00\x01") else "full")
+        assert cached.get("fuel_percent") == (None if intervening == tlv(27, b"\x65") else 100)
         recovered = await session.async_request_status()
         assert recovered["fuel_level"] == "low"
-        assert recovered["fuel_percent"] == 100
+        assert recovered.get("fuel_percent") == (None if intervening == tlv(27, b"\x65") else 100)
     await session.async_close()
 
 
@@ -187,11 +188,13 @@ async def test_fuel_fields_are_retained_until_reported_change_or_socket_loss():
     ):
         await session.async_request_status()
         clock.now = 140.0
-        await session.async_request_status()
+        changed = await session.async_request_status()
+        assert changed["fuel_level"] == "full"
+        assert changed["fuel_percent"] == 50
         clock.now = 160.0
         cached_level = await session.async_request_status()
         assert cached_level["fuel_level"] == "full"
-        assert cached_level["fuel_percent"] == 50
+        assert "fuel_percent" not in cached_level
         explicit_unknown = await session.async_request_status()
         assert explicit_unknown["fuel_level"] == "unknown"
         assert session.fuel_level_unknown_reports == 1

@@ -8,9 +8,9 @@ authenticated Weber Cloud companion for ongoing temperatures and status. The
 Weber app can continue using Bluetooth after setup. No Weber account password,
 phone secret, MQTT broker or packet capture is required.
 
-The 3.3.0rc13 beta fixes an EP-series pairing timeout after
-physical approval and a fuel gauge that could turn unknown during a SmokeFire
-cook. Both fixes have automated regression tests. Hardware trials are pending.
+The 3.3.0rc13 beta handles the reply counters seen after physical approval
+on an EP-series thermometer and keeps valid fuel readings between reports
+during a SmokeFire cook. Both fixes have automated regression tests. Hardware trials are pending.
 The stable release is 3.2.2. [RC13 release notes](https://github.com/ProspectOre/weber-connect-unofficial/releases/tag/v3.3.0rc13)
 Use the latest stable HACS release for the established feature set; enable
 prereleases only when participating in the [hardware trials](docs/support/hardware-trials.md).

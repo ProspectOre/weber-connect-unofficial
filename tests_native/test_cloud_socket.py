@@ -253,7 +253,7 @@ async def test_fuel_counters_only_track_present_appliance_fuel_tlvs() -> None:
             routed(0x80),
             routed(0x83, tlv(20, b"")),  # Present, but unusable.
             routed(0x80),
-            routed(0x80),  # Missing TLV retains the last valid state.
+            routed(0x80),  # Missing TLV keeps the explicitly invalid value cleared.
         ]
     )
     session = socket.WeberCloudSession(
@@ -270,8 +270,8 @@ async def test_fuel_counters_only_track_present_appliance_fuel_tlvs() -> None:
     assert statuses[2]["fuel_level"] == "unknown"
     assert statuses[3]["fuel_level"] == "unknown"
     assert statuses[4]["fuel_level"] == "low"
-    assert statuses[5]["fuel_level"] == "low"
-    assert statuses[6]["fuel_level"] == "low"
+    assert "fuel_level" not in statuses[5]
+    assert "fuel_level" not in statuses[6]
     assert session.fuel_level_reports == 4
     assert session.fuel_level_unknown_reports == 1
     assert session.fuel_level_changes == 2
@@ -320,7 +320,7 @@ async def test_partial_appliance_status_preserves_cached_hub_telemetry() -> None
 
 
 @pytest.mark.asyncio
-async def test_invalid_fuel_tlv_shapes_do_not_replace_last_valid_fuel() -> None:
+async def test_invalid_fuel_tlv_shapes_clear_only_the_reported_fuel_field() -> None:
     connection = FakeConnection(
         [
             routed(0x83, tlv(1, b"\x3c") + tlv(20, b"\x01")),
@@ -347,9 +347,9 @@ async def test_invalid_fuel_tlv_shapes_do_not_replace_last_valid_fuel() -> None:
         reserved = await session.async_request_status()
 
     assert valid["fuel_level"] == "full"
-    assert wrong_width["fuel_level"] == "full"
+    assert "fuel_level" not in wrong_width
     assert wrong_width["battery_level"] == 70
-    assert duplicate["fuel_level"] == "full"
+    assert "fuel_level" not in duplicate
     assert duplicate["battery_level"] == 80
     assert reserved["fuel_level"] == "unknown"
     assert session.fuel_level_reports == 4
@@ -365,6 +365,39 @@ async def test_invalid_fuel_tlv_shapes_do_not_replace_last_valid_fuel() -> None:
         "5": 0,
         "reserved": 1,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state_tag,state_value", [(17, 3), (4, 1)])
+async def test_offline_appliance_state_clears_old_and_same_frame_fuel(
+    state_tag: int, state_value: int
+) -> None:
+    connection = FakeConnection(
+        [
+            routed(0x83, tlv(20, b"\x01") + tlv(27, b"\x64")),
+            routed(0x80),
+            routed(0x83, tlv(state_tag, bytes([state_value])) + tlv(20, b"\x05")),
+            routed(0x80),
+            routed(0x83, tlv(1, b"\x40")),
+            routed(0x80),
+        ]
+    )
+    session = socket.WeberCloudSession(
+        FakeHass(),  # type: ignore[arg-type]
+        FakeCloudClient(),
+        APPLIANCE_ID,
+        timeout=0.1,
+        subscribe_delay=0,
+    )
+    with patch.object(socket, "connect", AsyncMock(return_value=connection)):
+        await session.async_request_status()
+        offline = await session.async_request_status()
+        after_offline = await session.async_request_status()
+
+    assert "fuel_level" not in offline
+    assert "fuel_percent" not in offline
+    assert "fuel_level" not in after_offline
+    await session.async_close()
 
 
 @pytest.mark.asyncio
