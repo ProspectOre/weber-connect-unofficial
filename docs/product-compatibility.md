@@ -2,7 +2,7 @@
 
 This generated inventory separates implementation status from version-bound hardware evidence. Product applicability is not a compatibility claim. See the [hardware trial procedure](support/hardware-trials.md) and [read-only support triage](support/triage.md).
 
-Current candidate: **3.3.0rc13** (unpublished; hardware: pending_hardware_validation).
+Current candidate: **3.3.0rc13** (published prerelease; hardware: pending_hardware_validation).
 
 | Candidate receipt | Record |
 | --- | --- |

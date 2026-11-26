@@ -2,7 +2,7 @@
   "schema_version": 1,
   "current_candidate": {
     "version": "3.3.0rc13",
-    "publication_status": "unpublished",
+    "publication_status": "published prerelease",
     "hardware_status": "pending_hardware_validation",
     "receipts": {
       "readiness": "docs/validation/3.3.0rc13-readiness.md",
