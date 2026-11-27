@@ -30,18 +30,28 @@ def test_registry_and_generated_matrix_are_current() -> None:
     assert len(registry["product_families"]) == 14
 
 
-def test_registry_distinguishes_build_validation_from_live_release_availability() -> None:
+@pytest.mark.parametrize("publication", ["published_beta", "unpublished"])
+def test_registry_distinguishes_publication_from_hardware_qualification(publication: str) -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    version = candidate["version"]
+    candidate["publication_status"] = publication
+    if publication == "unpublished":
+        registry["observations"] = [
+            row for row in registry["observations"] if row["integration_release"] != version
+        ]
     markdown = render_markdown(registry, ROOT)
-    candidate = registry["current_candidate"]["version"]
     expected_build = (
-        f"Published beta [{candidate}]"
-        if registry["current_candidate"]["publication_status"] == "published_beta"
-        else f"Unpublished candidate **{candidate}**"
+        f"Published beta [{version}]({RELEASES_URL}/tag/v{version})"
+        if publication == "published_beta"
+        else f"Unpublished candidate **{version}**"
     )
-    assert expected_build in markdown
-    assert "Full hardware qualification is pending" in markdown
-    assert "https://github.com/ProspectOre/weber-connect-unofficial/releases/latest" in markdown
+    assert f"{expected_build}. Full hardware qualification is pending." in markdown
+    assert f"{RELEASES_URL}/latest" in markdown
+
+
+def test_registry_rejects_an_invalid_candidate_publication_status() -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     registry["current_candidate"]["publication_status"] = "stable"
     with pytest.raises(SupportError, match="Candidate publication status"):
         validate_registry(registry, ROOT)

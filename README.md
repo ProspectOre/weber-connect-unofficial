@@ -75,8 +75,8 @@ health and last-update context. Cloud telemetry needs internet access and the
 hub's Wi-Fi/cloud connection. An offline hub or an unplugged probe can legitimately
 show unknown readings. Local telemetry without authenticated peer setup is disabled.
 
-The integration reads reported state. Operate the grill and adjust cook settings
-on the grill or in the Weber app. Direct Bluetooth telemetry from portable
+The integration reads reported state. It sends no ignition, cook, target, Wi-Fi,
+or mode commands. Operate the grill on the device or in the Weber app. Direct Bluetooth telemetry from portable
 probes remains disabled. See [architecture](ARCHITECTURE.md) and
 [security](SECURITY.md) for the integration's data and control boundaries.
 
