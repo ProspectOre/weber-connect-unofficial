@@ -2,7 +2,8 @@
 
 ## Supported versions
 
-Use the [latest stable release](https://github.com/ProspectOre/weber-connect-unofficial/releases/latest)
+The latest released version receives security fixes. Use the
+[latest stable release](https://github.com/ProspectOre/weber-connect-unofficial/releases/latest)
 for everyday use. Use the same private reporting channel for stable and beta.
 
 ## Reporting

@@ -12,6 +12,13 @@ physical receipt can show that qualification is pending. Record individual
 hardware results with their exact setup and source as they arrive. See the
 [hardware trial guide](docs/support/hardware-trials.md).
 
+## Checks for both channels
+
+CI runs the pinned Home Assistant suites at 100% statement and branch coverage,
+the latest Home Assistant smoke lane, lint and type checks, security and
+dependency checks, release and support validation, HACS, and Hassfest. The PR
+also needs CodeQL and shared review. See the [contributor checks](CONTRIBUTING.md#development-setup).
+
 ## Stable
 
 A new stable release needs passing CI and review and the required

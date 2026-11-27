@@ -50,5 +50,7 @@ Post in the existing thread for your model or symptom, or open a
 [bug report](https://github.com/ProspectOre/weber-connect-unofficial/issues/new?template=bug_report.yml).
 Label each stage you report as passed, failed, not tested, or not applicable.
 For probe-slot tests, report the physical slots you actually used. Operate the
-grill normally and leave a working pairing in place. Direct portable Bluetooth
-probe setup remains blocked until peer authentication is verified.
+grill yourself and leave a working pairing in place. The integration reads
+telemetry only during a cook. Stop the trial if the grill behaves unexpectedly
+or you are unsure how to operate it safely. Direct portable Bluetooth probe
+setup remains blocked until peer authentication is verified.

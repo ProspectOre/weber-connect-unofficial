@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 import pytest
 
 from scripts.support import (
+    RELEASES_URL,
     SupportError,
     _flatten_pages,
     render_markdown,
@@ -51,12 +52,17 @@ def test_rendered_evidence_links_resolve_from_matrix_directory() -> None:
     markdown = render_markdown(registry, ROOT)
     links = re.findall(r"\[([^\]]+)\]\(([^)]+)\)", markdown)
     assert links
+    version = registry["current_candidate"]["version"]
+    release_links = {
+        "latest stable release": f"{RELEASES_URL}/latest",
+        version: f"{RELEASES_URL}/tag/v{version}",
+    }
     repository_links = external_links = 0
     for label, destination in links:
         url = urlsplit(destination)
         if url.scheme:
             assert url.scheme == "https"
-            assert url.netloc
+            assert destination == release_links.get(label, label)
             external_links += 1
             continue
         resolved = (ROOT / "docs" / unquote(url.path)).resolve()
@@ -90,19 +96,40 @@ def test_scoped_beta_observations_do_not_qualify_the_physical_receipt() -> None:
     assert physical["verified"] == {}
 
 
-@pytest.mark.parametrize("publication", ["unpublished", "published_beta"])
-def test_candidate_hardware_claim_requires_a_reporter_comment(publication: str) -> None:
+@pytest.mark.parametrize(
+    ("publication", "verification", "comment"),
+    [
+        ("unpublished", "community_verified", "#issuecomment-7212078167"),
+        ("published_beta", "community_verified", ""),
+        ("published_beta", "maintainer_verified", "#issuecomment-7212078167"),
+    ],
+)
+def test_candidate_hardware_claim_requires_a_reporter_comment(
+    publication: str, verification: str, comment: str
+) -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     candidate = registry["current_candidate"]
     candidate["publication_status"] = publication
     observation = registry["observations"][0]
     observation["integration_release"] = candidate["version"]
-    observation["verification_kind"] = "community_verified"
-    evidence_url = "https://github.com/ProspectOre/weber-connect-unofficial/issues/59"
-    if publication == "unpublished":
-        evidence_url += "#issuecomment-7212078167"
-    observation["evidence"] = [{"kind": "url", "value": evidence_url}]
+    observation["verification_kind"] = verification
+    observation["evidence"] = [
+        {
+            "kind": "url",
+            "value": f"https://github.com/ProspectOre/weber-connect-unofficial/issues/59{comment}",
+        }
+    ]
     with pytest.raises(SupportError, match="published beta and a reporter comment"):
+        validate_registry(registry, ROOT)
+
+
+def test_published_beta_requires_a_release_candidate_version() -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    candidate.update(version="3.3.0", publication_status="published_beta")
+    with pytest.raises(
+        SupportError, match="published beta must use an exact release-candidate version"
+    ):
         validate_registry(registry, ROOT)
 
 

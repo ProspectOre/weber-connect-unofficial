@@ -81,7 +81,7 @@ body:
     id: outcomes
     attributes:
       label: Per-stage and lifecycle outcomes
-      description: For each item, record Pass, Fail, Not tested, or Unknown, with a short note for failures. See the [hardware trial guidance](https://github.com/ProspectOre/weber-connect-unofficial/blob/main/docs/support/hardware-trials.md). Reports are observations, not support claims.
+      description: For each item, record passed, failed, not tested, or not applicable, with a short note for failures. See the [hardware trial guidance](https://github.com/ProspectOre/weber-connect-unofficial/blob/main/docs/support/hardware-trials.md). Reports are observations, not support claims.
       value: |
         Discovery:
         Pairing:
