@@ -50,6 +50,13 @@ def test_registry_distinguishes_publication_from_hardware_qualification(publicat
     assert f"{RELEASES_URL}/latest" in markdown
 
 
+def test_readme_links_the_published_beta_from_the_registry() -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    if candidate["publication_status"] == "published_beta":
+        assert f"{RELEASES_URL}/tag/v{candidate['version']}" in (ROOT / "README.md").read_text()
+
+
 def test_registry_rejects_an_invalid_candidate_publication_status() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     registry["current_candidate"]["publication_status"] = "stable"
@@ -184,6 +191,29 @@ def test_pr71_merged_comment_classifies_without_exporting_private_text() -> None
     assert "PR #71" in report and "merged" in report
     assert "live readings" in report and "recovery" in report
     assert secret not in report
+
+
+def test_ep_triage_keeps_adapter_results_separate() -> None:
+    report = render_triage(
+        {
+            "repository": "ProspectOre/weber-connect-unofficial",
+            "items": [
+                {
+                    "number": 59,
+                    "title": "EP thermometer pairing",
+                    "url": "https://github.com/ProspectOre/weber-connect-unofficial/issues/59",
+                    "author": "reporter",
+                    "state": "open",
+                    "updated_at": "",
+                    "is_pull_request": False,
+                    "merged_at": None,
+                    "body": "",
+                    "comments": [],
+                }
+            ],
+        }
+    )
+    assert "retain the reported result for each adapter and release" in report
 
 
 def test_triage_bounds_input_and_rejects_unknown_fields() -> None:

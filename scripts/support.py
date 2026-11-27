@@ -585,8 +585,8 @@ def _guidance(item: dict[str, Any], stages: list[str]) -> tuple[str, str]:
     number = item["number"]
     if number == 59:
         return (
-            "Exact thermometer/controller model and firmware, whether a physical approval prompt appeared, last successful stage, and a reviewed privacy-safe support report.",
-            "Maintainer: keep unresolved until the reporter supplies the exact device evidence and approval result; do not infer a pairing fix.",
+            "Exact thermometer model, firmware, integration version and adapter. Record the stages reached on that adapter. Include a reviewed support report if setup fails.",
+            "Maintainer: retain the reported result for each adapter and release. Use the hardware trial guide to identify the next uncovered path.",
         )
     if number == 65:
         return (
@@ -596,7 +596,7 @@ def _guidance(item: dict[str, Any], stages: list[str]) -> tuple[str, str]:
     if item["is_pull_request"] and number == 71:
         return (
             "Exact candidate release, full-cook readings, fuel unknowns, cloud-gap timings, app coexistence, restart/recovery, stable IDs and a separate current-candidate trial.",
-            "Maintainer: keep the RC3 community observation version-bound and request a new RC4 hardware run before changing compatibility status.",
+            "Maintainer: preserve prior cook results and use the hardware trial guide to request the missing evidence on the published beta.",
         )
     if stages == ["Unclassified; manual triage required"]:
         return (
