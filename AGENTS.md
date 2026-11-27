@@ -15,4 +15,5 @@ Keep physical acceptance separate from source review and CI.
 - Test locally: `ruff check custom_components tests_native scripts && pytest -q --asyncio-mode=auto tests_native --cov=custom_components/weber_connect --cov-branch --cov-fail-under=100`.
 - Release: no workflow; run `python scripts/validate_release.py`, then tag and publish the GitHub release for HACS by hand.
 - Public builds are sequential: each published prerelease takes the next rc after the last published one (rc12, then rc13). Unpublished candidates keep that number and refresh its evidence instead of taking new ones.
+- Keep the README release table and compatibility registry aligned with GitHub Releases. Record beta observations against the exact release and link the reporter comment. Keep full stable hardware qualification in its physical receipt.
 - Retain stable release history and only the newest published beta. Retire that beta when its version becomes stable or a newer stable supersedes it. After each publication, prune superseded prerelease entries while preserving tags and referenced validation evidence.

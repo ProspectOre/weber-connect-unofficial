@@ -26,6 +26,7 @@ REGISTRY_PATH = ROOT / "docs/support/compatibility.json"
 MATRIX_PATH = ROOT / "docs/product-compatibility.md"
 TRIAGE_GUIDE = "docs/support/triage.md"
 TRIAL_GUIDE = "docs/support/hardware-trials.md"
+RELEASES_URL = "https://github.com/ProspectOre/weber-connect-unofficial/releases"
 
 FAMILY_IDS = {
     "connect_smart_grilling_hub",
@@ -33,6 +34,7 @@ FAMILY_IDS = {
     "searwood_smoque",
     "spirit_smart",
     "genesis_smart",
+    "ep_thermometer",
     "summit_smart",
     "performer_smart",
     "kettle_smart_ring",
@@ -148,10 +150,11 @@ def validate_registry(registry: dict[str, Any], root: Path = ROOT) -> None:
     version = candidate["version"]
     if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+(?:rc\d+)?", version):
         raise SupportError("current_candidate.version must be an exact version")
-    if candidate["publication_status"] != "unpublished":
-        raise SupportError(
-            "The prepublication validation snapshot requires an unpublished candidate"
-        )
+    publication = candidate["publication_status"]
+    if publication not in ("unpublished", "published_beta"):
+        raise SupportError("Candidate publication status must be unpublished or published_beta")
+    if publication == "published_beta" and not re.fullmatch(r"\d+\.\d+\.\d+rc[1-9]\d*", version):
+        raise SupportError("A published beta must use an exact release-candidate version")
     if candidate["hardware_status"] != "pending_hardware_validation":
         raise SupportError("Current candidate hardware status must remain pending")
     receipts = candidate["receipts"]
@@ -275,10 +278,6 @@ def validate_registry(registry: dict[str, Any], root: Path = ROOT) -> None:
         release = observation["integration_release"]
         if not isinstance(release, str) or not release:
             raise SupportError(f"Observation {observation_id} needs an exact integration release")
-        if release == version:
-            raise SupportError(
-                "Current candidate cannot inherit or claim historical hardware verification"
-            )
         if observation["verification_kind"] not in OBSERVATION_KINDS:
             raise SupportError(f"Invalid verification kind in {observation_id}")
         stages = observation["passed_stages"]
@@ -305,6 +304,23 @@ def validate_registry(registry: dict[str, Any], root: Path = ROOT) -> None:
                         verified.get(key) for key in receipt_stage_keys[stage]
                     ):
                         raise SupportError(f"Receipt does not verify {stage} for {observation_id}")
+
+        if release == version and (
+            publication != "published_beta"
+            or observation["verification_kind"] != "community_verified"
+            or not any(
+                reference["kind"] == "url"
+                and re.fullmatch(
+                    r"/ProspectOre/weber-connect-unofficial/(?:issues|pull)/[1-9]\d*",
+                    urlsplit(reference["value"]).path,
+                )
+                and re.fullmatch(r"issuecomment-[1-9]\d*", urlsplit(reference["value"]).fragment)
+                for reference in evidence
+            )
+        ):
+            raise SupportError(
+                "Current beta observations require a published beta and a reporter comment"
+            )
 
     feedback = registry["feedback"]
     if not isinstance(feedback, list):
@@ -359,14 +375,18 @@ def render_markdown(registry: dict[str, Any], root: Path = ROOT) -> str:
     validate_registry(registry, root)
     candidate = registry["current_candidate"]
     receipts = candidate["receipts"]
+    version = candidate["version"]
+    build = (
+        f"Published beta [{version}]({RELEASES_URL}/tag/v{version})"
+        if candidate["publication_status"] == "published_beta"
+        else f"Unpublished candidate **{version}**"
+    )
     lines = [
         "# Product compatibility and hardware observations",
         "",
-        "This generated inventory separates implementation status from version-bound hardware evidence. Product applicability is not a compatibility claim. See the [hardware trial procedure](support/hardware-trials.md) and [read-only support triage](support/triage.md).",
+        f"{build}. Full hardware qualification is pending.",
         "",
-        f"Validation snapshot for **{candidate['version']}** ({candidate['publication_status']} at validation; hardware: {candidate['hardware_status']}).",
-        "",
-        "Published versions: [https://github.com/ProspectOre/weber-connect-unofficial/releases](https://github.com/ProspectOre/weber-connect-unofficial/releases).",
+        f"Use the [latest stable release]({RELEASES_URL}/latest) for everyday use. See the [hardware trial guide](support/hardware-trials.md) to share a result.",
         "",
         "| Candidate receipt | Record |",
         "| --- | --- |",
@@ -376,20 +396,21 @@ def render_markdown(registry: dict[str, Any], root: Path = ROOT) -> str:
         "",
         "## Product lines",
         "",
-        "| Product line | Implementation status | Current candidate hardware status |",
+        "| Product line | What the source supports | Full candidate qualification |",
         "| --- | --- | --- |",
     ]
     for family in registry["product_families"]:
         summary = family["implementation_summary"].replace("|", "\\|")
+        status = family["implementation_status"].replace("_", " ").capitalize()
         lines.append(
-            f"| {family['name']} | **{family['implementation_status']}** — {summary} | {family['candidate_status']} ({_md_link(family['candidate_receipt'])}) |"
+            f"| {family['name']} | **{status}.** {summary} | Pending ({_md_link(family['candidate_receipt'])}) |"
         )
     lines.extend(
         [
             "",
             "## Version-bound hardware observations",
             "",
-            f"These observations apply only to the exact model, firmware and integration release shown. They do not carry forward to {candidate['version']}.",
+            "Each result applies to the model, firmware, release, and setup in its report.",
             "",
             "| Model | Firmware | Integration release | Verification | Passed stages | Evidence |",
             "| --- | --- | --- | --- | --- | --- |",
@@ -404,7 +425,7 @@ def render_markdown(registry: dict[str, Any], root: Path = ROOT) -> str:
         stages = ", ".join(stage.replace("_", " ") for stage in observation["passed_stages"])
         model = observation["exact_model"].replace("|", "\\|")
         lines.append(
-            f"| {family_names[observation['product_family']]}: {model} | {firmware} | {observation['integration_release']} | {observation['verification_kind']} | {stages} | {evidence} |"
+            f"| {family_names[observation['product_family']]}: {model} | {firmware} | {observation['integration_release']} | {observation['verification_kind'].replace('_', ' ')} | {stages} | {evidence} |"
         )
     lines.extend(
         [
@@ -564,8 +585,8 @@ def _guidance(item: dict[str, Any], stages: list[str]) -> tuple[str, str]:
     number = item["number"]
     if number == 59:
         return (
-            "Exact thermometer/controller model and firmware, whether a physical approval prompt appeared, last successful stage, and a reviewed privacy-safe support report.",
-            "Maintainer: keep unresolved until the reporter supplies the exact device evidence and approval result; do not infer a pairing fix.",
+            "Exact thermometer model, firmware, integration version and adapter. Record the stages reached on that adapter. Include a reviewed support report if setup fails.",
+            "Maintainer: retain the reported result for each adapter and release. Use the hardware trial guide to identify the next uncovered path.",
         )
     if number == 65:
         return (
@@ -575,7 +596,7 @@ def _guidance(item: dict[str, Any], stages: list[str]) -> tuple[str, str]:
     if item["is_pull_request"] and number == 71:
         return (
             "Exact candidate release, full-cook readings, fuel unknowns, cloud-gap timings, app coexistence, restart/recovery, stable IDs and a separate current-candidate trial.",
-            "Maintainer: keep the RC3 community observation version-bound and request a new RC4 hardware run before changing compatibility status.",
+            "Maintainer: preserve prior cook results and use the hardware trial guide to request the missing evidence on the published beta.",
         )
     if stages == ["Unclassified; manual triage required"]:
         return (

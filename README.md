@@ -8,13 +8,17 @@ authenticated Weber Cloud companion for ongoing temperatures and status. The
 Weber app can continue using Bluetooth after setup. No Weber account password,
 phone secret, MQTT broker or packet capture is required.
 
-On the EP-series WiFi Thermometer, the published 3.3.0rc13 beta reached physical
-approval over USB and ESPHome but timed out during the greeting.
-Version 3.3.0rc14 handles the reported acknowledgement and records the scanner
-that connected. Pairing and fresh readings on this controller still need verification.
-The stable release is 3.2.2. [Available HACS releases](https://github.com/ProspectOre/weber-connect-unofficial/releases)
-Use the latest stable HACS release for the established feature set; enable
-prereleases only when participating in the [hardware trials](docs/support/hardware-trials.md).
+## Choose a release
+
+| Channel | Use it for | What's available |
+| --- | --- | --- |
+| [Stable 3.2.2](https://github.com/ProspectOre/weber-connect-unofficial/releases/tag/v3.2.2) | Everyday use | Physically approved Bluetooth setup and read-only Weber Cloud readings on supported controllers. The original Smart Grilling Hub is the main supported device. |
+| [Beta 3.3.0rc14](https://github.com/ProspectOre/weber-connect-unofficial/releases/tag/v3.3.0rc14) | Opt-in hardware testing | Updated setup for built-in controllers, read-only probe targets when reported, and a fix for SmokeFire fuel going unknown between reports. One EP thermometer completed USB setup and resumed fresh readings after restart. |
+
+Stable 3.3.0 is waiting on the physical acceptance checks, including a
+one-hour Connect Hub run with no update gap over 30 seconds. See
+[all published releases](https://github.com/ProspectOre/weber-connect-unofficial/releases)
+and the [tested models and firmware](https://github.com/ProspectOre/weber-connect-unofficial/blob/main/docs/product-compatibility.md).
 
 ## Requirements
 
@@ -71,45 +75,29 @@ health and last-update context. Cloud telemetry needs internet access and the
 hub's Wi-Fi/cloud connection. An offline hub or an unplugged probe can legitimately
 show unknown readings. Local telemetry without authenticated peer setup is disabled.
 
-An active probe program can add a target-temperature sensor, or separate lower
-and upper target sensors for a range. Targets clear when the session ends or
-the connection fails. Unsupported or unavailable program data stays unknown;
-the integration does not change targets in the Weber app.
+The integration reads reported state. It sends no ignition, cook, target, Wi-Fi,
+or mode commands. Operate the grill on the device or in the Weber app. Direct Bluetooth telemetry from portable
+probes remains disabled. See [architecture](ARCHITECTURE.md) and
+[security](SECURITY.md) for the integration's data and control boundaries.
 
-The integration sends no ignition, cooking-program, target-temperature, Wi-Fi or
-mode-control commands. Pairing compatibility depends on the exact controller;
-other product families are not qualified merely by being discovered.
+## Help test or report a problem
 
-For a failure, choose **Get help / report a problem**, review the generated report,
-and share it in the existing issue. Please exclude credentials, QR codes, private
-identifiers and raw packets. See [architecture](ARCHITECTURE.md), [security](SECURITY.md), and the
-[3.3.0rc14 validation record](docs/validation/3.3.0rc14-readiness.md).
+Keep your working entry. During normal use, note whether readings change,
+reconnect on their own, and return after a Home Assistant restart. Share the
+exact grill or thermometer model, firmware, integration and Home Assistant
+versions, and Bluetooth adapter or proxy. Successful and partial results help.
 
-Published historical installation and hardware evidence remains available in the
-[3.2.1 documentation](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.1/README.md).
+If setup fails, choose **Get help / report a problem** and note the last step
+that worked. For a reading gap, note the time and time zone, whether the Weber
+app still had fresh readings, and whether Home Assistant recovered on its own.
+Review diagnostics before sharing and remove private details.
 
-## Beta compatibility
-
-The [product matrix](docs/product-compatibility.md) separates source support from
-version-bound hardware results. This beta includes controller-family routing,
-SiLabs setup work, reported slots above four and SmokeFire fuel/status freshness
-changes. Genesis and SiLabs interoperability, portable accessories and other
-listed families still need exact-device results. Direct portable Bluetooth
-telemetry remains disabled until peer authentication is established. The cause of longer
-SmokeFire cooking-time cloud gaps remains unresolved.
-
-RC6's targeted app-closed telemetry and automatic recovery trial is historical
-evidence, recorded in its [live receipt](docs/validation/3.2.2rc6-live-observation.json)
-and [preserved original receipt](https://github.com/ProspectOre/weber-connect-unofficial/releases/download/v3.2.2/historical-3.2.2rc6-live-proof.json).
-It does not establish the new candidate's full physical acceptance.
-
-Detailed behavior, Activity filtering and troubleshooting are preserved in the
-[RC6 user guide](https://github.com/ProspectOre/weber-connect-unofficial/blob/v3.2.2rc6/README.md#everyday-behavior).
+See [how to install or roll back the beta, what to check on your model, and where to post](https://github.com/ProspectOre/weber-connect-unofficial/blob/main/docs/support/hardware-trials.md).
 
 ## Privacy and removal
 
-Generated private companion credentials stay in the HA config entry. Support
-reports use an allowlist and are shared only when you open and submit them.
+Generated companion credentials stay in Home Assistant. You choose whether to
+share a support report.
 Remove the integration entry under Devices & services, then remove it in HACS
 and restart HA. This removes its entities; it does not reset the Weber app.
 

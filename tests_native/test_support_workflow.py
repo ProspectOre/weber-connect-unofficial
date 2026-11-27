@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 import pytest
 
 from scripts.support import (
+    RELEASES_URL,
     SupportError,
     _flatten_pages,
     render_markdown,
@@ -26,16 +27,40 @@ def test_registry_and_generated_matrix_are_current() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     validate_registry(registry, ROOT)
     assert render_markdown(registry, ROOT) == (ROOT / "docs/product-compatibility.md").read_text()
-    assert len(registry["product_families"]) == 13
+    assert len(registry["product_families"]) == 14
 
 
-def test_registry_distinguishes_build_validation_from_live_release_availability() -> None:
+@pytest.mark.parametrize("publication", ["published_beta", "unpublished"])
+def test_registry_distinguishes_publication_from_hardware_qualification(publication: str) -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    version = candidate["version"]
+    candidate["publication_status"] = publication
+    if publication == "unpublished":
+        registry["observations"] = [
+            row for row in registry["observations"] if row["integration_release"] != version
+        ]
     markdown = render_markdown(registry, ROOT)
-    assert "unpublished at validation" in markdown
-    assert "https://github.com/ProspectOre/weber-connect-unofficial/releases" in markdown
+    expected_build = (
+        f"Published beta [{version}]({RELEASES_URL}/tag/v{version})"
+        if publication == "published_beta"
+        else f"Unpublished candidate **{version}**"
+    )
+    assert f"{expected_build}. Full hardware qualification is pending." in markdown
+    assert f"{RELEASES_URL}/latest" in markdown
+
+
+def test_readme_links_the_published_beta_from_the_registry() -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    if candidate["publication_status"] == "published_beta":
+        assert f"{RELEASES_URL}/tag/v{candidate['version']}" in (ROOT / "README.md").read_text()
+
+
+def test_registry_rejects_an_invalid_candidate_publication_status() -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     registry["current_candidate"]["publication_status"] = "stable"
-    with pytest.raises(SupportError, match="prepublication validation"):
+    with pytest.raises(SupportError, match="Candidate publication status"):
         validate_registry(registry, ROOT)
 
 
@@ -44,12 +69,17 @@ def test_rendered_evidence_links_resolve_from_matrix_directory() -> None:
     markdown = render_markdown(registry, ROOT)
     links = re.findall(r"\[([^\]]+)\]\(([^)]+)\)", markdown)
     assert links
+    version = registry["current_candidate"]["version"]
+    release_links = {
+        "latest stable release": f"{RELEASES_URL}/latest",
+        version: f"{RELEASES_URL}/tag/v{version}",
+    }
     repository_links = external_links = 0
     for label, destination in links:
         url = urlsplit(destination)
         if url.scheme:
             assert url.scheme == "https"
-            assert destination == label
+            assert destination == release_links.get(label, label)
             external_links += 1
             continue
         resolved = (ROOT / "docs" / unquote(url.path)).resolve()
@@ -73,15 +103,51 @@ def test_render_cli_works_when_invoked_by_path() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_current_candidate_has_no_inherited_hardware_observations() -> None:
+def test_scoped_beta_observations_do_not_qualify_the_physical_receipt() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
-    candidate = registry["current_candidate"]["version"]
-    assert all(row["integration_release"] != candidate for row in registry["observations"])
+    validate_registry(registry, ROOT)
     physical = json.loads(
         (ROOT / registry["current_candidate"]["receipts"]["physical"]).read_text()
     )
     assert physical["status"] == "pending_hardware_validation"
     assert physical["verified"] == {}
+
+
+@pytest.mark.parametrize(
+    ("publication", "verification", "comment"),
+    [
+        ("unpublished", "community_verified", "#issuecomment-7212078167"),
+        ("published_beta", "community_verified", ""),
+        ("published_beta", "maintainer_verified", "#issuecomment-7212078167"),
+    ],
+)
+def test_candidate_hardware_claim_requires_a_reporter_comment(
+    publication: str, verification: str, comment: str
+) -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    candidate["publication_status"] = publication
+    observation = registry["observations"][0]
+    observation["integration_release"] = candidate["version"]
+    observation["verification_kind"] = verification
+    observation["evidence"] = [
+        {
+            "kind": "url",
+            "value": f"https://github.com/ProspectOre/weber-connect-unofficial/issues/59{comment}",
+        }
+    ]
+    with pytest.raises(SupportError, match="published beta and a reporter comment"):
+        validate_registry(registry, ROOT)
+
+
+def test_published_beta_requires_a_release_candidate_version() -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    candidate.update(version="3.3.0", publication_status="published_beta")
+    with pytest.raises(
+        SupportError, match="published beta must use an exact release-candidate version"
+    ):
+        validate_registry(registry, ROOT)
 
 
 def test_equal_but_stale_candidate_receipt_fingerprints_are_rejected(
@@ -125,6 +191,29 @@ def test_pr71_merged_comment_classifies_without_exporting_private_text() -> None
     assert "PR #71" in report and "merged" in report
     assert "live readings" in report and "recovery" in report
     assert secret not in report
+
+
+def test_ep_triage_keeps_adapter_results_separate() -> None:
+    report = render_triage(
+        {
+            "repository": "ProspectOre/weber-connect-unofficial",
+            "items": [
+                {
+                    "number": 59,
+                    "title": "EP thermometer pairing",
+                    "url": "https://github.com/ProspectOre/weber-connect-unofficial/issues/59",
+                    "author": "reporter",
+                    "state": "open",
+                    "updated_at": "",
+                    "is_pull_request": False,
+                    "merged_at": None,
+                    "body": "",
+                    "comments": [],
+                }
+            ],
+        }
+    )
+    assert "retain the reported result for each adapter and release" in report
 
 
 def test_triage_bounds_input_and_rejects_unknown_fields() -> None:
