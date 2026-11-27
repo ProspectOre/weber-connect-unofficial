@@ -2,7 +2,8 @@
 
 ## Supported versions
 
-The latest released version receives security fixes.
+Use the [latest stable release](https://github.com/ProspectOre/weber-connect-unofficial/releases/latest)
+for everyday use. Use the same private reporting channel for stable and beta.
 
 ## Reporting
 
@@ -46,8 +47,8 @@ and bearer token are sensitive per-install credentials.
 Weber's cloud API is private and undocumented. The default **Phone + Home
 Assistant** mode sends only companion registration/authentication, exact-hub
 association checks, messaging wake-up, read-only status subscription, and
-current-status requests to Weber. 3.0 has no cook-history, recipe/program,
-instruction, timer, target, or remote-control request path.
+current-status requests to Weber. The beta can also read program details for
+reported probe targets. The integration provides read-only telemetry.
 
 The integration does not configure Wi-Fi, install or start recipes, change
 targets, ignite appliances, or change grill mode. Weber exposes no supported

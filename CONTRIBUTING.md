@@ -1,5 +1,10 @@
 # Contributing
 
+Testing a grill or thermometer is a contribution. Use the [hardware trial
+guide](docs/support/hardware-trials.md) for stable and beta testing, reports,
+and diagnostics. The [compatibility matrix](docs/product-compatibility.md)
+lists results by model, firmware, and integration version.
+
 ## Development setup
 
 Use Python 3.14.2 or newer. The [test matrix](.github/ha-test-matrix.json)
@@ -43,12 +48,6 @@ Standard hosted runner minutes are
 Required tests, HACS, Hassfest, security analysis, and exact-head review remain
 merge requirements. Physical pairing and appliance acceptance are separate.
 
-The retired hosted-runner policy workflow sampled private-repository minute
-allowances and forced hosted-runner variables off. CI routing is defined in
-workflow source without that billing switch or a local runner fallback.
-Larger runners are billed even for public repositories; artifact storage and
-cache allowances have separate billing boundaries.
-
 Leave AI attribution out of commits and PR text (co-author trailers, session
 links, tool footers). `ci` warns on fork PRs; the maintainer strips any left at
 merge.
@@ -70,29 +69,9 @@ merge.
   target changes, and grill-mode control are out of scope for 3.0.
 - Stable unique IDs must not depend on which adapter or proxy is selected.
 
-## Compatibility reports
+## Maintaining compatibility evidence
 
-Success and failure reports are equally useful. Include:
-
-- integration and Home Assistant versions;
-- Home Assistant installation type;
-- Weber product name and firmware version;
-- official app platform/version and account country or region;
-- local adapter or ESPHome proxy model and ESPHome version;
-- whether discovery, physical pairing, cloud association, and phone + Home
-  Assistant telemetry each succeeded.
-
-Do not post MAC addresses, appliance or companion IDs, config entries, device
-passwords, bearer tokens, email addresses, packet captures, or unredacted
-diagnostics. Redact identifiers consistently when a sequence needs them.
-
-Add a regression test for every new protocol shape. Update the physical matrix
-only after the path was exercised on real hardware.
-
-Use the structured bug or compatibility form on GitHub. The
-[hardware trial checklist](docs/support/hardware-trials.md) defines opt-in
-physical evidence; [field regressions](docs/support/regressions.md) keep
-reported behavior reproducible without inventing packets. The
-[triage process](docs/support/triage.md) includes reports in PR comments.
-Weekly GitHub checks generate a read-only triage artifact and refresh HA
-compatibility checks; they do not post replies or close issues.
+Add focused regression tests for new protocol shapes. Record physical results
+against the exact release and include the source. Use the
+[triage process](docs/support/triage.md) for reported regressions and reports
+posted in PR comments.

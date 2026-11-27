@@ -1,74 +1,54 @@
-# Hardware trial procedure
+# Help test Weber Connect Unofficial
 
-Use this procedure for an opt-in, manually operated compatibility observation.
-It records one exact device and software combination; it does not certify a
-product family. See the [compatibility inventory](../product-compatibility.md)
-and submit results through the [compatibility report form](../../.github/ISSUE_TEMPLATE/compatibility_report.yml).
+A report about one model and firmware helps us document what works and narrow
+down failures. A normal cook or probe session is enough to contribute. See the
+[release channels](../../README.md#choose-a-release) and
+[hardware results](../product-compatibility.md).
 
-## Before testing
+## Install or roll back
 
-Record the product family, exact model/generation, controller identity as shown
-by the product (never its address), firmware, integration release, Home Assistant
-version/install type, Bluetooth adapter or proxy and version, and Weber app
-platform/version. If a value is unknown, write `Unknown`; do not infer it from a
-marketing SKU. Use the exact candidate release under test. A branch, local build,
-or source test is not a published release.
+- Keep your existing Home Assistant entry and named entities. You can report
+  results on stable without upgrading. Make a Home Assistant backup before
+  trying the beta.
+- To try the beta, open **Weber Connect Unofficial → Redownload** in HACS, turn
+  on **Show beta versions**, and choose the current beta from
+  [GitHub Releases](https://github.com/ProspectOre/weber-connect-unofficial/releases).
+- Restart Home Assistant and confirm the installed `integration_version` in
+  **Settings → Devices & services → Weber Connect → Download diagnostics**.
+- To roll back, return to **Redownload**, select the
+  [latest stable release](https://github.com/ProspectOre/weber-connect-unofficial/releases/latest),
+  and restart Home Assistant. Keep entries that already worked on stable.
+  If setup used beta-only support, the device may need the beta to load.
 
-The tester operates the grill and approves pairing in the device's normal physical
-workflow. The integration and test procedure issue no ignition, cook, burner,
-temperature-target, timer, firmware, or network-configuration commands. Stop if
-the device behaves unexpectedly or safe manual operation is unclear.
+## What helps most
 
-## Run and record each stage
+| Device | Useful check | Where to report |
+| --- | --- | --- |
+| EP-series WiFi Thermometer, SKU 4553721 | RC14 pairing, live readings, and restart recovery passed on USB with firmware 1.4.5_200. Keep a working entry. If you are already setting up over ESPHome, share whether approval, setup, and fresh readings work. | [#59](https://github.com/ProspectOre/weber-connect-unofficial/issues/59) |
+| Searwood 600 | With the existing entry, check whether HA reconnects at power-up and updates grill temperature and both probes during a normal beta cook with the Weber app open. Report which probe targets or other fields appear in each app. | [#96](https://github.com/ProspectOre/weber-connect-unofficial/issues/96) |
+| SmokeFire EX4 Gen 2 | During a normal beta cook, watch for fuel going unknown while temperatures still update, false idle, or connection gaps. | [#71](https://github.com/ProspectOre/weber-connect-unofficial/pull/71) |
+| Genesis with built-in controller | For a pending setup retry on the beta, report the model and firmware, whether the approval prompt appeared, and the last step reached. | [#65](https://github.com/ProspectOre/weber-connect-unofficial/issues/65) |
+| Connect Smart Grilling Hub or another model | Check fresh readings, app coexistence, and recovery after restart. If you run it for an hour, include the runtime and longest gap you observed. | [Compatibility form](https://github.com/ProspectOre/weber-connect-unofficial/issues/new?template=compatibility_report.yml) |
 
-For every stage, record exactly one result: `passed`, `failed`, `not_tested`, or
-`not_applicable`. Add a short observation and the failure stage. Unknown results
-remain unverified. Do not mark a stage passed from logs, simulation, source review,
-or a previous release.
+## What to include
 
-1. **Discovery:** find the intended controller and confirm the reported family.
-2. **Physical approval and setup:** approve pairing on the device when prompted;
-   record whether approval appeared and setup completed.
-3. **Cloud identity:** confirm the intended appliance was associated. Do not
-   share account details, IDs, addresses, credentials, or tokens.
-4. **Fresh readings:** confirm current temperatures and reported state change
-   while observing the physical device. Mark stale, absent, or unknown separately.
-5. **App coexistence:** with the Weber app open on its recorded platform, confirm
-   Home Assistant continues receiving fresh readings and neither client changes
-   grill settings.
-6. **Reload and restart:** reload the integration, then restart Home Assistant.
-   Confirm setup recovers and entity IDs/names remain stable.
-7. **Recovery:** after a naturally occurring disconnect or an explicitly safe,
-   manually initiated reconnect, record time to the next fresh cook status and
-   whether fresh readings resume. Do not call appliance-only frames recovery.
-8. **Cook or probe session:** run a complete manually controlled cook where safe
-   and practical; otherwise test a representative probe session and mark full-cook
-   acceptance `not_tested`.
-9. **Endurance:** record elapsed time and any gaps, stale readings, unknown fuel,
-   entity changes, or disconnects. Session counters are local diagnostic counts,
-   not independent measurements or proof of a cause.
+- Exact model and generation, firmware, integration and Home Assistant
+  versions, HA install type, local Bluetooth adapter or ESPHome proxy/version,
+  and Weber app platform/version when relevant. Mark unavailable details unknown.
+- The steps you tried and what you saw. For setup, record discovery, physical
+  approval, cloud association, and the first changing reading. For an existing
+  entry, record whether reload or restart preserves entity IDs and fresh
+  readings. For a gap, record start and recovery times with time zone, whether
+  the Weber app still updated, and whether HA recovered on its own.
+- For a pairing failure, use **Get help / report a problem**. For a telemetry
+  problem, use **Download diagnostics** while the problem is visible, if
+  practical, and again after recovery. Review attachments for credentials,
+  QR codes, addresses, IDs, and other personal details before posting. Keep
+  raw packets private.
 
-## Focus cases
-
-- **SmokeFire:** include a full manual cook when practical. Track fuel as reported,
-  including explicit `unknown`; compare timestamped fresh readings with the grill
-  and app. Report gaps and recovery duration without treating counters as mock
-  measurements or masking unknown as full.
-- **Genesis / issue #65:** record the exact built-in controller and whether
-  approval appeared. If setup stops at response framing, report that failure
-  stage; do not try undocumented frame workarounds.
-- **EP-435 / issue #59:** include model/SKU and thermometer firmware if visible,
-  whether an approval prompt appeared, and the last successful stage. Pairing
-  remains unverified until a tester records the actual outcome.
-- **Probe slot mapping:** separately record zero, one, multiple wired, and wireless
-  slots only when present. Confirm readings and stable entity IDs through reload
-  and restart. Do not infer wireless numbering from the advertised slot count.
-- **Direct probe setup:** stop at the authentication gate unless a compatible
-  peer-authentication method has been established. Discovery is not authorization.
-
-If a candidate trial fails, preserve the exact release and failure stage. Roll
-back through Home Assistant's normal version/backup process; keep the config
-entry and its identity so a retry can verify stable IDs. Report through the
-[bug report form](../../.github/ISSUE_TEMPLATE/bug_report.yml) or compatibility
-form. Submission is a user action; the integration does not contact Weber or
-create reports automatically.
+Post in the existing thread for your model or symptom, or open a
+[bug report](https://github.com/ProspectOre/weber-connect-unofficial/issues/new?template=bug_report.yml).
+Label each stage you report as passed, failed, not tested, or not applicable.
+For probe-slot tests, report the physical slots you actually used. Operate the
+grill normally and leave a working pairing in place. Direct portable Bluetooth
+probe setup remains blocked until peer authentication is verified.

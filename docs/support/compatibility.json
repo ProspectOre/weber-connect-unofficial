@@ -2,7 +2,7 @@
   "schema_version": 1,
   "current_candidate": {
     "version": "3.3.0rc14",
-    "publication_status": "unpublished",
+    "publication_status": "published_beta",
     "hardware_status": "pending_hardware_validation",
     "receipts": {
       "readiness": "docs/validation/3.3.0rc14-readiness.md",
@@ -24,7 +24,7 @@
       "id": "smokefire",
       "name": "SmokeFire",
       "implementation_status": "implemented",
-      "implementation_summary": "Legacy classification and cloud telemetry are present; RC4 manual cooking is community-observed. RC13 retains unchanged fuel reports on a healthy socket; hardware retest is pending. The reported healthy cloud-status flicker, false idle and connection-gap cause remain unresolved.",
+      "implementation_summary": "Legacy classification and cloud telemetry are present; RC4 manual cooking is community-observed. RC14 retains unchanged fuel reports on a healthy socket. A cook on the beta still needs to verify the fix. The reported healthy cloud-status flicker, false idle and connection-gap cause remain unresolved.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/state.py"],
       "candidate_status": "pending_hardware_validation",
       "candidate_receipt": "docs/validation/3.3.0rc14-rc-physical.json"
@@ -33,7 +33,7 @@
       "id": "searwood_smoque",
       "name": "Searwood and Smoque connected pellet grills",
       "implementation_status": "qualification_required",
-      "implementation_summary": "A Searwood 600 community report confirms a 3.2.2 cook after difficult pairing. Model/field gaps and lifecycle trials remain open; Smoque and the current candidate are not qualified.",
+      "implementation_summary": "The Searwood 600 completed a cook on 3.2.2 and kept all 18 entity IDs on upgrade to RC13. Live beta readings, model and field behavior, and Smoque qualification remain open.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "docs/transport-families.md"],
       "candidate_status": "pending_hardware_validation",
       "candidate_receipt": "docs/validation/3.3.0rc14-rc-physical.json"
@@ -53,6 +53,15 @@
       "implementation_status": "partially_implemented",
       "implementation_summary": "Legacy model classification and a separately qualified SiLabs setup path exist; issue 65 framing and all hardware acceptance remain unresolved.",
       "implementation_evidence": ["custom_components/weber_connect/transport_family.py", "custom_components/weber_connect/protocol_adapters.py", "custom_components/weber_connect/silabs_pairing.py"],
+      "candidate_status": "pending_hardware_validation",
+      "candidate_receipt": "docs/validation/3.3.0rc14-rc-physical.json"
+    },
+    {
+      "id": "ep_thermometer",
+      "name": "EP-series WiFi Thermometer",
+      "implementation_status": "partially_implemented",
+      "implementation_summary": "RC14 completed USB pairing, live readings, and restart recovery on SKU 4553721 with firmware 1.4.5_200. ESPHome pairing on RC14 is untested.",
+      "implementation_evidence": ["custom_components/weber_connect/silabs_pairing.py", "custom_components/weber_connect/bluetooth.py", "docs/validation/3.3.0rc14-readiness.md"],
       "candidate_status": "pending_hardware_validation",
       "candidate_receipt": "docs/validation/3.3.0rc14-rc-physical.json"
     },
@@ -130,6 +139,28 @@
     }
   ],
   "observations": [
+    {
+      "id": "ep-4553721-3-3-0rc14-usb-community",
+      "product_family": "ep_thermometer",
+      "exact_model": "SKU 4553721 with ASUS USB-BT500 / BlueZ",
+      "firmware": "1.4.5_200",
+      "integration_release": "3.3.0rc14",
+      "verification_kind": "community_verified",
+      "passed_stages": ["pairing", "cloud_association", "live_readings", "restart_recovery"],
+      "evidence": [{"kind": "url", "value": "https://github.com/ProspectOre/weber-connect-unofficial/issues/59#issuecomment-7212078167"}],
+      "notes": "Setup finished with the probe attached and phone Bluetooth off. The reading changed from 20.2 to 19.8 Celsius and resumed after one HA restart. The tester kept their working entry."
+    },
+    {
+      "id": "searwood-600-3-3-0rc13-community-upgrade",
+      "product_family": "searwood_smoque",
+      "exact_model": "Searwood 600 with existing entry",
+      "firmware": "2.10.0.8143",
+      "integration_release": "3.3.0rc13",
+      "verification_kind": "community_verified",
+      "passed_stages": ["stable_entity_ids"],
+      "evidence": [{"kind": "url", "value": "https://github.com/ProspectOre/weber-connect-unofficial/issues/96#issuecomment-7205816738"}],
+      "notes": "All 18 IDs survived updating from 3.2.2 to RC13 and restarting HA with the grill off. The installed integration preserved Phone + Home Assistant mode. RC13 live cook performance awaits a trial."
+    },
     {
       "id": "hub-3-2-2rc6-maintainer-targeted",
       "product_family": "connect_smart_grilling_hub",
@@ -280,11 +311,11 @@
     },
     {
       "id": "ep435-issue-59-approval",
-      "summary": "EP WiFi Thermometer pairing times out after physical approval on RC13.",
-      "status": "unresolved",
-      "product_families": ["portable_probes"],
-      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/issues/59#issuecomment-7203938877", "docs/validation/3.3.0rc14-readiness.md", "https://github.com/ProspectOre/weber-connect-unofficial/issues/59#issuecomment-7190444970", "docs/validation/3.3.0rc13-readiness.md"],
-      "disposition": "RC13 reached approval on USB and ESPHome. The USB trace recorded a short greeting acknowledgement. RC14 requests encrypted capabilities after that reply. Pairing, cloud association and fresh readings on the affected thermometer await a hardware test."
+      "summary": "EP WiFi Thermometer timed out after physical approval on RC13.",
+      "status": "fixed_in_candidate",
+      "product_families": ["ep_thermometer"],
+      "sources": ["https://github.com/ProspectOre/weber-connect-unofficial/issues/59#issuecomment-7212078167", "https://github.com/ProspectOre/weber-connect-unofficial/issues/59#issuecomment-7203938877", "docs/validation/3.3.0rc14-readiness.md"],
+      "disposition": "RC14 completed pairing and restored fresh readings after restart on USB for SKU 4553721 with firmware 1.4.5_200. ESPHome pairing on RC14 still needs a hardware result."
     },
     {
       "id": "stale-cloud-status",
@@ -382,7 +413,7 @@
     },
     {
       "id": "searwood-lifecycle-validation",
-      "summary": "Searwood restart, reconnect, stable IDs and app coexistence remain untested.",
+      "summary": "Searwood live recovery and app coexistence still need a beta cook.",
       "status": "unresolved",
       "product_families": [
         "searwood_smoque"
@@ -391,7 +422,7 @@
         "https://github.com/ProspectOre/weber-connect-unofficial/issues/96",
         "docs/validation/2026-11-10-oem-comparison.md"
       ],
-      "disposition": "The contributor cook confirms useful 3.2.2 readings but not these lifecycle outcomes. Keep each pending stage separate from the successful cook and from current-candidate acceptance."
+      "disposition": "All 18 entity IDs survived an RC13 upgrade and restart with the grill off. The next beta cook can verify live readings after power-up, reconnect and simultaneous Weber app use."
     }
   ],
   "product_sources": ["https://contact-emea.weber.com/hc/en-us/articles/18254325420573-Security-Updates-Support-Policy", "https://www.weber.com/US/en/pr-release-NPD26.html"]

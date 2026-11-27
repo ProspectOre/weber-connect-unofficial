@@ -26,16 +26,23 @@ def test_registry_and_generated_matrix_are_current() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     validate_registry(registry, ROOT)
     assert render_markdown(registry, ROOT) == (ROOT / "docs/product-compatibility.md").read_text()
-    assert len(registry["product_families"]) == 13
+    assert len(registry["product_families"]) == 14
 
 
 def test_registry_distinguishes_build_validation_from_live_release_availability() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
     markdown = render_markdown(registry, ROOT)
-    assert "unpublished at validation" in markdown
-    assert "https://github.com/ProspectOre/weber-connect-unofficial/releases" in markdown
+    candidate = registry["current_candidate"]["version"]
+    expected_build = (
+        f"Published beta [{candidate}]"
+        if registry["current_candidate"]["publication_status"] == "published_beta"
+        else f"Unpublished candidate **{candidate}**"
+    )
+    assert expected_build in markdown
+    assert "Full hardware qualification is pending" in markdown
+    assert "https://github.com/ProspectOre/weber-connect-unofficial/releases/latest" in markdown
     registry["current_candidate"]["publication_status"] = "stable"
-    with pytest.raises(SupportError, match="prepublication validation"):
+    with pytest.raises(SupportError, match="Candidate publication status"):
         validate_registry(registry, ROOT)
 
 
@@ -49,7 +56,7 @@ def test_rendered_evidence_links_resolve_from_matrix_directory() -> None:
         url = urlsplit(destination)
         if url.scheme:
             assert url.scheme == "https"
-            assert destination == label
+            assert url.netloc
             external_links += 1
             continue
         resolved = (ROOT / "docs" / unquote(url.path)).resolve()
@@ -73,15 +80,30 @@ def test_render_cli_works_when_invoked_by_path() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_current_candidate_has_no_inherited_hardware_observations() -> None:
+def test_scoped_beta_observations_do_not_qualify_the_physical_receipt() -> None:
     registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
-    candidate = registry["current_candidate"]["version"]
-    assert all(row["integration_release"] != candidate for row in registry["observations"])
+    validate_registry(registry, ROOT)
     physical = json.loads(
         (ROOT / registry["current_candidate"]["receipts"]["physical"]).read_text()
     )
     assert physical["status"] == "pending_hardware_validation"
     assert physical["verified"] == {}
+
+
+@pytest.mark.parametrize("publication", ["unpublished", "published_beta"])
+def test_candidate_hardware_claim_requires_a_reporter_comment(publication: str) -> None:
+    registry = json.loads((ROOT / "docs/support/compatibility.json").read_text())
+    candidate = registry["current_candidate"]
+    candidate["publication_status"] = publication
+    observation = registry["observations"][0]
+    observation["integration_release"] = candidate["version"]
+    observation["verification_kind"] = "community_verified"
+    evidence_url = "https://github.com/ProspectOre/weber-connect-unofficial/issues/59"
+    if publication == "unpublished":
+        evidence_url += "#issuecomment-7212078167"
+    observation["evidence"] = [{"kind": "url", "value": evidence_url}]
+    with pytest.raises(SupportError, match="published beta and a reporter comment"):
+        validate_registry(registry, ROOT)
 
 
 def test_equal_but_stale_candidate_receipt_fingerprints_are_rejected(

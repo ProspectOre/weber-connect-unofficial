@@ -10,7 +10,7 @@
     "Original Connect Hub: exact-RC14 pairing and fresh cloud association, probe telemetry, app coexistence, Home Assistant restart, recovery, stable entity IDs and at least one hour of freshness/endurance",
     "SmokeFire EX4 Gen 2: exact-RC14 cook with unchanged fuel cadence, explicit fuel updates, cloud-status transitions, cook/device state, gap recovery, app coexistence, restart and stable entities",
     "Genesis built-in controller: issue 65 exact-model and firmware transport/framing evidence, physical approval, cloud association and live readings",
-    "EP-series WiFi Thermometer SKU 4553721 firmware 1.4.5_200: exact-RC14 notified pairing response, targeted long read if truncated, greeting acknowledgement, authenticated capabilities, cloud association and live readings",
+    "EP-series WiFi Thermometer SKU 4553721 firmware 1.4.5_200: repeat setup, live readings and restart recovery over ESPHome. The separate community USB trial passed.",
     "Other SiLabs appliances: per-model physical pairing, independent cloud association, private-key persistence, capability interoperability and telemetry",
     "Searwood 600 and Smoque: per-controller pairing, cloud association, supported model/fields, cook session, app coexistence, reconnect, restart and endurance",
     "Spirit Smart: per-generation controller pairing, cloud readings and physical telemetry acceptance",
